@@ -34,12 +34,6 @@ internal static partial class NativeMethods
     internal const uint PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 0x1;
     internal const uint PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION = 0x4;
 
-    // ── Memory priority ──────────────────────────────────────────────
-    internal const int ProcessMemoryPriority = 0;
-    internal const uint MEMORY_PRIORITY_VERY_LOW = 1;
-    internal const uint MEMORY_PRIORITY_LOW = 2;
-    internal const uint MEMORY_PRIORITY_NORMAL = 5;
-
     // ── Service control constants ────────────────────────────────────
     internal const uint SC_MANAGER_ALL_ACCESS = 0xF003F;
     internal const uint SERVICE_QUERY_CONFIG = 0x0001;
@@ -167,9 +161,7 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial uint GetCurrentProcessId();
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS lpSystemPowerStatus);
+    
 
     // ── advapi32.dll ─────────────────────────────────────────────────
 
@@ -274,6 +266,240 @@ internal static partial class NativeMethods
     [LibraryImport("psapi.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool EmptyWorkingSet(IntPtr hProcess);
+
+    // ── Process quota / working set ───────────────────────────────────
+
+    internal const uint PROCESS_SET_QUOTA = 0x0100;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetProcessWorkingSetSizeEx(
+        IntPtr hProcess, IntPtr dwMinimumWorkingSetSize, IntPtr dwMaximumWorkingSetSize, uint Flags);
+
+    internal const uint QUOTA_LIMITS_HARDWS_MIN_DISABLE = 0x00000002;
+    internal const uint QUOTA_LIMITS_HARDWS_MIN_ENABLE = 0x00000001;
+    internal const uint QUOTA_LIMITS_HARDWS_MAX_DISABLE = 0x00000008;
+    internal const uint QUOTA_LIMITS_HARDWS_MAX_ENABLE = 0x00000004;
+
+    // ── System file cache ─────────────────────────────────────────────
+
+    internal const int FILE_CACHE_MAX_HARD_ENABLE = 0x00000001;
+    internal const int FILE_CACHE_MAX_HARD_DISABLE = 0x00000002;
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetSystemFileCacheSize(IntPtr MinimumFileCacheSize, IntPtr MaximumFileCacheSize, int Flags);
+
+    // ── Memory status ─────────────────────────────────────────────────
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX lpBuffer);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MEMORYSTATUSEX
+    {
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
+    }
+
+    // ── Performance info ──────────────────────────────────────────────
+
+    [LibraryImport("kernel32.dll", EntryPoint = "K32GetPerformanceInfo", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetPerformanceInfo(ref PERFORMANCE_INFORMATION pPerformanceInformation, uint cb);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PERFORMANCE_INFORMATION
+    {
+        public uint cb;
+        public UIntPtr CommitTotal;
+        public UIntPtr CommitLimit;
+        public UIntPtr CommitPeak;
+        public UIntPtr PhysicalTotal;
+        public UIntPtr PhysicalAvailable;
+        public UIntPtr SystemCache;
+        public UIntPtr KernelTotal;
+        public UIntPtr KernelPaged;
+        public UIntPtr KernelNonpaged;
+        public UIntPtr PageSize;
+        public uint HandleCount;
+        public uint ProcessCount;
+        public uint ThreadCount;
+    }
+
+    // ── NtSetSystemInformation (memory management) ────────────────────
+
+    internal const int SystemMemoryListInformation = 80;
+    internal const int SystemCombinePhysicalMemoryInformation = 0x82;
+    internal const int SystemRegistryReconciliationInformation = 0x9B;
+
+    internal enum MemoryListCommand
+    {
+        MemoryCaptureAccessedBits = 0,
+        MemoryCaptureAndResetAccessedBits = 1,
+        MemoryEmptyWorkingSets = 2,
+        MemoryFlushModifiedList = 3,
+        MemoryPurgeStandbyList = 4,
+        MemoryPurgeLowPriorityStandbyList = 5,
+        MemoryCommandMax = 6
+    }
+
+    [LibraryImport("ntdll.dll")]
+    internal static partial int NtSetSystemInformation(int SystemInformationClass, ref int SystemInformation, int SystemInformationLength);
+
+    [LibraryImport("ntdll.dll", EntryPoint = "NtSetSystemInformation")]
+    internal static partial int NtSetSystemInformationNull(int SystemInformationClass, IntPtr SystemInformation, int SystemInformationLength);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MEMORY_COMBINE_INFORMATION_EX
+    {
+        public IntPtr Handle;
+        public UIntPtr PagesCombined;
+    }
+
+    [LibraryImport("ntdll.dll", EntryPoint = "NtSetSystemInformation")]
+    internal static partial int NtSetSystemInformationCombine(
+        int SystemInformationClass, ref MEMORY_COMBINE_INFORMATION_EX SystemInformation, int SystemInformationLength);
+
+    // ── Memory resource notifications ─────────────────────────────────
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial IntPtr CreateMemoryResourceNotification(int NotificationType);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool QueryMemoryResourceNotification(
+        IntPtr ResourceNotificationHandle, [MarshalAs(UnmanagedType.Bool)] out bool ResourceState);
+
+    internal const int LowMemoryResourceNotification = 0;
+    internal const int HighMemoryResourceNotification = 1;
+
+    // ── Process memory priority / I/O priority ────────────────────────
+
+    internal const int ProcessMemoryPriority = 0x27;
+    internal const int ProcessIoPriority = 0x1D;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MEMORY_PRIORITY_INFORMATION
+    {
+        public uint MemoryPriority;
+    }
+
+    internal const uint MEMORY_PRIORITY_VERY_LOW = 1;
+    internal const uint MEMORY_PRIORITY_LOW = 2;
+    internal const uint MEMORY_PRIORITY_MEDIUM = 3;
+    internal const uint MEMORY_PRIORITY_BELOW_NORMAL = 4;
+
+    internal const int IO_PRIORITY_VERY_LOW = 0;
+    internal const int IO_PRIORITY_LOW = 1;
+    internal const int IO_PRIORITY_NORMAL = 2;
+
+    // ── Thread information ─────────────────────────────────────────────
+
+    [LibraryImport("kernel32.dll")]
+    internal static partial IntPtr GetCurrentThread();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetThreadInformation(
+        IntPtr hThread, int ThreadInformationClass, IntPtr ThreadInformation, uint ThreadInformationSize);
+
+    internal const int ThreadMemoryPriority = 0x0001;
+    internal const int ThreadPowerThrottling = 0x0004;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct THREAD_POWER_THROTTLING_STATE
+    {
+        public uint Version;
+        public uint ControlMask;
+        public uint StateMask;
+    }
+
+    // ── Privilege names (extended) ─────────────────────────────────────
+
+    internal const string SE_PROFILE_SINGLE_PROCESS_NAME = "SeProfileSingleProcessPrivilege";
+
+    // ── LookupPrivilegeValue with out LUID (optiBAT signature) ─────────
+
+    // Note: We already have LookupPrivilegeValueW with "out LUID" from optiBAT section.
+    // Adding an overload with "ref LUID" for optiRAM's PrivilegeManager compatibility.
+    [LibraryImport("advapi32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool LookupPrivilegeValueRef(string? lpSystemName, string lpName, ref LUID lpLuid);
+
+    // ── Extended helpers ──────────────────────────────────────────────
+
+    internal static unsafe void SetSelfMemoryPriority(uint priority)
+    {
+        var info = new MEMORY_PRIORITY_INFORMATION { MemoryPriority = priority };
+        var ptr = (IntPtr)(&info);
+        SetProcessInformation(GetCurrentProcess(), ProcessMemoryPriority,
+            ptr, (uint)Marshal.SizeOf<MEMORY_PRIORITY_INFORMATION>());
+    }
+
+    internal static unsafe void SetSelfEcoQoS()
+    {
+        var state = new PROCESS_POWER_THROTTLING_STATE
+        {
+            Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+        };
+        var ptr = (IntPtr)(&state);
+        SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling,
+            ptr, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
+    }
+
+    internal static void SetSelfWorkingSetCap(long maxBytes)
+    {
+        var minSize = new IntPtr(1024 * 1024);
+        var maxSize = new IntPtr(maxBytes);
+        SetProcessWorkingSetSizeEx(GetCurrentProcess(), minSize, maxSize,
+            QUOTA_LIMITS_HARDWS_MIN_DISABLE | QUOTA_LIMITS_HARDWS_MAX_ENABLE);
+    }
+
+    internal static unsafe bool SetProcessMemoryPriority(IntPtr hProcess, uint priority)
+    {
+        var info = new MEMORY_PRIORITY_INFORMATION { MemoryPriority = priority };
+        var ptr = (IntPtr)(&info);
+        return SetProcessInformation(hProcess, ProcessMemoryPriority,
+            ptr, (uint)Marshal.SizeOf<MEMORY_PRIORITY_INFORMATION>());
+    }
+
+    internal static unsafe bool SetProcessIoPriority(IntPtr hProcess, int ioPriority)
+    {
+        int* ptr = &ioPriority;
+        return SetProcessInformation(hProcess, ProcessIoPriority, (IntPtr)ptr, sizeof(int));
+    }
+
+    internal static unsafe void SetCurrentThreadMemoryPriority(uint priority)
+    {
+        var info = new MEMORY_PRIORITY_INFORMATION { MemoryPriority = priority };
+        var ptr = (IntPtr)(&info);
+        SetThreadInformation(GetCurrentThread(), ThreadMemoryPriority,
+            ptr, (uint)Marshal.SizeOf<MEMORY_PRIORITY_INFORMATION>());
+    }
+
+    internal static unsafe void SetCurrentThreadEcoQoS()
+    {
+        var state = new THREAD_POWER_THROTTLING_STATE
+        {
+            Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+        };
+        var ptr = (IntPtr)(&state);
+        SetThreadInformation(GetCurrentThread(), ThreadPowerThrottling,
+            ptr, (uint)Marshal.SizeOf<THREAD_POWER_THROTTLING_STATE>());
+    }
 
     // ── Helper methods ───────────────────────────────────────────────
 

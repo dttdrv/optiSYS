@@ -1,5 +1,7 @@
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Domains.Battery;
+using MemDomain = OptiSYS.Core.Domains.Memory.MemoryOptimizerDomain;
 
 namespace OptiSYS.Core.Services;
 
@@ -30,16 +32,16 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         _domains =
         [
             // Battery domains
-            new Battery.EcoQosDomain(settings),
-            new Battery.TimerResolutionDomain(settings),
-            new Battery.BackgroundServiceDomain(settings),
-            new Battery.UsbSuspendDomain(),
-            new Battery.NetworkPowerDomain(),
-            new Battery.GpuPowerDomain(),
-            new Battery.CpuParkingDomain(settings),
-            new Battery.DiskIoCoalescingDomain(settings),
+            new EcoQosDomain(settings),
+            new TimerResolutionDomain(settings),
+            new BackgroundServiceDomain(settings),
+            new UsbSuspendDomain(),
+            new NetworkPowerDomain(),
+            new GpuPowerDomain(),
+            new CpuParkingDomain(settings),
+            new DiskIoCoalescingDomain(settings),
             // Memory domains
-            new Memory.MemoryOptimizerDomain(settings),
+            new MemDomain(settings),
         ];
     }
 

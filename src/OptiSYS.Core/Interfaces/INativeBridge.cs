@@ -1,5 +1,7 @@
 namespace OptiSYS.Core.Interfaces;
 
+using OptiSYS.Core.Models;
+
 /// <summary>
 /// Bridge to native platform functions. Implemented by ZigNativeBridge (calls optisys_core.dll)
 /// or ManagedNativeBridge (P/Invoke fallback when Zig DLL unavailable).
@@ -23,13 +25,6 @@ public interface INativeBridge : IDisposable
     int GetForegroundProcessId();
     NativeProcessInfo[] GetProcessList();
     bool SetProcessPriority(int processId, ProcessPriorityClass priorityClass);
-}
-
-public enum PowerSource
-{
-    Unknown,
-    Ac,
-    Battery
 }
 
 public struct NativeBatteryInfo
@@ -58,14 +53,4 @@ public struct NativeProcessInfo
     public long WorkingSetBytes;
     public long PrivateBytes;
     public ProcessPriorityClass PriorityClass;
-}
-
-public enum ProcessPriorityClass
-{
-    Idle = 64,
-    BelowNormal = 16384,
-    Normal = 32,
-    AboveNormal = 32768,
-    High = 128,
-    RealTime = 256
 }

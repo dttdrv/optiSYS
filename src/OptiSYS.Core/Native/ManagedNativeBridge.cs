@@ -24,7 +24,7 @@ public sealed class ManagedNativeBridge : INativeBridge
     private static extern bool GlobalMemoryStatusEx(out MEMORYSTATUSEX lpBuffer);
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(ProcessAccessFlags dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, int dwProcessId);
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -39,10 +39,6 @@ public sealed class ManagedNativeBridge : INativeBridge
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetProcessInformation(IntPtr hProcess, PROCESS_POWER_THROTTLING_STATE state);
 
     // ── Struct layouts ────────────────────────────────────────────────
 
@@ -60,38 +56,20 @@ public sealed class ManagedNativeBridge : INativeBridge
     [StructLayout(LayoutKind.Sequential)]
     private struct MEMORYSTATUSEX
     {
-        public int Length;
-        public long MemoryLoad;
-        public long TotalPhysical;
-        public long AvailablePhysical;
-        public long TotalPageFile;
-        public long AvailablePageFile;
-        public long TotalVirtual;
-        public long AvailableVirtual;
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
     }
-
-    [Flags]
-    private enum ProcessAccessFlags : uint
-    {
-        QueryLimitedInformation = 0x1000,
-        ProcessSetInformation = 0x0200,
-        ProcessVMOperation = 0x0008,
-        ProcessVMRead = 0x0010,
-        ProcessVMWrite = 0x0020
-    }
-
-    private struct PROCESS_POWER_THROTTLING_STATE
-    {
-        public uint Version;
-        public uint ControlMask;
-        public uint StateMask;
-    }
-
-    private const uint PROCESS_POWER_NOTIFICATION_ENABLED = 0x00000001;
 
     // ── INativeBridge implementation ──────────────────────────────────
 
-    public bool GetBatteryInfo(out NativeBatteryInfo info)
+    public bool GetBatteryInfo(out Interfaces.NativeBatteryInfo info)
     {
         info = default;
         if (!GetSystemPowerStatus(out var status))
@@ -99,13 +77,13 @@ public sealed class ManagedNativeBridge : INativeBridge
 
         info.PowerSource = status.ACLineStatus switch
         {
-            1 => 1, // AC
-            0 => 2, // Battery
-            _ => 0  // Unknown
+            1 => PowerSource.Ac,
+            0 => PowerSource.Battery,
+            _ => PowerSource.Unknown
         };
-        info.HasBattery = status.BatteryFlag != 128; // 128 = no battery
+        info.HasBattery = status.BatteryFlag != 128;
         info.ChargePercent = status.BatteryLifePercent == 255 ? (byte)0 : status.BatteryLifePercent;
-        info.DrainRateMilliwatts = 0; // Not available via GetSystemPowerStatus
+        info.DrainRateMilliwatts = 0;
         info.EstimatedTimeRemainingSeconds = status.BatteryLifeTime == -1 ? 0 : status.BatteryLifeTime;
 
         return true;
@@ -125,45 +103,38 @@ public sealed class ManagedNativeBridge : INativeBridge
 
     public bool SetEcoQos(bool enable, int processId)
     {
-        // EcoQoS via SetProcessInformation
-        try
-        {
-            var handle = OpenProcess(ProcessAccessFlags.ProcessSetInformation, false, processId);
-            if (handle == IntPtr.Zero) return false;
-
-            try
-            {
-                var state = new PROCESS_POWER_THROTTLING_STATE
-                {
-                    Version = 1,
-                    ControlMask = PROCESS_POWER_NOTIFICATION_ENABLED,
-                    StateMask = enable ? PROCESS_POWER_NOTIFICATION_ENABLED : 0
-                };
-                return SetProcessInformation(handle, state);
-            }
-            finally { CloseHandle(handle); }
-        }
-        catch { return false; }
+        // Falls back to NativeMethods for real implementation
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
+            false, (uint)processId);
+        if (handle == IntPtr.Zero) return false;
+        try { return NativeMethods.SetProcessEcoQoS(handle, enable); }
+        finally { NativeMethods.CloseHandle(handle); }
     }
 
-    public bool SetTimerResolution(bool increase, int processId)
+    public bool SetTimerResolution(bool ignore, int processId)
     {
-        // Timer resolution management - advanced, requires NtSetTimerResolution
-        return false;
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
+            false, (uint)processId);
+        if (handle == IntPtr.Zero) return false;
+        try { return NativeMethods.SetProcessTimerResolutionIgnore(handle, ignore); }
+        finally { NativeMethods.CloseHandle(handle); }
     }
 
-    public bool GetMemoryInfo(out NativeMemoryInfo info)
+    public bool GetMemoryInfo(out Interfaces.NativeMemoryInfo info)
     {
         info = default;
-        var memStatus = new MEMORYSTATUSEX { Length = Marshal.SizeOf<MEMORYSTATUSEX>() };
+        var memStatus = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
 
         if (!GlobalMemoryStatusEx(out memStatus))
             return false;
 
-        info.TotalPhysicalBytes = memStatus.TotalPhysical;
-        info.AvailablePhysicalBytes = memStatus.AvailablePhysical;
+        info.TotalPhysicalBytes = (long)memStatus.ullTotalPhys;
+        info.AvailablePhysicalBytes = (long)memStatus.ullAvailPhys;
         info.CommittedBytes = 0;
-        info.StandbyCacheBytes = 0;
+        info.StandbyCacheNormalPriorityBytes = 0;
+        info.StandbyCacheReserveBytes = 0;
         info.ModifiedPageListBytes = 0;
 
         return true;
@@ -173,7 +144,7 @@ public sealed class ManagedNativeBridge : INativeBridge
     {
         try
         {
-            var handle = OpenProcess(ProcessAccessFlags.ProcessVMOperation | ProcessAccessFlags.ProcessVMRead, false, processId);
+            var handle = OpenProcess(0x0400 | 0x0008 | 0x0010, false, (uint)processId);
             if (handle == IntPtr.Zero) return 0;
 
             try
@@ -192,26 +163,16 @@ public sealed class ManagedNativeBridge : INativeBridge
     {
         try
         {
-            var handle = OpenProcess(ProcessAccessFlags.ProcessVMOperation, false, processId);
+            var handle = OpenProcess(0x0008, false, (uint)processId);
             if (handle == IntPtr.Zero) return false;
-
             try { return EmptyWorkingSet(handle); }
             finally { CloseHandle(handle); }
         }
         catch { return false; }
     }
 
-    public bool ClearStandbyList()
-    {
-        // Requires NtSetSystemInformation - elevated only
-        return false;
-    }
-
-    public bool FlushModifications()
-    {
-        // Requires NtSetSystemInformation - elevated only
-        return false;
-    }
+    public bool ClearStandbyList() => false;
+    public bool FlushModifications() => false;
 
     public int GetForegroundProcessId()
     {
@@ -221,25 +182,23 @@ public sealed class ManagedNativeBridge : INativeBridge
         return (int)pid;
     }
 
-    public NativeProcessInfo[] GetProcessList()
+    public Interfaces.NativeProcessInfo[] GetProcessList()
     {
         var processes = Process.GetProcesses();
-        var result = new List<NativeProcessInfo>(processes.Length);
+        var result = new List<Interfaces.NativeProcessInfo>(processes.Length);
         var fgPid = GetForegroundProcessId();
 
         foreach (var proc in processes)
         {
             try
             {
-                result.Add(new NativeProcessInfo
+                result.Add(new Interfaces.NativeProcessInfo
                 {
                     ProcessId = proc.Id,
                     ProcessName = proc.ProcessName,
                     WorkingSetBytes = proc.WorkingSet64,
                     PrivateBytes = proc.PrivateMemorySize64,
-                    IsForeground = proc.Id == fgPid,
-                    IsExcluded = false,
-                    PriorityClass = (ProcessPriorityClass)(int)proc.PriorityClass
+                    PriorityClass = (Models.ProcessPriorityClass)proc.PriorityClass
                 });
             }
             catch { }
@@ -249,7 +208,7 @@ public sealed class ManagedNativeBridge : INativeBridge
         return result.ToArray();
     }
 
-    public bool SetProcessPriority(int processId, ProcessPriorityClass priorityClass)
+    public bool SetProcessPriority(int processId, Models.ProcessPriorityClass priorityClass)
     {
         try
         {
@@ -266,8 +225,5 @@ public sealed class ManagedNativeBridge : INativeBridge
         catch { return 0; }
     }
 
-    public void Dispose()
-    {
-        _disposed = true;
-    }
+    public void Dispose() => _disposed = true;
 }

@@ -21,7 +21,7 @@ public sealed class SnapshotStore
     };
 
     private readonly List<DomainSnapshot> _snapshots = [];
-    private readonly Lock _lock = new();
+    private readonly object _lock = new();
 
     public bool HasSnapshots
     {

@@ -10,6 +10,16 @@ public sealed class MemoryInfo
     public long CommittedBytes { get; init; }
     public long StandbyCacheBytes { get; init; }
     public long ModifiedBytes { get; init; }
+    public long FreeBytes { get; init; }
+    public long CachedBytes { get; init; }
+    public long CompressedBytes { get; init; }
+    public long KernelPagedBytes { get; init; }
+    public long KernelNonpagedBytes { get; init; }
+    public long CommitTotalBytes { get; init; }
+    public long CommitLimitBytes { get; init; }
+    public uint ProcessCount { get; init; }
+    public uint ThreadCount { get; init; }
+    public uint HandleCount { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
 
     public long UsedBytes => TotalPhysicalBytes - AvailablePhysicalBytes;
@@ -19,6 +29,13 @@ public sealed class MemoryInfo
     public string TotalDisplay => FormatBytes(TotalPhysicalBytes);
     public string AvailableDisplay => FormatBytes(AvailablePhysicalBytes);
     public string UsedDisplay => FormatBytes(UsedBytes);
+
+    public double TotalGB => TotalPhysicalBytes / (1024.0 * 1024 * 1024);
+    public double UsedGB => UsedBytes / (1024.0 * 1024 * 1024);
+    public double AvailableGB => AvailablePhysicalBytes / (1024.0 * 1024 * 1024);
+    public double StandbyGB => StandbyCacheBytes / (1024.0 * 1024 * 1024);
+    public double CompressedMB => CompressedBytes / (1024.0 * 1024);
+    public double CommitPercent => CommitLimitBytes > 0 ? (double)CommitTotalBytes / CommitLimitBytes * 100 : 0;
 
     private static string FormatBytes(long bytes) => bytes switch
     {
@@ -50,9 +67,9 @@ public sealed class OptimizationResult
     public TimeSpan Duration { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
 
-    public string FreedDisplay => FormatBytes(FreedBytes);
+    public string FreedDisplay => FormatBytesStatic(FreedBytes);
 
-    private static string FormatBytes(long bytes) => bytes switch
+    public static string FormatBytesStatic(long bytes) => bytes switch
     {
         >= 1L << 30 => $"{bytes / (double)(1L << 30):F1} GB",
         >= 1L << 20 => $"{bytes / (double)(1L << 20):F0} MB",

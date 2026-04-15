@@ -2,6 +2,10 @@ using System.Runtime.InteropServices;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 
+using IFaceBatteryInfo = OptiSYS.Core.Interfaces.NativeBatteryInfo;
+using IFaceMemoryInfo = OptiSYS.Core.Interfaces.NativeMemoryInfo;
+using IFaceProcessInfo = OptiSYS.Core.Interfaces.NativeProcessInfo;
+
 namespace OptiSYS.Core.Native;
 
 /// <summary>
@@ -19,7 +23,7 @@ public sealed class ZigNativeBridge : INativeBridge
     private static extern int optisys_power_init();
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int optisys_power_snapshot(out NativeBatteryInfo info);
+    private static extern int optisys_power_snapshot(out ZigBatteryInfo info);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int optisys_power_source();
@@ -28,7 +32,7 @@ public sealed class ZigNativeBridge : INativeBridge
     private static extern int optisys_memory_init();
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    private static extern int optisys_memory_snapshot(out NativeMemoryInfo info);
+    private static extern int optisys_memory_snapshot(out ZigMemoryInfo info);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int optisys_memory_optimize(int level, int excludedCount, IntPtr excludedPids);
@@ -48,7 +52,7 @@ public sealed class ZigNativeBridge : INativeBridge
     // ── Native struct layouts matching bridge.zig ────────────────────
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativeBatteryInfo
+    private struct ZigBatteryInfo
     {
         public int PowerSource;
         [MarshalAs(UnmanagedType.U1)] public bool HasBattery;
@@ -58,7 +62,7 @@ public sealed class ZigNativeBridge : INativeBridge
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativeMemoryInfo
+    private struct ZigMemoryInfo
     {
         public long TotalPhysicalBytes;
         public long AvailablePhysicalBytes;
@@ -69,20 +73,28 @@ public sealed class ZigNativeBridge : INativeBridge
 
     // ── INativeBridge implementation ──────────────────────────────────
 
-    public bool GetBatteryInfo(out NativeBatteryInfo info)
+    public bool GetBatteryInfo(out IFaceBatteryInfo info)
     {
+        info = default;
         try
         {
             var result = optisys_power_snapshot(out var nativeInfo);
             if (result == 0)
             {
-                info = nativeInfo;
+                info.PowerSource = nativeInfo.PowerSource switch
+                {
+                    1 => PowerSource.Ac,
+                    0 => PowerSource.Battery,
+                    _ => PowerSource.Unknown
+                };
+                info.HasBattery = nativeInfo.HasBattery;
+                info.ChargePercent = nativeInfo.ChargePercent;
+                info.DrainRateMilliwatts = nativeInfo.DrainRateMilliwatts;
+                info.EstimatedTimeRemainingSeconds = nativeInfo.EstimatedTimeRemainingSeconds;
                 return true;
             }
         }
         catch (DllNotFoundException) { }
-
-        info = default;
         return false;
     }
 
@@ -104,20 +116,24 @@ public sealed class ZigNativeBridge : INativeBridge
         return false;
     }
 
-    public bool GetMemoryInfo(out NativeMemoryInfo info)
+    public bool GetMemoryInfo(out IFaceMemoryInfo info)
     {
+        info = default;
         try
         {
             var result = optisys_memory_snapshot(out var nativeInfo);
             if (result == 0)
             {
-                info = nativeInfo;
+                info.TotalPhysicalBytes = nativeInfo.TotalPhysicalBytes;
+                info.AvailablePhysicalBytes = nativeInfo.AvailablePhysicalBytes;
+                info.CommittedBytes = nativeInfo.CommittedBytes;
+                info.StandbyCacheNormalPriorityBytes = 0;
+                info.StandbyCacheReserveBytes = 0;
+                info.ModifiedPageListBytes = nativeInfo.ModifiedPageListBytes;
                 return true;
             }
         }
         catch (DllNotFoundException) { }
-
-        info = default;
         return false;
     }
 
@@ -133,35 +149,11 @@ public sealed class ZigNativeBridge : INativeBridge
         catch (DllNotFoundException) { return false; }
     }
 
-    public bool ClearStandbyList()
-    {
-        // Not yet in Zig bridge
-        return false;
-    }
-
-    public bool FlushModifications()
-    {
-        // Not yet in Zig bridge
-        return false;
-    }
-
-    public int GetForegroundProcessId()
-    {
-        // Fallback - managed implementation needed
-        return 0;
-    }
-
-    public NativeProcessInfo[] GetProcessList()
-    {
-        // Fallback - managed implementation needed
-        return [];
-    }
-
-    public bool SetProcessPriority(int processId, ProcessPriorityClass priorityClass)
-    {
-        // Not yet in Zig bridge
-        return false;
-    }
+    public bool ClearStandbyList() => false;
+    public bool FlushModifications() => false;
+    public int GetForegroundProcessId() => 0;
+    public IFaceProcessInfo[] GetProcessList() => [];
+    public bool SetProcessPriority(int processId, Models.ProcessPriorityClass priorityClass) => false;
 
     public void Dispose()
     {

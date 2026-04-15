@@ -36,12 +36,7 @@ public sealed class BatteryInfoService : IDisposable
         {
             CurrentInfo = new BatteryInfo
             {
-                PowerSource = nativeInfo.PowerSource switch
-                {
-                    1 => PowerSource.Ac,
-                    2 => PowerSource.Battery,
-                    _ => PowerSource.Unknown
-                },
+                PowerSource = nativeInfo.PowerSource,
                 HasBattery = nativeInfo.HasBattery,
                 ChargePercent = nativeInfo.ChargePercent,
                 DrainRateMilliwatts = nativeInfo.DrainRateMilliwatts,
