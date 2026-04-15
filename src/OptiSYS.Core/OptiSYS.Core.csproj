@@ -13,4 +13,8 @@
     <Description>Unified Windows optimization core library</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.*" />
+  </ItemGroup>
+
 </Project>

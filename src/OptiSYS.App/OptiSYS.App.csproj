@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
@@ -10,6 +10,9 @@
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <GeneratePriFilesOnBuild>false</GeneratePriFilesOnBuild>
+    <DisableMrtAutoMerge>true</DisableMrtAutoMerge>
+    <GenerateLibraryLayout>true</GenerateLibraryLayout>
+    <AppxPackage>false</AppxPackage>
     <RootNamespace>OptiSYS</RootNamespace>
     <AssemblyName>OptiSYS</AssemblyName>
     <Version>1.0.0</Version>
@@ -17,6 +20,15 @@
     <Product>optiSYS</Product>
     <Description>Unified Windows optimization suite</Description>
   </PropertyGroup>
+
+  <!-- Skip PRI generation when building from CLI without full VS -->
+  <Target Name="_ExpandProjectPriFile" />
+  <Target Name="_CreatePriConfigXmlForSplitting" />
+  <Target Name="_GenerateProjectPriFile" />
+
+  <!-- Override the targets that load the missing PRI task assembly -->
+  <Target Name="ExpandPriContentFromReferences" Condition="'$(GeneratePriFilesOnBuild)' != 'false'" />
+  <Target Name="_ExpandLibraryLayoutProjectPriFiles" Condition="'$(GeneratePriFilesOnBuild)' != 'false'" />
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />

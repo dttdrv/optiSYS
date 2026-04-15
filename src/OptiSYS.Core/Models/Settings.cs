@@ -56,13 +56,23 @@ public sealed class Settings
     public int CpuParkingMinProcessorDC { get; set; } = 5;
     public int DiskIdleTimeoutSeconds { get; set; } = 30;
 
-    // ── Memory optimization settings ─────────────────────────────────
+    public List<string> TimerResolutionExcludedProcesses { get; set; } =
+    [
+        "System", "Idle", "smss", "csrss", "wininit", "services",
+        "lsass", "svchost", "dwm", "winlogon", "fontdrvhost", "conhost",
+        "audiodg", "NVIDIA Display Container"
+    ];
+
+    // Memory optimization settings
     public bool AutoOptimizeMemoryEnabled { get; set; } = false;
     public int MemoryCheckIntervalSeconds { get; set; } = 5;
     public int MemoryThresholdPercent { get; set; } = 80;
     public int MemoryCooldownSeconds { get; set; } = 30;
     public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Balanced;
-    public int SelfWorkingSetCapMB { get; set; } = 25;
+    // NOTE: SelfWorkingSetCapMB must be >= 100 for UI apps.
+    // optiRAM defaulted to 25MB which caused System.OutOfMemoryException
+    // in WPF's MediaContext.CommitChannel (insufficient memory for rendering).
+    public int SelfWorkingSetCapMB { get; set; } = 100;
     public int CacheMaxPercent { get; set; } = 0; // 0 = disabled
     public int HysteresisGap { get; set; } = 10;
     public int TrendWindowSize { get; set; } = 10;
@@ -202,7 +212,7 @@ public sealed class Settings
         MemoryThresholdPercent = Math.Clamp(MemoryThresholdPercent, 10, 95);
         MemoryCooldownSeconds = Math.Clamp(MemoryCooldownSeconds, 5, 300);
         CacheMaxPercent = Math.Clamp(CacheMaxPercent, 0, 75);
-        SelfWorkingSetCapMB = Math.Clamp(SelfWorkingSetCapMB, 0, 256);
+        SelfWorkingSetCapMB = Math.Clamp(SelfWorkingSetCapMB, 0, 512);
         HysteresisGap = Math.Clamp(HysteresisGap, 5, 30);
         TrendWindowSize = Math.Clamp(TrendWindowSize, 5, 60);
         PredictiveLeadSeconds = Math.Clamp(PredictiveLeadSeconds, 5, 120);
@@ -220,5 +230,6 @@ public sealed class Settings
         EcoQosExcludedProcesses ??= [];
         ServicesToThrottle ??= [];
         MemoryExcludedProcesses ??= [];
+        TimerResolutionExcludedProcesses ??= [];
     }
 }

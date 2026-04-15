@@ -108,10 +108,16 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
         foreach (var pid in pidsToRevert)
         {
-            var handle = NativeMethods.OpenProcess(NativeMethods.PROCESS_SET_INFORMATION, false, pid);
-            if (handle == IntPtr.Zero) continue;
-            try { NativeMethods.SetProcessEcoQoS(handle, false); }
-            finally { NativeMethods.CloseHandle(handle); }
+            try
+            {
+                var handle = NativeMethods.OpenProcess(
+                    NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
+                    false, pid);
+                if (handle == IntPtr.Zero) continue;
+                try { NativeMethods.SetProcessEcoQoS(handle, false); }
+                finally { NativeMethods.CloseHandle(handle); }
+            }
+            catch { }
         }
 
         _throttledPids.Clear();

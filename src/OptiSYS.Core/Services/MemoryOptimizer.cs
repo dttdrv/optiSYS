@@ -30,7 +30,7 @@ public sealed class MemoryOptimizer : IDisposable
         _memoryInfo = memoryInfo;
     }
 
-    public MemoryOptimizer() : this(new MemoryInfoService(new ManagedNativeBridge())) { }
+    public MemoryOptimizer() : this(new MemoryInfoService()) { }
 
     public (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0)
     {
@@ -196,6 +196,11 @@ public sealed class MemoryOptimizer : IDisposable
 
     public static bool SetProcessWorkingSetCap(int pid, long maxBytes)
     {
+        // Minimum 50MB working set to prevent OOM in rendering pipelines
+        const long minimumCap = 50L * 1024 * 1024;
+        if (maxBytes > 0 && maxBytes < minimumCap)
+            maxBytes = minimumCap;
+
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_QUOTA,
             false, (uint)pid);
@@ -244,7 +249,8 @@ public sealed class MemoryOptimizer : IDisposable
             if (targetThresholdPercent > 0)
             {
                 double compressedRatio = beforeInfo.TotalPhysicalBytes > 0
-                    ? 0 : 0; // Simplified for now
+                    ? (double)beforeInfo.CompressedBytes / beforeInfo.TotalPhysicalBytes
+                    : 0;
 
                 if (compressedRatio > 0.15 && effectiveLevel == OptimizationLevel.Aggressive)
                 {

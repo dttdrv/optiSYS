@@ -43,7 +43,7 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
         var sw = Stopwatch.StartNew();
         _originalResolution = baseline.Get<uint>("currentResolution");
         int ignored = 0, failed = 0, skipped = 0;
-        var exclusions = new HashSet<string>(_settings.EcoQosExcludedProcesses, StringComparer.OrdinalIgnoreCase);
+        var exclusions = new HashSet<string>(_settings.TimerResolutionExcludedProcesses, StringComparer.OrdinalIgnoreCase);
 
         _processesIgnored.Clear();
 
@@ -108,18 +108,25 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
     {
         foreach (var pid in _processesIgnored)
         {
-            var handle = NativeMethods.OpenProcess(NativeMethods.PROCESS_SET_INFORMATION, false, pid);
-            if (handle == IntPtr.Zero) continue;
-            try { NativeMethods.SetProcessTimerResolutionIgnore(handle, false); }
-            finally { NativeMethods.CloseHandle(handle); }
+            try
+            {
+                var handle = NativeMethods.OpenProcess(
+                    NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
+                    false, pid);
+                if (handle == IntPtr.Zero) continue;
+                try { NativeMethods.SetProcessTimerResolutionIgnore(handle, false); }
+                finally { NativeMethods.CloseHandle(handle); }
+            }
+            catch { }
         }
         _processesIgnored.Clear();
 
-        var original = baseline.Get<uint>("currentResolution");
-        if (original > 0 && original != DEFAULT_RESOLUTION)
-            NativeMethods.NtSetTimerResolution(original, true, out _);
-        else
-            NativeMethods.NtSetTimerResolution(DEFAULT_RESOLUTION, false, out _);
+        try
+        {
+            // Clear our timer resolution request
+            NativeMethods.NtSetTimerResolution(0, false, out _);
+        }
+        catch { }
 
         _isActive = false;
     }

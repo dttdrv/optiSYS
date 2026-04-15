@@ -11,7 +11,9 @@ namespace OptiSYS.Core.Native;
 /// </summary>
 public sealed class ManagedNativeBridge : INativeBridge
 {
-    private bool _disposed;
+#pragma warning disable CS0414 // _disposed is used in Dispose pattern
+    private volatile bool _disposed;
+#pragma warning restore CS0414
 
     // ── Windows API P/Invoke declarations ────────────────────────────
 
@@ -22,23 +24,6 @@ public sealed class ManagedNativeBridge : INativeBridge
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GlobalMemoryStatusEx(out MEMORYSTATUSEX lpBuffer);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr hObject);
-
-    [DllImport("psapi.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EmptyWorkingSet(IntPtr hProcess);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     // ── Struct layouts ────────────────────────────────────────────────
 
@@ -103,7 +88,6 @@ public sealed class ManagedNativeBridge : INativeBridge
 
     public bool SetEcoQos(bool enable, int processId)
     {
-        // Falls back to NativeMethods for real implementation
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
             false, (uint)processId);
@@ -144,17 +128,19 @@ public sealed class ManagedNativeBridge : INativeBridge
     {
         try
         {
-            var handle = OpenProcess(0x0400 | 0x0008 | 0x0010, false, (uint)processId);
+            var handle = NativeMethods.OpenProcess(
+                NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_QUOTA,
+                false, (uint)processId);
             if (handle == IntPtr.Zero) return 0;
 
             try
             {
                 var before = GetProcessWorkingSet64(processId);
-                if (EmptyWorkingSet(handle))
+                if (NativeMethods.EmptyWorkingSet(handle))
                     return Math.Max(0, GetProcessWorkingSet64(processId) - before);
                 return 0;
             }
-            finally { CloseHandle(handle); }
+            finally { NativeMethods.CloseHandle(handle); }
         }
         catch { return 0; }
     }
@@ -163,10 +149,12 @@ public sealed class ManagedNativeBridge : INativeBridge
     {
         try
         {
-            var handle = OpenProcess(0x0008, false, (uint)processId);
+            var handle = NativeMethods.OpenProcess(
+                NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_QUOTA,
+                false, (uint)processId);
             if (handle == IntPtr.Zero) return false;
-            try { return EmptyWorkingSet(handle); }
-            finally { CloseHandle(handle); }
+            try { return NativeMethods.EmptyWorkingSet(handle); }
+            finally { NativeMethods.CloseHandle(handle); }
         }
         catch { return false; }
     }
@@ -174,19 +162,12 @@ public sealed class ManagedNativeBridge : INativeBridge
     public bool ClearStandbyList() => false;
     public bool FlushModifications() => false;
 
-    public int GetForegroundProcessId()
-    {
-        var hwnd = GetForegroundWindow();
-        if (hwnd == IntPtr.Zero) return 0;
-        GetWindowThreadProcessId(hwnd, out var pid);
-        return (int)pid;
-    }
+    public int GetForegroundProcessId() => (int)NativeMethods.GetForegroundProcessId();
 
     public Interfaces.NativeProcessInfo[] GetProcessList()
     {
         var processes = Process.GetProcesses();
         var result = new List<Interfaces.NativeProcessInfo>(processes.Length);
-        var fgPid = GetForegroundProcessId();
 
         foreach (var proc in processes)
         {
@@ -198,7 +179,7 @@ public sealed class ManagedNativeBridge : INativeBridge
                     ProcessName = proc.ProcessName,
                     WorkingSetBytes = proc.WorkingSet64,
                     PrivateBytes = proc.PrivateMemorySize64,
-                    PriorityClass = (Models.ProcessPriorityClass)proc.PriorityClass
+                    PriorityClass = MapPriorityClass(proc.PriorityClass)
                 });
             }
             catch { }
@@ -213,11 +194,33 @@ public sealed class ManagedNativeBridge : INativeBridge
         try
         {
             using var proc = Process.GetProcessById(processId);
-            proc.PriorityClass = (System.Diagnostics.ProcessPriorityClass)priorityClass;
+            proc.PriorityClass = MapPriorityClassBack(priorityClass);
             return true;
         }
         catch { return false; }
     }
+
+    private static Models.ProcessPriorityClass MapPriorityClass(System.Diagnostics.ProcessPriorityClass pc) => pc switch
+    {
+        System.Diagnostics.ProcessPriorityClass.Idle => Models.ProcessPriorityClass.Idle,
+        System.Diagnostics.ProcessPriorityClass.BelowNormal => Models.ProcessPriorityClass.BelowNormal,
+        System.Diagnostics.ProcessPriorityClass.Normal => Models.ProcessPriorityClass.Normal,
+        System.Diagnostics.ProcessPriorityClass.AboveNormal => Models.ProcessPriorityClass.AboveNormal,
+        System.Diagnostics.ProcessPriorityClass.High => Models.ProcessPriorityClass.High,
+        System.Diagnostics.ProcessPriorityClass.RealTime => Models.ProcessPriorityClass.RealTime,
+        _ => Models.ProcessPriorityClass.Normal
+    };
+
+    private static System.Diagnostics.ProcessPriorityClass MapPriorityClassBack(Models.ProcessPriorityClass pc) => pc switch
+    {
+        Models.ProcessPriorityClass.Idle => System.Diagnostics.ProcessPriorityClass.Idle,
+        Models.ProcessPriorityClass.BelowNormal => System.Diagnostics.ProcessPriorityClass.BelowNormal,
+        Models.ProcessPriorityClass.Normal => System.Diagnostics.ProcessPriorityClass.Normal,
+        Models.ProcessPriorityClass.AboveNormal => System.Diagnostics.ProcessPriorityClass.AboveNormal,
+        Models.ProcessPriorityClass.High => System.Diagnostics.ProcessPriorityClass.High,
+        Models.ProcessPriorityClass.RealTime => System.Diagnostics.ProcessPriorityClass.RealTime,
+        _ => System.Diagnostics.ProcessPriorityClass.Normal
+    };
 
     private static long GetProcessWorkingSet64(int pid)
     {
@@ -225,5 +228,9 @@ public sealed class ManagedNativeBridge : INativeBridge
         catch { return 0; }
     }
 
-    public void Dispose() => _disposed = true;
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+    }
 }
