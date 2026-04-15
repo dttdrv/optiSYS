@@ -1,0 +1,51 @@
+# .NET
+bin/
+obj/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+*.cache
+*.log
+
+# Visual Studio
+.vs/
+*.vsidx
+*.vsp
+*.vspscc
+
+# Rider
+.idea/
+
+# Zig
+zig-out/
+zig-cache/
+*.obj
+*.pdb
+*.lib
+*.dll
+*.exe
+*.ilk
+
+# Build outputs
+*.nupkg
+*.snupkg
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+*.swp
+*~
+
+# Packaging
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+
+# Settings (user-specific)
+settings.json
+snapshots.json

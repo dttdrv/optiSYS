@@ -1,0 +1,48 @@
+<Page
+    x:Class="OptiSYS.Views.DashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Grid Padding="24" RowSpacing="16" ColumnSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                   Text="Dashboard"
+                   Style="{StaticResource TitleTextBlockStyle}" />
+
+        <!-- Battery Card -->
+        <Border Grid.Row="1" Grid.Column="0"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Battery" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="Loading..." x:Name="BatteryStatusText" />
+                <ProgressRing x:Name="BatteryProgress" IsActive="True" Width="20" Height="20" />
+            </StackPanel>
+        </Border>
+
+        <!-- Memory Card -->
+        <Border Grid.Row="1" Grid.Column="1"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Memory" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="Loading..." x:Name="MemoryStatusText" />
+                <ProgressRing x:Name="MemoryProgress" IsActive="True" Width="20" Height="20" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

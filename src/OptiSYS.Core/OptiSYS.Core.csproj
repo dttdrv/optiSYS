@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>OptiSYS</RootNamespace>
+    <AssemblyName>OptiSYS.Core</AssemblyName>
+    <Version>1.0.0</Version>
+    <Company>eptesicus</Company>
+    <Product>optiSYS</Product>
+    <Description>Unified Windows optimization core library</Description>
+  </PropertyGroup>
+
+</Project>
