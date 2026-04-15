@@ -18,7 +18,7 @@ public sealed partial class MainWindow : Window
     private readonly NavigationViewItem _batteryItem;
     private readonly NavigationViewItem _memoryItem;
     private readonly NavigationViewItem _processesItem;
-    private readonly NavigationViewItem _settingsItem;
+    private readonly NavigationViewItem? _settingsItem;
 
     public MainWindow()
     {
@@ -71,14 +71,14 @@ public sealed partial class MainWindow : Window
         _batteryItem = new NavigationViewItem
         {
             Content = "Battery",
-            Icon = new SymbolIcon(Symbol.BatteryCharging),
+            Icon = new FontIcon { Glyph = "\uE83F" }, // Battery icon
             Tag = "Battery"
         };
 
         _memoryItem = new NavigationViewItem
         {
             Content = "Memory",
-            Icon = new SymbolIcon(Symbol.Memory),
+            Icon = new FontIcon { Glyph = "\uE964" }, // RAM/memory icon
             Tag = "Memory"
         };
 

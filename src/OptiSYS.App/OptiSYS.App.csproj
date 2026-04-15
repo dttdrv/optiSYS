@@ -1,17 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <UseRidGraph>true</UseRidGraph>
-    <PlatformTarget>x64</PlatformTarget>
-    <SelfContained>false</SelfContained>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
     <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <GeneratePriFilesOnBuild>false</GeneratePriFilesOnBuild>
     <RootNamespace>OptiSYS</RootNamespace>
     <AssemblyName>OptiSYS</AssemblyName>
     <Version>1.0.0</Version>
@@ -21,8 +19,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.*" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.*" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.*" />
   </ItemGroup>
 
   <ItemGroup>
