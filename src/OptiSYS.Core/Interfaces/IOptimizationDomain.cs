@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace OptiSYS.Core.Interfaces;
 
 /// <summary>
@@ -6,55 +8,68 @@ namespace OptiSYS.Core.Interfaces;
 /// </summary>
 public interface IOptimizationDomain : IDisposable
 {
-    /// <summary>Unique identifier (e.g., "ecoqos", "timer-resolution", "memory-trim").</summary>
     string Id { get; }
-
-    /// <summary>Human-readable name for UI display.</summary>
     string DisplayName { get; }
-
-    /// <summary>Category: "Battery" or "Memory".</summary>
     string Category { get; }
-
-    /// <summary>Whether this optimization is supported on the current hardware/OS.</summary>
     bool IsSupported { get; }
-
-    /// <summary>Whether this optimization is currently applied.</summary>
     bool IsActive { get; }
 
-    /// <summary>Capture the current system state before optimization.</summary>
     DomainSnapshot CaptureBaseline();
-
-    /// <summary>Apply the optimization using the baseline for reference.</summary>
     ApplyResult Apply(DomainSnapshot baseline);
-
-    /// <summary>Revert to the exact state captured in the snapshot.</summary>
     void Revert(DomainSnapshot baseline);
-
-    /// <summary>Get live status for UI binding.</summary>
     DomainStatus GetStatus();
 }
 
+/// <summary>
+/// Captures pre-optimization state for crash recovery.
+/// Uses JsonElement for flexible type storage across domains.
+/// </summary>
 public sealed class DomainSnapshot
 {
     public string DomainId { get; init; } = string.Empty;
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-    public Dictionary<string, object> State { get; init; } = new();
+    public DateTime CapturedAtUtc { get; init; } = DateTime.UtcNow;
+    public Dictionary<string, JsonElement> State { get; init; } = [];
+
+    public void Set<T>(string key, T value)
+    {
+        State[key] = JsonSerializer.SerializeToElement(value);
+    }
+
+    public T? Get<T>(string key)
+    {
+        if (!State.TryGetValue(key, out var element))
+            return default;
+        return element.Deserialize<T>();
+    }
+
+    public bool Has(string key) => State.ContainsKey(key);
 }
 
+/// <summary>
+/// Result of applying a single optimization domain.
+/// </summary>
 public sealed class ApplyResult
 {
-    public string DomainId { get; init; } = string.Empty;
     public bool Success { get; init; }
+    public string DomainId { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
-    public Dictionary<string, object>? Metrics { get; init; }
+    public int ItemsOptimized { get; init; }
+    public int ItemsFailed { get; init; }
+    public int ItemsSkipped { get; init; }
+    public TimeSpan Duration { get; init; }
 
-    public static ApplyResult Ok(string domainId, string message = "") =>
-        new() { DomainId = domainId, Success = true, Message = message };
+    public static ApplyResult Ok(string domainId, string message = "",
+        int optimized = 0, int failed = 0, int skipped = 0, TimeSpan duration = default) =>
+        new() { Success = true, DomainId = domainId, Message = message,
+                ItemsOptimized = optimized, ItemsFailed = failed, ItemsSkipped = skipped, Duration = duration };
 
-    public static ApplyResult Fail(string domainId, string message) =>
-        new() { DomainId = domainId, Success = false, Message = message };
+    public static ApplyResult Fail(string domainId, string message, TimeSpan duration = default) =>
+        new() { Success = false, DomainId = domainId, Message = message, Duration = duration };
 }
 
+/// <summary>
+/// Live status of an optimization domain, bound to the UI.
+/// </summary>
 public sealed class DomainStatus
 {
     public string DomainId { get; init; } = string.Empty;
@@ -63,5 +78,5 @@ public sealed class DomainStatus
     public bool IsSupported { get; init; }
     public bool IsActive { get; init; }
     public string Summary { get; init; } = string.Empty;
-    public Dictionary<string, object>? Details { get; init; }
+    public string[] Details { get; init; } = [];
 }

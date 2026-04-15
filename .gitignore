@@ -49,3 +49,13 @@ Thumbs.db
 # Settings (user-specific)
 settings.json
 snapshots.json
+
+# Original project repos (kept for reference, not part of the monorepo build)
+optibat/
+optiram/
+ramspeed/
+optisys-core-zig/
+
+# Zig build artifacts
+zig-out/
+zig-cache/
