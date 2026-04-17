@@ -24,8 +24,13 @@
       `Directory.Build.targets` is auto-imported by MSBuild AFTER the SDK .targets,
       which makes it the correct place for such late overrides.
 
-      Placing it next to OptiSYS.App.csproj (not at `src/`) scopes the overrides to
-      the App project only — Core and Tests still get their normal builds.
+      Why this file lives at `src/` (not inside `src/OptiSYS.App/`):
+      The Tests project targets net9.0-windows10.0.26100.0 (so it can ProjectReference
+      the App) and picks up the WindowsAppSDK targets transitively. That means Tests
+      ALSO hits MSB4062 when the PRI pipeline fires. Hoisting the overrides to the
+      `src/` level means every project in this tree gets the neutralization — Core
+      (plain class lib) simply never invokes these targets so the no-ops are inert,
+      while App and Tests both benefit.
     ════════════════════════════════════════════════════════════════════════════════════
   -->
 

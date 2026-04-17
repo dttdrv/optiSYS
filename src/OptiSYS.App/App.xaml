@@ -2,12 +2,22 @@
     x:Class="OptiSYS.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:OptiSYS">
+    xmlns:local="using:OptiSYS"
+    xmlns:conv="using:OptiSYS.Converters">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Value converters registered as application-scope resources so every page can
+                 reference them via {StaticResource …}. Keys match the short aliases the plan
+                 specifies so binding syntax stays concise (e.g. Converter={StaticResource Pct}). -->
+            <conv:BoolToVisibilityConverter        x:Key="BoolToVis" />
+            <conv:InverseBoolToVisibilityConverter x:Key="InvBoolToVis" />
+            <conv:BytesToHumanReadableConverter    x:Key="Bytes" />
+            <conv:PercentToStringConverter         x:Key="Pct" />
+            <conv:PressureLevelToBrushConverter    x:Key="PressureBrush" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

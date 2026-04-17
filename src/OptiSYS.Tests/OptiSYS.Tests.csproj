@@ -1,15 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <!-- Must match OptiSYS.App's Windows target (10.0.26100.0) so we can ProjectReference it.
+         net9.0-windows alone resolves to net9.0-windows7.0 and NuGet rejects it as incompatible. -->
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- NOTE: intentionally NO <UseWinUI>true</UseWinUI> here.
          The WindowsAppSDK SDK hooks (MRT/PRI targets, packaging pipeline) interfere with
          the normal ResolveAssemblyReferences → CopyLocal flow, leaving xunit.core.dll
          and Microsoft.TestPlatform.CoreUtilities.dll out of the test output directory.
-         The test project only references OptiSYS.Core (a plain class library) + xunit,
-         so it has no legitimate need for WinUI. -->
+         A ProjectReference to OptiSYS.App only pulls in compiled symbols — it does NOT
+         re-activate the WinUI SDK pipeline on the Tests project itself. -->
     <IsPackable>false</IsPackable>
     <RootNamespace>OptiSYS.Tests</RootNamespace>
     <AssemblyName>OptiSYS.Tests</AssemblyName>
@@ -25,6 +28,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OptiSYS.Core\OptiSYS.Core.csproj" />
+    <!-- OptiSYS.App is referenced so we can TDD its Commands/Converters/ViewModels.
+         The Tests csproj deliberately does NOT set <UseWinUI>true</UseWinUI>; a
+         ProjectReference only pulls in compiled symbols, it does not re-activate
+         the WinUI SDK's MRT/PRI target pipeline on this project. -->
+    <ProjectReference Include="..\OptiSYS.App\OptiSYS.App.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,49 @@
+<Window
+    x:Class="OptiSYS.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="optiSYS">
+    <Grid>
+        <NavigationView x:Name="NavView"
+                        PaneDisplayMode="Left"
+                        IsSettingsVisible="True"
+                        IsBackButtonVisible="Collapsed"
+                        IsPaneToggleButtonVisible="True"
+                        OpenPaneLength="260"
+                        CompactPaneLength="56">
+            <NavigationView.PaneHeader>
+                <TextBlock Text="optiSYS"
+                           Style="{StaticResource SubtitleTextBlockStyle}"
+                           Margin="12,8,0,0" />
+            </NavigationView.PaneHeader>
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Dashboard" Tag="Dashboard">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="Home" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Battery" Tag="Battery">
+                    <NavigationViewItem.Icon>
+                        <!-- Segoe Fluent Icons: Battery glyph. -->
+                        <FontIcon Glyph="&#xE83F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Memory" Tag="Memory">
+                    <NavigationViewItem.Icon>
+                        <!-- Segoe Fluent Icons: Memory module glyph. -->
+                        <FontIcon Glyph="&#xE964;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Processes" Tag="Processes">
+                    <NavigationViewItem.Icon>
+                        <SymbolIcon Symbol="AllApps" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView>
+    </Grid>
+</Window>
