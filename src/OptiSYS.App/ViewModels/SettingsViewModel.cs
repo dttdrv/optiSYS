@@ -31,6 +31,20 @@ public sealed class SettingsViewModel : ViewModelBase
     public RelayCommand SaveCommand  { get; }
     public RelayCommand ResetCommand { get; }
 
+    /// <summary>
+    /// All enum values of <see cref="Core.Models.OptimizationLevel"/>, exposed so that a
+    /// <c>ComboBox.ItemsSource</c> can bind directly to them and its <c>SelectedItem</c>
+    /// can round-trip as the enum type (avoiding the string↔enum converter dance).
+    /// </summary>
+    public static IReadOnlyList<OptimizationLevel> OptimizationLevels { get; } =
+        Enum.GetValues<OptimizationLevel>();
+
+    /// <summary>
+    /// The three theme modes the app supports. Kept here (not in <see cref="Settings"/>)
+    /// because they're a view concern — the model stores the raw string.
+    /// </summary>
+    public static IReadOnlyList<string> ThemeModes { get; } = new[] { "System", "Light", "Dark" };
+
     public SettingsViewModel(Settings settings)
     {
         _settings    = settings ?? throw new ArgumentNullException(nameof(settings));

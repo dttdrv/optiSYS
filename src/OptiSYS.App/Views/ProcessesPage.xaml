@@ -3,8 +3,87 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-    <Grid Padding="24">
-        <TextBlock Text="Processes"
+
+    <!--
+        Search box uses UpdateSourceTrigger=PropertyChanged so FilteredProcesses re-evaluates
+        on every keystroke; the VM's filter is a lazy LINQ Where so the cost is bounded by the
+        visible rows, not the full process list.  SelectedProcess is TwoWay because that's the
+        only path where the View pushes state back into the VM (the VM then re-queries
+        KillSelectedCommand.CanExecute, auto-toggling the Button's enablement).
+    -->
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Text="Processes"
                    Style="{StaticResource TitleTextBlockStyle}" />
+
+        <Grid Grid.Row="1" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0"
+                     PlaceholderText="Search processes…"
+                     Text="{Binding SearchFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="1"
+                    Content="Refresh"
+                    Command="{Binding RefreshCommand}" />
+        </Grid>
+
+        <Border Grid.Row="2"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8">
+            <ListView ItemsSource="{Binding FilteredProcesses}"
+                      SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+                      SelectionMode="Single">
+                <ListView.HeaderTemplate>
+                    <DataTemplate>
+                        <Grid Padding="12,8" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Name" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1" Text="PID" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="2" Text="Working set" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="3" Text="Priority" FontWeight="SemiBold" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.HeaderTemplate>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnSpacing="12" Padding="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding ProcessName}" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1" Text="{Binding ProcessId}" />
+                            <TextBlock Grid.Column="2" Text="{Binding WorkingSetBytes, Converter={StaticResource Bytes}}" />
+                            <TextBlock Grid.Column="3" Text="{Binding PriorityClass}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <TextBlock VerticalAlignment="Center" Opacity="0.7"
+                       Text="{Binding SelectedProcess.ProcessName, FallbackValue='No process selected', TargetNullValue='No process selected'}" />
+            <Button Content="End process"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Command="{Binding KillSelectedCommand}" />
+        </StackPanel>
     </Grid>
 </Page>
