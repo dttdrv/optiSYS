@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -17,7 +18,11 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        _settings = Settings.Load();
+        // Pull the SAME singleton that SettingsViewModel mutates so window-close persistence
+        // doesn't clobber user-saved preference edits. Loading a fresh copy here was the prior
+        // approach and caused lost writes: user edits propagate through the DI singleton, but
+        // OnClosed would serialize this window's stale local instance over them.
+        _settings = AppHost.Services.GetRequiredService<Settings>();
 
         InitializeComponent();
 
