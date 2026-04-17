@@ -4,7 +4,12 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UseWinUI>true</UseWinUI>
+    <!-- NOTE: intentionally NO <UseWinUI>true</UseWinUI> here.
+         The WindowsAppSDK SDK hooks (MRT/PRI targets, packaging pipeline) interfere with
+         the normal ResolveAssemblyReferences → CopyLocal flow, leaving xunit.core.dll
+         and Microsoft.TestPlatform.CoreUtilities.dll out of the test output directory.
+         The test project only references OptiSYS.Core (a plain class library) + xunit,
+         so it has no legitimate need for WinUI. -->
     <IsPackable>false</IsPackable>
     <RootNamespace>OptiSYS.Tests</RootNamespace>
     <AssemblyName>OptiSYS.Tests</AssemblyName>

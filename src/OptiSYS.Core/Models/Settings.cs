@@ -200,7 +200,7 @@ public sealed class Settings
         catch { }
     }
 
-    private void Validate()
+    public void Validate()
     {
         // Battery
         DebouncePowerChangeSeconds = Math.Clamp(DebouncePowerChangeSeconds, 1, 10);

@@ -1,3 +1,4 @@
+using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 using OptiSYS.Core.Services;
 using Xunit;

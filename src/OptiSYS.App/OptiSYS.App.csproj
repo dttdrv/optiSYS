@@ -13,6 +13,15 @@
     <DisableMrtAutoMerge>true</DisableMrtAutoMerge>
     <GenerateLibraryLayout>true</GenerateLibraryLayout>
     <AppxPackage>false</AppxPackage>
+    <!-- The three flags below prevent the WindowsAppSDK MRT / PRI targets from invoking
+         task DLLs that ship only with a full Visual Studio install. When building headless
+         via `dotnet build`, those DLLs are absent and any attempt to load them throws
+         MSB4062. Gating the higher-level output groups keeps the standalone win-x64 app
+         build happy because we don't need PRI / packaging output enumeration for a
+         WindowsPackageType=None executable. -->
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <IncludeCopyLocalFilesOutputGroup>false</IncludeCopyLocalFilesOutputGroup>
+    <IncludeBuiltProjectOutputGroup>false</IncludeBuiltProjectOutputGroup>
     <RootNamespace>OptiSYS</RootNamespace>
     <AssemblyName>OptiSYS</AssemblyName>
     <Version>1.0.0</Version>
@@ -21,14 +30,12 @@
     <Description>Unified Windows optimization suite</Description>
   </PropertyGroup>
 
-  <!-- Skip PRI generation when building from CLI without full VS -->
-  <Target Name="_ExpandProjectPriFile" />
-  <Target Name="_CreatePriConfigXmlForSplitting" />
-  <Target Name="_GenerateProjectPriFile" />
-
-  <!-- Override the targets that load the missing PRI task assembly -->
-  <Target Name="ExpandPriContentFromReferences" Condition="'$(GeneratePriFilesOnBuild)' != 'false'" />
-  <Target Name="_ExpandLibraryLayoutProjectPriFiles" Condition="'$(GeneratePriFilesOnBuild)' != 'false'" />
+  <!--
+    MRT / PRI target overrides for headless `dotnet build` live in Directory.Build.targets
+    in this folder so they import AFTER the WindowsAppSDK .targets and therefore win the
+    "last declaration wins" rule that MSBuild applies to <Target> elements. See that file
+    for the full explanation.
+  -->
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />

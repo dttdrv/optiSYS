@@ -1,0 +1,70 @@
+<Project>
+
+  <!--
+    ════════════════════════════════════════════════════════════════════════════════════
+    WindowsAppSDK 1.6 MRT / PRI target overrides for headless `dotnet build`.
+    ════════════════════════════════════════════════════════════════════════════════════
+
+    MrtCore.PriGen.targets and Microsoft.Build.Msix.Pri.targets invoke MSBuild tasks
+    (`ExpandPriContent`, `ExpandPayloadDirectories`, `RemovePayloadDuplicates`, …) that
+    live in DLLs shipped only with Visual Studio's AppxPackage components. Building
+    from the .NET SDK alone on a machine without a full VS install means those DLLs
+    are absent, so every call into them fails with MSB4062 "task could not be loaded".
+
+    For `WindowsPackageType=None` / `AppxPackage=false`, none of the packaging /
+    resource-index pipeline is actually required — we produce a standalone win-x64
+    .exe + .dll and rely on standard MSBuild copy-local for references. So we override
+    every target that invokes one of these missing tasks with a no-op.
+
+    Why this file lives here instead of inside the .csproj:
+      MSBuild's rule is "last declaration wins" for <Target Name="…">. The implicit
+      SDK imports triggered by `<Project Sdk="Microsoft.NET.Sdk">` inject the
+      WindowsAppSDK .targets (via UseWinUI=true) AFTER the project body. So Target
+      overrides placed inside the .csproj get clobbered by the SDK's real definitions.
+      `Directory.Build.targets` is auto-imported by MSBuild AFTER the SDK .targets,
+      which makes it the correct place for such late overrides.
+
+      Placing it next to OptiSYS.App.csproj (not at `src/`) scopes the overrides to
+      the App project only — Core and Tests still get their normal builds.
+    ════════════════════════════════════════════════════════════════════════════════════
+  -->
+
+  <!-- PRI file generation pipeline (MrtCore.PriGen.targets). Empty bodies replace the
+       real targets; `Returns` attributes are preserved where downstream consumers read
+       the target's output item groups. -->
+  <Target Name="_ExpandProjectPriFile" />
+  <Target Name="_CreatePriConfigXmlForSplitting" />
+  <Target Name="_GenerateProjectPriFile" />
+  <Target Name="_ExpandPriFiles" />
+  <Target Name="AddPriPayloadFilesToCopyToOutputDirectoryItems" />
+
+  <!-- SDK tool-path resolution (invokes GetSdkFileFullPath, GetSdkPropertyValue).
+       These would normally discover MakePri.exe / MakeAppx.exe / signtool.exe paths,
+       but we don't need them when AppxPackage=false and AppxGeneratePriEnabled=false. -->
+  <Target Name="_GetSdkToolsPathsFromSdk" />
+
+  <!-- Portable-library PRI generation (invokes RemovePayloadDuplicates). Already
+       condition-gated off when AppxPackage=false, but we override defensively. -->
+  <Target Name="_GeneratePrisForPortableLibraries" />
+
+  <!-- Architecture / resource-language discovery (invoke GetPackageArchitecture,
+       GetDefaultResourceLanguage). Downstream packaging doesn't run, so empty is safe. -->
+  <Target Name="_GetPackageArchitecture" />
+  <Target Name="_GetDefaultResourceLanguage" />
+
+  <!-- Appx manifest validation (invokes ValidateConfiguration). Not relevant for
+       WindowsPackageType=None. -->
+  <Target Name="_ValidateConfiguration" />
+
+  <!-- Packaging-output enumeration (invokes ExpandPayloadDirectories, RemovePayloadDuplicates)
+       triggered by `PrepareForRun`. Returning empty item groups is safe because we don't
+       package / layout for MSIX — standard .NET SDK publish handles copy-local instead. -->
+  <Target Name="GetMrtPackagingOutputs" Returns="@(PackagingOutputs)" />
+  <Target Name="CopyLocalFilesOutputGroup" Returns="@(CopyLocalFilesOutputGroupOutput)" />
+
+  <!-- Historical overrides kept for forward-compatibility with WindowsAppSDK versions
+       that may reintroduce these target names; harmless no-ops otherwise. -->
+  <Target Name="ExpandPriContentFromReferences" />
+  <Target Name="_ExpandLibraryLayoutProjectPriFiles" />
+
+</Project>

@@ -59,3 +59,9 @@ optisys-core-zig/
 # Zig build artifacts
 zig-out/
 zig-cache/
+
+# CsWinRT projection output (regenerated on every WinUI build)
+Generated Files/
+
+# Agent scratch (stale superseded plans from prior automated runs)
+.sisyphus/
