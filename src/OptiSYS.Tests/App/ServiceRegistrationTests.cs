@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.UI.Xaml;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 using OptiSYS.Core.Services;
@@ -25,6 +27,31 @@ public class ServiceRegistrationTests
         var sc = new ServiceCollection();
         OptiSYS.AppHost.ConfigureServices(sc);
         return sc.BuildServiceProvider(validateScopes: false);
+    }
+
+    /// <summary>
+    /// Same wiring, but <see cref="ITimerService"/> is swapped for a no-op before the provider
+    /// is built. Needed for tests that actually <b>resolve ViewModels</b>: Dashboard and Memory
+    /// call <c>timer.Start(...)</c> in their ctors, and the real <see cref="DispatcherTimerService"/>
+    /// instantiates a <see cref="DispatcherTimer"/> — which requires a live UI dispatcher the
+    /// xUnit test thread doesn't have. The substitution keeps DI graph verification runnable
+    /// outside a WinUI host without weakening the ITimerService-registration tests elsewhere.
+    /// </summary>
+    private static IServiceProvider BuildProviderForViewModelResolution()
+    {
+        var sc = new ServiceCollection();
+        OptiSYS.AppHost.ConfigureServices(sc);
+        // Replace (not add — RemoveAll first) so both the interface and the concrete slot swap.
+        sc.RemoveAll<ITimerService>();
+        sc.AddSingleton<ITimerService, NoOpTimerService>();
+        return sc.BuildServiceProvider(validateScopes: false);
+    }
+
+    /// <summary>Timer stub that returns a dispose-only subscription without touching WinUI.</summary>
+    private sealed class NoOpTimerService : ITimerService
+    {
+        public IDisposable Start(TimeSpan interval, Action tick) => new NoOpSubscription();
+        private sealed class NoOpSubscription : IDisposable { public void Dispose() { } }
     }
 
     // ── Singletons resolve and are non-null ──────────────────────────────────────
@@ -121,7 +148,9 @@ public class ServiceRegistrationTests
     [InlineData(typeof(SettingsViewModel))]
     public void ViewModel_IsTransient(Type vmType)
     {
-        using var provider = (ServiceProvider)BuildProvider();
+        // Uses the no-op-timer provider because Dashboard/Memory ctors call timer.Start,
+        // which would instantiate a DispatcherTimer — illegal on a non-UI thread.
+        using var provider = (ServiceProvider)BuildProviderForViewModelResolution();
         var first  = provider.GetRequiredService(vmType);
         var second = provider.GetRequiredService(vmType);
         Assert.NotSame(first, second);
@@ -132,7 +161,8 @@ public class ServiceRegistrationTests
     [Fact]
     public void AllViewModels_ResolveWithoutError()
     {
-        using var provider = (ServiceProvider)BuildProvider();
+        // See ViewModel_IsTransient for why we substitute ITimerService here.
+        using var provider = (ServiceProvider)BuildProviderForViewModelResolution();
         Assert.NotNull(provider.GetRequiredService<DashboardViewModel>());
         Assert.NotNull(provider.GetRequiredService<BatteryViewModel>());
         Assert.NotNull(provider.GetRequiredService<MemoryViewModel>());
