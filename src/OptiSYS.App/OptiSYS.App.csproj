@@ -41,6 +41,10 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.*" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.*" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.*" />
+    <!-- MVVM host container. Picked MS.DI over community alternatives because it ships with
+         .NET and avoids an extra transitive (Autofac, Lamar) that would bloat the portable
+         build.  9.0.* floats inside the current major; breaking changes are unlikely. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.*" />
   </ItemGroup>
 
   <ItemGroup>

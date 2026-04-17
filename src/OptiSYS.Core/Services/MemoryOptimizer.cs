@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 using OptiSYS.Core.Native;
 
@@ -10,7 +11,7 @@ namespace OptiSYS.Core.Services;
 /// Performs working set trimming, standby list purging, and various
 /// system memory management operations based on optimization level.
 /// </summary>
-public sealed class MemoryOptimizer : IDisposable
+public sealed class MemoryOptimizer : IMemoryOptimizer
 {
     private static readonly HashSet<string> DefaultExclusions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -19,17 +20,19 @@ public sealed class MemoryOptimizer : IDisposable
         "fontdrvhost", "conhost"
     };
 
-    private readonly MemoryInfoService _memoryInfo;
+    private readonly IMemoryInfoService _memoryInfo;
     private readonly StepEffectivenessTracker _tracker = new();
     private bool _disposed;
 
     public HashSet<string> ExcludedProcesses { get; set; } = new(DefaultExclusions, StringComparer.OrdinalIgnoreCase);
 
-    public MemoryOptimizer(MemoryInfoService memoryInfo)
+    public MemoryOptimizer(IMemoryInfoService memoryInfo)
     {
         _memoryInfo = memoryInfo;
     }
 
+    // Convenience ctor for legacy/standalone use — wraps its own MemoryInfoService,
+    // which upcasts cleanly to IMemoryInfoService for the primary ctor.
     public MemoryOptimizer() : this(new MemoryInfoService()) { }
 
     public (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0)

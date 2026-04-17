@@ -11,7 +11,7 @@ namespace OptiSYS.Core.Services;
 /// with optional performance counter support for detailed metrics.
 /// Ported from optiRAM with fix for OOM bug (no 25MB working set cap on self).
 /// </summary>
-public sealed class MemoryInfoService : IDisposable
+public sealed class MemoryInfoService : IMemoryInfoService
 {
     private sealed class PerfCounterSet : IDisposable
     {

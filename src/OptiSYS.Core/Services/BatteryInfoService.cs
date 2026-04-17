@@ -6,7 +6,7 @@ namespace OptiSYS.Core.Services;
 /// <summary>
 /// Provides battery information using INativeBridge.
 /// </summary>
-public sealed class BatteryInfoService : IDisposable
+public sealed class BatteryInfoService : IBatteryInfoService
 {
     private readonly INativeBridge _native;
     private System.Threading.Timer? _timer;
