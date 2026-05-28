@@ -2,13 +2,14 @@
 
 Goal: make OptiSYS look and feel like a first-class native WinUI 3 / Fluent app.
 Branch: `feat/native-ui-ux`. Verification per item: `build` green → `test` green →
-launch smoke. **Smoke = startup.log must reach "window activated" with no _unhandled_
-exception** (process-alive alone is NOT sufficient — the app's UnhandledException handler
-can keep a broken process alive; and launching via automation hits a pre-existing,
-app-handled `InvalidCastException` during WinUI activation that is benign). Visual QA happens
-at milestone check-ins (no screenshot tooling this session).
+launch smoke. **Smoke = startup.log must reach "runtime coordinator started" with no
+unhandled exception** (process-alive alone is NOT sufficient — the app's UnhandledException
+handler can keep a broken process limping). The `InvalidCastException` ("No such interface
+supported") the handler catches is NOT benign — it was the NavigationView (#1) failing to
+render, crashing startup. A clean run reaches "runtime coordinator started"; a crashing run
+stops at that exception. Visual QA happens at milestone check-ins (no screenshot tooling).
 
-Status legend: ☐ todo · ◐ in progress · ☑ done — **ALL 13 ITEMS COMPLETE** (pending your visual QA + merge to `master`).
+Status legend: ☐ todo · ◐ in progress · ☑ done · ❌ reverted — **12 of 13 shipped; #1 (NavigationView) reverted as incompatible with this build.** The app launches with a visible window; pending your visual QA + merge to `master`.
 
 ## Milestone A — Theming & correctness ✅
 - ☑ **#13** Set `AppWindow.Title = "optiSYS"` — alt-tab/taskbar show correct title.
@@ -24,9 +25,9 @@ Status legend: ☐ todo · ◐ in progress · ☑ done — **ALL 13 ITEMS COMPLE
 - ☑ **#8** Exclusion/protected `ListView`s: replaced fixed `Height` with a `MinHeight`/`MaxHeight` band (160–420, 200–520) so short lists don't waste space and long lists cap-and-scroll.
 - ☐ **#11** Chart grid lines width → **folded into #10** (HistoryChartControl extraction owns the canvas).
 
-## Milestone D — Native navigation ✅ (needs visual QA)
-- ☑ **#1** Replaced hand-rolled sidebar (5 Buttons + manual visibility + accent borders) with `NavigationView` (PaneDisplayMode=Left, no toggle/back, IsSettingsVisible=false) hosting the existing inline content. Status label + Pause/Resume moved to `PaneFooter`. Removed orphaned `SidebarButtonStyle`. New reflection tests lock `NavView` + the 5 page containers (134→140 tests).
-- ☑ **#12** Persist & restore `SelectedNavItem` via `RestoreSelectedPage()` on startup + save-on-change in `SwitchToPage`. **Startup-crash fix:** initial `NavView.SelectedItem` assignment is deferred to the `Loaded` event — setting it during construction threw an unhandled `COMException 0x80070490` (caught later via the strengthened log-scan smoke).
+## Milestone D — Native navigation ❌ #1 REVERTED
+- ❌ **#1** NavigationView was implemented, then **reverted**. In this project's stripped headless-PRI build its template fails to resolve a framework interface and throws an unhandled `InvalidCastException` (E_NOINTERFACE, "No such interface supported") during render → startup crash (`0xC000027B`). Confirmed by bisection: `master` (custom sidebar) launches cleanly with a window handle; the NavigationView branch crashes even with all my selection code disabled. Restored the hand-rolled sidebar (kept its #5 `AutomationProperties`). This is almost certainly why the app shipped a custom sidebar to begin with.
+- ☑ **#12** Persist & restore `SelectedNavItem` — KEPT, adapted to the sidebar: `SwitchToPage` saves on change; the ctor calls `SwitchToPage(saved)` to restore (safe — only toggles Visibility + accent borders, no `NavigationView.SelectedItem`).
 
 ## Milestone E — Code-behind health (TDD) ✅
 - ☑ **#6** Extracted `Services/ThemeManager` (theme/backdrop/accent/title-bar-button colours) out of `MainWindow.xaml.cs`; window now holds a `_theme` field and delegates. Faithful move, behaviour unchanged.

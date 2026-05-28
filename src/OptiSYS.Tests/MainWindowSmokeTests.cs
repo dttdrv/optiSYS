@@ -43,16 +43,6 @@ public class MainWindowSmokeTests
         Assert.Equal(typeof(TextBlock), field!.FieldType);
     }
 
-    [Fact]
-    public void MainWindow_HasNavigationViewShell()
-    {
-        var field = typeof(OptiSYS.MainWindow).GetField(
-            "NavView", BindingFlags.NonPublic | BindingFlags.Instance);
-
-        Assert.NotNull(field);
-        Assert.Equal(typeof(NavigationView), field!.FieldType);
-    }
-
     [Theory]
     [InlineData("DashboardGrid")]
     [InlineData("MemoryGrid")]

@@ -74,7 +74,8 @@ public sealed partial class MainWindow : Window
         
         _initializing = false;
 
-        RestoreSelectedPage();
+        // Restore the last-viewed page (safe with the sidebar — only toggles Visibility/borders).
+        SwitchToPage(string.IsNullOrWhiteSpace(_settings.SelectedNavItem) ? "Dashboard" : _settings.SelectedNavItem);
 
         _refreshTimer = DispatcherQueue.CreateTimer();
         _refreshTimer.Interval = TimeSpan.FromSeconds(5);
@@ -205,9 +206,9 @@ public sealed partial class MainWindow : Window
     private void OnAutomationStateChanged() =>
         DispatcherQueue.TryEnqueue(() => RefreshPresentation());
 
-    private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private void SidebarBtn_Click(object sender, RoutedEventArgs e)
     {
-        if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
+        if (sender is Button button && button.Tag is string tag)
         {
             SwitchToPage(tag);
         }
@@ -215,66 +216,23 @@ public sealed partial class MainWindow : Window
 
     private void SwitchToPage(string tag)
     {
-        // Content elements may not exist yet if NavigationView raises SelectionChanged during load.
-        if (DashboardGrid is null)
-        {
-            return;
-        }
-
         DashboardGrid.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         MemoryGrid.Visibility = tag == "Memory" ? Visibility.Visible : Visibility.Collapsed;
         PowerGrid.Visibility = tag == "Power" ? Visibility.Visible : Visibility.Collapsed;
         ProtectedAppsGrid.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
         SettingsGrid.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
+        DashboardAccentBorder.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
+        MemoryAccentBorder.Visibility = tag == "Memory" ? Visibility.Visible : Visibility.Collapsed;
+        PowerAccentBorder.Visibility = tag == "Power" ? Visibility.Visible : Visibility.Collapsed;
+        ProtectedAppsAccentBorder.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
+        SettingsAccentBorder.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
+
         // Persist the active page so it is restored next launch (skip during init / no-op changes).
         if (!_initializing && _settings.SelectedNavItem != tag)
         {
             _settings.SelectedNavItem = tag;
             _settings.SaveDebounced();
-        }
-    }
-
-    private void RestoreSelectedPage()
-    {
-        var tag = string.IsNullOrWhiteSpace(_settings.SelectedNavItem) ? "Dashboard" : _settings.SelectedNavItem;
-
-        // Set page content immediately — this only flips the page Grids' Visibility, which is
-        // safe during construction.
-        SwitchToPage(tag);
-
-        // Defer the NavigationView selection: assigning SelectedItem before the control's
-        // template is realized throws COMException 0x80070490 (ERROR_NOT_FOUND).
-        if (NavView.IsLoaded)
-        {
-            SelectNavItem(tag);
-        }
-        else
-        {
-            void OnNavLoaded(object sender, RoutedEventArgs e)
-            {
-                NavView.Loaded -= OnNavLoaded;
-                SelectNavItem(tag);
-            }
-
-            NavView.Loaded += OnNavLoaded;
-        }
-    }
-
-    private void SelectNavItem(string tag)
-    {
-        foreach (var entry in NavView.MenuItems)
-        {
-            if (entry is NavigationViewItem item && item.Tag is string itemTag && itemTag == tag)
-            {
-                NavView.SelectedItem = item;
-                return;
-            }
-        }
-
-        if (NavView.MenuItems.Count > 0)
-        {
-            NavView.SelectedItem = NavView.MenuItems[0];
         }
     }
 
