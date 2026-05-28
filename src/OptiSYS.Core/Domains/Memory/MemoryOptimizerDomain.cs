@@ -13,8 +13,9 @@ namespace OptiSYS.Core.Domains.Memory;
 public sealed class MemoryOptimizerDomain : IOptimizationDomain
 {
     private readonly Settings _settings;
-    private readonly MemoryOptimizer _optimizer;
-    private readonly MemoryInfoService _memoryInfo;
+    private readonly IMemoryOptimizer _optimizer;
+    private readonly IMemoryInfoService _memoryInfo;
+    private readonly bool _ownsDependencies;
     private bool _isActive;
     private bool _disposed;
 
@@ -24,18 +25,24 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
-    public MemoryOptimizerDomain(Settings settings)
+    public MemoryOptimizerDomain(
+        Settings settings,
+        IMemoryOptimizer optimizer,
+        IMemoryInfoService memoryInfo)
+        : this(settings, optimizer, memoryInfo, false)
     {
-        _settings = settings;
-        _memoryInfo = new MemoryInfoService(new Native.ManagedNativeBridge());
-        _optimizer = new MemoryOptimizer(_memoryInfo);
     }
 
-    internal MemoryOptimizerDomain(Settings settings, MemoryOptimizer optimizer, MemoryInfoService memoryInfo)
+    internal MemoryOptimizerDomain(
+        Settings settings,
+        IMemoryOptimizer optimizer,
+        IMemoryInfoService memoryInfo,
+        bool ownsDependencies)
     {
-        _settings = settings;
-        _optimizer = optimizer;
-        _memoryInfo = memoryInfo;
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _optimizer = optimizer ?? throw new ArgumentNullException(nameof(optimizer));
+        _memoryInfo = memoryInfo ?? throw new ArgumentNullException(nameof(memoryInfo));
+        _ownsDependencies = ownsDependencies;
     }
 
     public DomainSnapshot CaptureBaseline()
@@ -61,7 +68,9 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
         try
         {
             _optimizer.ExcludedProcesses = new HashSet<string>(
-                _settings.MemoryExcludedProcesses, StringComparer.OrdinalIgnoreCase);
+                _settings.MemoryExcludedProcesses
+                    .Concat(_settings.ProtectedApplications),
+                StringComparer.OrdinalIgnoreCase);
 
             var result = _optimizer.OptimizeAll(
                 level: _settings.OptimizationLevel,
@@ -109,7 +118,10 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
     {
         if (_disposed) return;
         _disposed = true;
-        _optimizer.Dispose();
-        _memoryInfo.Dispose();
+        if (_ownsDependencies)
+        {
+            _optimizer.Dispose();
+            _memoryInfo.Dispose();
+        }
     }
 }

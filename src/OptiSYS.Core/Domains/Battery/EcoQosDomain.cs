@@ -12,7 +12,20 @@ namespace OptiSYS.Core.Domains.Battery;
 /// </summary>
 public sealed class EcoQosDomain : IOptimizationDomain
 {
+    private static readonly HashSet<string> ShellProcessExclusions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer",
+        "ShellExperienceHost",
+        "StartMenuExperienceHost",
+        "SearchHost",
+        "SearchApp",
+        "TextInputHost",
+        "SystemSettings",
+        "Widgets",
+    };
+
     private readonly Settings _settings;
+    private readonly INativeBridge? _native;
     private bool _isActive;
     private readonly HashSet<uint> _throttledPids = [];
 
@@ -22,7 +35,11 @@ public sealed class EcoQosDomain : IOptimizationDomain
     public bool IsSupported => Environment.OSVersion.Version >= new Version(10, 0, 16299);
     public bool IsActive => _isActive;
 
-    public EcoQosDomain(Settings settings) { _settings = settings; }
+    public EcoQosDomain(Settings settings, INativeBridge? native = null)
+    {
+        _settings = settings;
+        _native = native;
+    }
 
     public DomainSnapshot CaptureBaseline()
     {
@@ -35,9 +52,14 @@ public sealed class EcoQosDomain : IOptimizationDomain
     {
         var sw = Stopwatch.StartNew();
         int throttled = 0, failed = 0, skipped = 0;
-        var foregroundPid = NativeMethods.GetForegroundProcessId();
+        var nativeForegroundPid = _native?.GetForegroundProcessId() ?? 0;
+        var foregroundPid = nativeForegroundPid > 0
+            ? (uint)nativeForegroundPid
+            : NativeMethods.GetForegroundProcessId();
         var selfPid = Environment.ProcessId;
-        var exclusions = new HashSet<string>(_settings.EcoQosExcludedProcesses, StringComparer.OrdinalIgnoreCase);
+        var exclusions = new HashSet<string>(
+            _settings.EcoQosExcludedProcesses.Concat(_settings.ProtectedApplications),
+            StringComparer.OrdinalIgnoreCase);
 
         _throttledPids.Clear();
 
@@ -53,37 +75,20 @@ public sealed class EcoQosDomain : IOptimizationDomain
                 }
 
                 var name = proc.ProcessName;
-                if (exclusions.Contains(name))
+                if (IsShellProcess(name) || exclusions.Contains(name))
                 {
                     skipped++;
                     continue;
                 }
 
-                var handle = NativeMethods.OpenProcess(
-                    NativeMethods.PROCESS_SET_INFORMATION | NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION,
-                    false, pid);
-
-                if (handle == IntPtr.Zero)
+                if (SetEcoQos(proc.Id, enable: true))
                 {
-                    skipped++;
-                    continue;
+                    _throttledPids.Add(pid);
+                    throttled++;
                 }
-
-                try
+                else
                 {
-                    if (NativeMethods.SetProcessEcoQoS(handle, true))
-                    {
-                        _throttledPids.Add(pid);
-                        throttled++;
-                    }
-                    else
-                    {
-                        failed++;
-                    }
-                }
-                finally
-                {
-                    NativeMethods.CloseHandle(handle);
+                    failed++;
                 }
             }
             catch { skipped++; }
@@ -110,12 +115,7 @@ public sealed class EcoQosDomain : IOptimizationDomain
         {
             try
             {
-                var handle = NativeMethods.OpenProcess(
-                    NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
-                    false, pid);
-                if (handle == IntPtr.Zero) continue;
-                try { NativeMethods.SetProcessEcoQoS(handle, false); }
-                finally { NativeMethods.CloseHandle(handle); }
+                SetEcoQos((int)pid, enable: false);
             }
             catch { }
         }
@@ -133,9 +133,28 @@ public sealed class EcoQosDomain : IOptimizationDomain
         IsActive = _isActive,
         Summary = _isActive ? $"{_throttledPids.Count} processes throttled" : "Inactive",
         Details = _isActive
-            ? [$"Excluded: {string.Join(", ", _settings.EcoQosExcludedProcesses.Take(5))}..."]
+            ? [$"Excluded: {string.Join(", ", _settings.EcoQosExcludedProcesses.Concat(_settings.ProtectedApplications).Distinct(StringComparer.OrdinalIgnoreCase).Take(5))}..."]
             : []
     };
+
+    internal static bool IsShellProcess(string processName) =>
+        ShellProcessExclusions.Contains(processName);
+
+    private bool SetEcoQos(int pid, bool enable)
+    {
+        if (_native?.SetEcoQos(enable, pid) == true)
+            return true;
+
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_SET_INFORMATION | NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION,
+            false, (uint)pid);
+
+        if (handle == IntPtr.Zero)
+            return false;
+
+        try { return NativeMethods.SetProcessEcoQoS(handle, enable); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
 
     public void Dispose() { }
 }

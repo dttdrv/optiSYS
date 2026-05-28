@@ -3,8 +3,7 @@ namespace OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 
 /// <summary>
-/// Bridge to native platform functions. Implemented by ZigNativeBridge (calls optisys_core.dll)
-/// or ManagedNativeBridge (P/Invoke fallback when Zig DLL unavailable).
+/// Bridge to native Windows platform functions.
 /// </summary>
 public interface INativeBridge : IDisposable
 {

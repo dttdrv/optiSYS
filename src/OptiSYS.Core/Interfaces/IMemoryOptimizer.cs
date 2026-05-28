@@ -1,3 +1,5 @@
+using OptiSYS.Core.Models;
+
 namespace OptiSYS.Core.Interfaces;
 
 /// <summary>
@@ -27,4 +29,16 @@ public interface IMemoryOptimizer : IDisposable
     /// <c>earlyExit</c>: true if the target was hit before exhausting the queue.
     /// </returns>
     (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0);
+
+    /// <summary>Runs the full memory optimization pass used by the memory domain.</summary>
+    OptimizationResult OptimizeAll(
+        OptimizationLevel level = OptimizationLevel.Conservative,
+        int cacheMaxPercent = 0,
+        int targetThresholdPercent = 0,
+        bool isLowMemory = false,
+        int accessedBitsDelayMs = 2000,
+        bool effectivenessTrackingEnabled = true);
+
+    /// <summary>Processes excluded from trimming or optimization.</summary>
+    HashSet<string> ExcludedProcesses { get; set; }
 }

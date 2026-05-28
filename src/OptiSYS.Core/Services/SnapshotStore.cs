@@ -11,9 +11,11 @@ namespace OptiSYS.Core.Services;
 /// </summary>
 public sealed class SnapshotStore
 {
-    private static readonly string SnapshotFile = Path.Combine(
+    private static readonly string DefaultSnapshotFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "optiSYS", "snapshots.json");
+    private static readonly TimeSpan MaxFutureSkew = TimeSpan.FromMinutes(5);
+    private const int MaxSnapshotStateEntries = 64;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -22,6 +24,7 @@ public sealed class SnapshotStore
 
     private readonly List<DomainSnapshot> _snapshots = [];
     private readonly object _lock = new();
+    private readonly string _snapshotFile;
 
     public bool HasSnapshots
     {
@@ -32,7 +35,13 @@ public sealed class SnapshotStore
     }
 
     public SnapshotStore()
+        : this(DefaultSnapshotFile)
     {
+    }
+
+    internal SnapshotStore(string snapshotFile)
+    {
+        _snapshotFile = snapshotFile ?? throw new ArgumentNullException(nameof(snapshotFile));
         Load();
     }
 
@@ -84,11 +93,13 @@ public sealed class SnapshotStore
     {
         try
         {
-            if (!File.Exists(SnapshotFile)) return;
-            var json = File.ReadAllText(SnapshotFile);
+            if (!File.Exists(_snapshotFile)) return;
+            var json = File.ReadAllText(_snapshotFile);
             var loaded = JsonSerializer.Deserialize<List<DomainSnapshot>>(json, JsonOptions);
-            if (loaded != null)
-                _snapshots.AddRange(loaded);
+            if (loaded == null)
+                return;
+
+            _snapshots.AddRange(NormalizeSnapshots(loaded));
         }
         catch
         {
@@ -100,14 +111,48 @@ public sealed class SnapshotStore
     {
         try
         {
-            var dir = Path.GetDirectoryName(SnapshotFile)!;
+            var dir = Path.GetDirectoryName(_snapshotFile)!;
             Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(_snapshots, JsonOptions);
-            File.WriteAllText(SnapshotFile, json);
+            File.WriteAllText(_snapshotFile, json);
         }
         catch
         {
             // Snapshot persistence failure is non-critical
         }
+    }
+
+    private static List<DomainSnapshot> NormalizeSnapshots(IEnumerable<DomainSnapshot> snapshots)
+    {
+        var now = DateTime.UtcNow;
+        var byDomain = new Dictionary<string, DomainSnapshot>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var snapshot in snapshots)
+        {
+            if (string.IsNullOrWhiteSpace(snapshot.DomainId))
+                continue;
+
+            if (snapshot.CapturedAtUtc > now + MaxFutureSkew)
+                continue;
+
+            if (snapshot.State.Count > MaxSnapshotStateEntries)
+                continue;
+
+            var domainId = snapshot.DomainId.Trim();
+            var normalized = new DomainSnapshot
+            {
+                DomainId = domainId,
+                CapturedAtUtc = snapshot.CapturedAtUtc,
+                State = snapshot.State,
+            };
+
+            if (!byDomain.TryGetValue(domainId, out var existing) ||
+                existing.CapturedAtUtc <= normalized.CapturedAtUtc)
+            {
+                byDomain[domainId] = normalized;
+            }
+        }
+
+        return byDomain.Values.ToList();
     }
 }

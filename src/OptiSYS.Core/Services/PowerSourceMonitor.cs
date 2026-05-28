@@ -4,38 +4,50 @@ using OptiSYS.Core.Models;
 namespace OptiSYS.Core.Services;
 
 /// <summary>
-/// Monitors power source changes and triggers battery optimization when switching to battery.
+/// Monitors power source changes and applies only safe runtime battery optimizations.
 /// </summary>
-public sealed class PowerSourceMonitor : IDisposable
+public sealed class PowerSourceMonitor : IPowerSourceMonitor
 {
     private readonly INativeBridge _native;
     private readonly Settings _settings;
-    private readonly UnifiedOptimizationEngine _engine;
+    private readonly IOptimizationEngine _engine;
+    private readonly object _gate = new();
     private System.Threading.Timer? _pollTimer;
     private PowerSource _lastPowerSource;
     private bool _disposed;
 
     public event Action<PowerSource>? PowerSourceChanged;
 
-    public PowerSourceMonitor(INativeBridge native, Settings settings, UnifiedOptimizationEngine engine)
+    public PowerSourceMonitor(INativeBridge native, Settings settings, IOptimizationEngine engine)
     {
         _native = native;
         _settings = settings;
-        _engine = engine;
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _lastPowerSource = _native.GetPowerSource();
     }
 
     public void Start()
     {
-        _pollTimer = new System.Threading.Timer(PollCallback, null,
-            TimeSpan.FromSeconds(_settings.DebouncePowerChangeSeconds),
-            TimeSpan.FromSeconds(_settings.DebouncePowerChangeSeconds));
+        lock (_gate)
+        {
+            if (_disposed || _pollTimer != null)
+                return;
+
+            var interval = TimeSpan.FromSeconds(Math.Max(1, _settings.DebouncePowerChangeSeconds));
+            _pollTimer = new System.Threading.Timer(PollCallback, null, interval, interval);
+        }
     }
 
     public void Stop()
     {
-        _pollTimer?.Dispose();
-        _pollTimer = null;
+        System.Threading.Timer? timer;
+        lock (_gate)
+        {
+            timer = _pollTimer;
+            _pollTimer = null;
+        }
+
+        timer?.Dispose();
     }
 
     private void PollCallback(object? state)
@@ -49,16 +61,19 @@ public sealed class PowerSourceMonitor : IDisposable
             _lastPowerSource = current;
             PowerSourceChanged?.Invoke(current);
 
-            if (_settings.AutoOptimizeOnBattery)
+            if (!_settings.AutoOptimizeOnBattery || _settings.AutomationPaused)
             {
-                if (current == PowerSource.Battery && previous == PowerSource.Ac)
-                {
-                    _engine.ActivateCategory("Battery");
-                }
-                else if (current == PowerSource.Ac && previous == PowerSource.Battery)
-                {
-                    _engine.RevertAll();
-                }
+                return;
+            }
+
+            if (current == PowerSource.Battery && previous == PowerSource.Ac)
+            {
+                _engine.ActivateCategory("Battery");
+            }
+            else if (current == PowerSource.Ac && previous == PowerSource.Battery)
+            {
+                _engine.RevertDomain("timer-resolution");
+                _engine.RevertDomain("ecoqos");
             }
         }
     }

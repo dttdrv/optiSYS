@@ -20,8 +20,20 @@ public sealed class DispatcherTimerService : ITimerService
         ArgumentNullException.ThrowIfNull(tick);
 
         var timer = new DispatcherTimer { Interval = interval };
-        timer.Tick += (_, _) => tick();
+        timer.Tick += (_, _) =>
+        {
+            try
+            {
+                tick();
+            }
+            catch (Exception ex)
+            {
+                StartupLog.WriteException("DispatcherTimerService.Tick", ex);
+                throw;
+            }
+        };
         timer.Start();
+        StartupLog.Write($"DispatcherTimerService: Started interval={interval}");
 
         return new TimerSubscription(timer);
     }

@@ -36,6 +36,7 @@ internal static partial class NativeMethods
 
     // ── Service control constants ────────────────────────────────────
     internal const uint SC_MANAGER_ALL_ACCESS = 0xF003F;
+    internal const uint SC_MANAGER_CONNECT = 0x0001;
     internal const uint SERVICE_QUERY_CONFIG = 0x0001;
     internal const uint SERVICE_CHANGE_CONFIG = 0x0002;
     internal const uint SERVICE_QUERY_STATUS = 0x0004;

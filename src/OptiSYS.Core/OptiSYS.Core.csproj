@@ -7,10 +7,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>OptiSYS</RootNamespace>
     <AssemblyName>OptiSYS.Core</AssemblyName>
-    <Version>1.0.0</Version>
-    <Company>eptesicus</Company>
+    <Version>0.0.3</Version>
+    <Company>Deyan Todorov</Company>
     <Product>optiSYS</Product>
-    <Description>Unified Windows optimization core library</Description>
+    <Description>Safe Windows runtime optimization core library</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -72,4 +72,36 @@
   <Target Name="ExpandPriContentFromReferences" />
   <Target Name="_ExpandLibraryLayoutProjectPriFiles" />
 
+  <Target Name="ExtractEmbeddedWinUiPriPayload"
+          AfterTargets="Build"
+          Condition="'$(UseWinUI)' == 'true' and Exists('$(TargetDir)Microsoft.UI.Xaml.Controls.pri') and Exists('$(MSBuildThisFileDirectory)Extract-WinUiPriPayload.ps1')">
+    <Exec Command="powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)Extract-WinUiPriPayload.ps1&quot; -PriPath &quot;$(TargetDir)Microsoft.UI.Xaml.Controls.pri&quot; -OutputRoot &quot;$([System.String]::Copy('$(TargetDir)').TrimEnd('\'))&quot; -WindowsSdkDir &quot;$([System.String]::Copy('$(WindowsSdkDir)').TrimEnd('\'))&quot; -NuGetPackageRoot &quot;$([System.String]::Copy('$(NuGetPackageRoot)').TrimEnd('\'))&quot;" />
+  </Target>
+
+  <Target Name="ExtractEmbeddedWinUiPriPayloadForPublish"
+          AfterTargets="Publish"
+          Condition="'$(UseWinUI)' == 'true' and Exists('$(PublishDir)Microsoft.UI.Xaml.Controls.pri') and Exists('$(MSBuildThisFileDirectory)Extract-WinUiPriPayload.ps1')">
+    <Exec Command="powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)Extract-WinUiPriPayload.ps1&quot; -PriPath &quot;$(PublishDir)Microsoft.UI.Xaml.Controls.pri&quot; -OutputRoot &quot;$([System.String]::Copy('$(PublishDir)').TrimEnd('\'))&quot; -WindowsSdkDir &quot;$([System.String]::Copy('$(WindowsSdkDir)').TrimEnd('\'))&quot; -NuGetPackageRoot &quot;$([System.String]::Copy('$(NuGetPackageRoot)').TrimEnd('\'))&quot;" />
+  </Target>
+
+  <Target Name="CopyCompiledXamlArtifactsToPublishDir"
+          AfterTargets="Publish"
+          Condition="'$(UseWinUI)' == 'true' and Exists('$(TargetDir)App.xbf')">
+    <ItemGroup>
+      <RootCompiledXamlArtifacts Include="$(TargetDir)App.xaml" />
+      <RootCompiledXamlArtifacts Include="$(TargetDir)App.xbf" />
+      <RootCompiledXamlArtifacts Include="$(TargetDir)MainWindow.xaml" />
+      <RootCompiledXamlArtifacts Include="$(TargetDir)MainWindow.xbf" />
+      <ViewCompiledXamlArtifacts Include="$(TargetDir)Views\*.xbf" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(RootCompiledXamlArtifacts)"
+          DestinationFiles="@(RootCompiledXamlArtifacts->'$(PublishDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+
+    <Copy SourceFiles="@(ViewCompiledXamlArtifacts)"
+          DestinationFiles="@(ViewCompiledXamlArtifacts->'$(PublishDir)Views\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

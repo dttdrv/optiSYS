@@ -65,3 +65,11 @@ Generated Files/
 
 # Agent scratch (stale superseded plans from prior automated runs)
 .sisyphus/
+
+# Installer build output (non-standard publish path + packaged app bundle)
+installer/publish/
+src/OptiSYS.Installer/Resources/app.zip
+
+# Editor scratch / manual backups
+*.bak
+*.custom

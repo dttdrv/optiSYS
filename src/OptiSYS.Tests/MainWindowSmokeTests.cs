@@ -6,10 +6,8 @@ using Xunit;
 namespace OptiSYS.Tests;
 
 /// <summary>
-/// Smoke checks for <see cref="OptiSYS.MainWindow"/> that use reflection only — we don't
-/// instantiate the window because WinUI's <c>Window</c> class requires a running dispatcher
-/// (unavailable in the xUnit process). The goal is to catch XAML-refactor mistakes that
-/// would silently rename or remove the x:Named fields the code-behind depends on.
+/// Smoke checks for <see cref="OptiSYS.MainWindow"/> that use reflection only. We do not
+/// instantiate the window because WinUI's <c>Window</c> class requires a running dispatcher.
 /// </summary>
 public class MainWindowSmokeTests
 {
@@ -21,17 +19,27 @@ public class MainWindowSmokeTests
             "MainWindow must extend Microsoft.UI.Xaml.Window.");
     }
 
-    [Theory]
-    [InlineData("NavView", typeof(NavigationView))]
-    [InlineData("ContentFrame", typeof(Frame))]
-    public void MainWindow_HasCompiledXNameField(string fieldName, Type expectedType)
+    [Fact]
+    public void MainWindow_HasCompiledShellRootField()
     {
         // x:Name in XAML generates a private instance field of the matching control type
         // via the partial class that ships alongside in obj/.../MainWindow.g.cs.
         var field = typeof(OptiSYS.MainWindow).GetField(
+            "ShellRoot", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        Assert.NotNull(field);
+        Assert.Equal(typeof(Grid), field!.FieldType);
+    }
+
+    [Theory]
+    [InlineData("StatusText")]
+    [InlineData("FooterText")]
+    public void MainWindow_HasReadOnlyObserverFields(string fieldName)
+    {
+        var field = typeof(OptiSYS.MainWindow).GetField(
             fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
 
         Assert.NotNull(field);
-        Assert.Equal(expectedType, field!.FieldType);
+        Assert.Equal(typeof(TextBlock), field!.FieldType);
     }
 }

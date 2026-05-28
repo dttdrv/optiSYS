@@ -13,22 +13,20 @@ namespace OptiSYS.Core.Services;
 /// </summary>
 public sealed class MemoryOptimizer : IMemoryOptimizer
 {
-    private static readonly HashSet<string> DefaultExclusions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "System", "Idle", "smss", "csrss", "wininit", "services", "lsass",
-        "svchost", "dwm", "winlogon", "Memory Compression", "Registry",
-        "fontdrvhost", "conhost"
-    };
+    private static readonly HashSet<string> DefaultExclusions =
+        new(Settings.CriticalProcessExclusions, StringComparer.OrdinalIgnoreCase);
 
     private readonly IMemoryInfoService _memoryInfo;
+    private readonly INativeBridge? _native;
     private readonly StepEffectivenessTracker _tracker = new();
     private bool _disposed;
 
     public HashSet<string> ExcludedProcesses { get; set; } = new(DefaultExclusions, StringComparer.OrdinalIgnoreCase);
 
-    public MemoryOptimizer(IMemoryInfoService memoryInfo)
+    public MemoryOptimizer(IMemoryInfoService memoryInfo, INativeBridge? native = null)
     {
         _memoryInfo = memoryInfo;
+        _native = native;
     }
 
     // Convenience ctor for legacy/standalone use — wraps its own MemoryInfoService,
@@ -42,37 +40,62 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         const int maxCandidates = 64;
         const long minimumWorkingSetBytes = 32L * 1024 * 1024;
 
-        var foregroundPid = NativeMethods.GetForegroundProcessId();
+        var nativeForegroundPid = _native?.GetForegroundProcessId() ?? 0;
+        var foregroundPid = nativeForegroundPid > 0
+            ? (uint)nativeForegroundPid
+            : NativeMethods.GetForegroundProcessId();
         var selfPid = (uint)Environment.ProcessId;
 
         int skipped = 0;
         var candidates = new PriorityQueue<(int pid, long workingSet), long>();
 
-        foreach (var proc in Process.GetProcesses())
+        var nativeProcesses = _native?.GetProcessList();
+        if (nativeProcesses is { Length: > 0 })
         {
-            try
+            foreach (var proc in nativeProcesses)
             {
                 if (ExcludedProcesses.Contains(proc.ProcessName)
-                    || proc.Id == foregroundPid
-                    || proc.Id == selfPid)
+                    || proc.ProcessId == foregroundPid
+                    || proc.ProcessId == selfPid
+                    || proc.WorkingSetBytes < minimumWorkingSetBytes)
                 {
                     skipped++;
                     continue;
                 }
 
-                var workingSet = proc.WorkingSet64;
-                if (workingSet < minimumWorkingSetBytes)
-                {
-                    skipped++;
-                    continue;
-                }
-
-                candidates.Enqueue((proc.Id, workingSet), workingSet);
+                candidates.Enqueue((proc.ProcessId, proc.WorkingSetBytes), proc.WorkingSetBytes);
                 if (candidates.Count > maxCandidates)
                     candidates.Dequeue();
             }
-            catch { skipped++; }
-            finally { proc.Dispose(); }
+        }
+        else
+        {
+            foreach (var proc in Process.GetProcesses())
+            {
+                try
+                {
+                    if (ExcludedProcesses.Contains(proc.ProcessName)
+                        || proc.Id == foregroundPid
+                        || proc.Id == selfPid)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    var workingSet = proc.WorkingSet64;
+                    if (workingSet < minimumWorkingSetBytes)
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    candidates.Enqueue((proc.Id, workingSet), workingSet);
+                    if (candidates.Count > maxCandidates)
+                        candidates.Dequeue();
+                }
+                catch { skipped++; }
+                finally { proc.Dispose(); }
+            }
         }
 
         var processInfos = new List<(int pid, long workingSet)>(candidates.Count);
@@ -88,20 +111,10 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         {
             try
             {
-                var handle = NativeMethods.OpenProcess(
-                    NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_QUOTA,
-                    false, (uint)pid);
-
-                if (handle == IntPtr.Zero) { failed++; continue; }
-
-                try
-                {
-                    if (NativeMethods.EmptyWorkingSet(handle))
-                        trimmed++;
-                    else
-                        failed++;
-                }
-                finally { NativeMethods.CloseHandle(handle); }
+                if (EmptyWorkingSet(pid))
+                    trimmed++;
+                else
+                    failed++;
 
                 if (targetAvailableBytes > 0 && trimmed > 0 && trimmed % 8 == 0)
                 {
@@ -125,6 +138,22 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         int result = NativeMethods.NtSetSystemInformation(
             NativeMethods.SystemMemoryListInformation, ref command, sizeof(int));
         return result >= 0;
+    }
+
+    private bool EmptyWorkingSet(int pid)
+    {
+        if (_native?.EmptyWorkingSet(pid) == true)
+            return true;
+
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_QUOTA,
+            false, (uint)pid);
+
+        if (handle == IntPtr.Zero)
+            return false;
+
+        try { return NativeMethods.EmptyWorkingSet(handle); }
+        finally { NativeMethods.CloseHandle(handle); }
     }
 
     public bool PurgeLowPriorityStandby()

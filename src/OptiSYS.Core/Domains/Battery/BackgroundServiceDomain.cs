@@ -30,7 +30,8 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
         var snapshot = new DomainSnapshot { DomainId = Id };
         var serviceStates = new Dictionary<string, ServiceState>();
 
-        var scManager = NativeMethods.OpenSCManagerW(null, null, NativeMethods.SC_MANAGER_ALL_ACCESS);
+        var servicesToThrottle = Settings.NormalizeServicesToThrottle(_settings.ServicesToThrottle);
+        var scManager = NativeMethods.OpenSCManagerW(null, null, NativeMethods.SC_MANAGER_CONNECT);
         if (scManager == IntPtr.Zero)
         {
             snapshot.Set("services", serviceStates);
@@ -39,7 +40,7 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
 
         try
         {
-            foreach (var serviceName in _settings.ServicesToThrottle)
+            foreach (var serviceName in servicesToThrottle)
             {
                 var hService = NativeMethods.OpenServiceW(scManager, serviceName,
                     NativeMethods.SERVICE_QUERY_CONFIG | NativeMethods.SERVICE_QUERY_STATUS);
@@ -80,15 +81,19 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
         var sw = Stopwatch.StartNew();
         int stopped = 0, failed = 0, skipped = 0;
 
-        var scManager = NativeMethods.OpenSCManagerW(null, null, NativeMethods.SC_MANAGER_ALL_ACCESS);
+        var servicesToThrottle = Settings.NormalizeServicesToThrottle(_settings.ServicesToThrottle);
+        var scManager = NativeMethods.OpenSCManagerW(null, null, NativeMethods.SC_MANAGER_CONNECT);
         if (scManager == IntPtr.Zero)
             return ApplyResult.Fail(Id, "Cannot open Service Control Manager (need admin)");
 
         try
         {
-            foreach (var serviceName in _settings.ServicesToThrottle)
+            foreach (var serviceName in servicesToThrottle)
             {
-                var hService = NativeMethods.OpenServiceW(scManager, serviceName, NativeMethods.SERVICE_ALL_ACCESS);
+                var hService = NativeMethods.OpenServiceW(scManager, serviceName,
+                    NativeMethods.SERVICE_QUERY_STATUS |
+                    NativeMethods.SERVICE_STOP |
+                    NativeMethods.SERVICE_CHANGE_CONFIG);
                 if (hService == IntPtr.Zero) { skipped++; continue; }
 
                 try
@@ -137,14 +142,19 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
         var services = baseline.Get<Dictionary<string, ServiceState>>("services");
         if (services == null || services.Count == 0) { _isActive = false; return; }
 
-        var scManager = NativeMethods.OpenSCManagerW(null, null, NativeMethods.SC_MANAGER_ALL_ACCESS);
+        var scManager = NativeMethods.OpenSCManagerW(null, null, NativeMethods.SC_MANAGER_CONNECT);
         if (scManager == IntPtr.Zero) return;
 
         try
         {
             foreach (var (serviceName, state) in services)
             {
-                var hService = NativeMethods.OpenServiceW(scManager, serviceName, NativeMethods.SERVICE_ALL_ACCESS);
+                if (!IsAllowedService(serviceName) || !IsRestorableStartType(state.StartType))
+                    continue;
+
+                var hService = NativeMethods.OpenServiceW(scManager, serviceName,
+                    NativeMethods.SERVICE_CHANGE_CONFIG |
+                    NativeMethods.SERVICE_START);
                 if (hService == IntPtr.Zero) continue;
 
                 try
@@ -176,7 +186,7 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
         DomainId = Id, DisplayName = DisplayName, Category = Category,
         IsSupported = IsSupported, IsActive = _isActive,
         Summary = _isActive ? $"{_servicesStopped} services stopped" : "Inactive",
-        Details = _settings.ServicesToThrottle.ToArray()
+        Details = Settings.NormalizeServicesToThrottle(_settings.ServicesToThrottle).ToArray()
     };
 
     private static uint GetServiceStartType(IntPtr hService)
@@ -196,6 +206,14 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
     }
 
     public void Dispose() { }
+
+    internal static bool IsAllowedService(string serviceName) =>
+        Settings.NormalizeServicesToThrottle([serviceName]).Count > 0;
+
+    internal static bool IsRestorableStartType(uint startType) =>
+        startType is NativeMethods.SERVICE_AUTO_START
+            or NativeMethods.SERVICE_DEMAND_START
+            or NativeMethods.SERVICE_DISABLED;
 }
 
 public sealed class ServiceState

@@ -1,12 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseAppHost>true</UseAppHost>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <GeneratePriFilesOnBuild>false</GeneratePriFilesOnBuild>
@@ -24,10 +28,10 @@
     <IncludeBuiltProjectOutputGroup>false</IncludeBuiltProjectOutputGroup>
     <RootNamespace>OptiSYS</RootNamespace>
     <AssemblyName>OptiSYS</AssemblyName>
-    <Version>1.0.0</Version>
-    <Company>eptesicus</Company>
+    <Version>0.0.3</Version>
+    <Company>Deyan Todorov</Company>
     <Product>optiSYS</Product>
-    <Description>Unified Windows optimization suite</Description>
+    <Description>Safe background Windows runtime optimizer</Description>
   </PropertyGroup>
 
   <!--
@@ -45,6 +49,7 @@
          .NET and avoids an extra transitive (Autofac, Lamar) that would bloat the portable
          build.  9.0.* floats inside the current major; breaking changes are unlikely. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.*" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.*" />
   </ItemGroup>
 
   <ItemGroup>

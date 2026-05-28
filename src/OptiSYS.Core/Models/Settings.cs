@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 namespace OptiSYS.Core.Models;
 
 public enum OptimizationLevel { Conservative, Balanced, Aggressive }
+public enum BatteryPreset { Recommended, Saver }
 public enum PowerSourceAction { Activate, Deactivate, DoNothing }
 
 /// <summary>
@@ -13,6 +14,25 @@ public enum PowerSourceAction { Activate, Deactivate, DoNothing }
 /// </summary>
 public sealed class Settings
 {
+    public static IReadOnlyList<string> CriticalProcessExclusions { get; } =
+    [
+        "System", "Idle", "smss", "csrss", "wininit", "services",
+        "lsass", "svchost", "dwm", "winlogon", "fontdrvhost", "conhost",
+        "Memory Compression", "Registry",
+        "explorer", "ShellExperienceHost", "StartMenuExperienceHost",
+        "SearchHost", "SearchApp", "TextInputHost", "SystemSettings",
+        "Widgets"
+    ];
+
+    private static readonly string[] DefaultServicesToThrottle =
+    [
+        "WSearch", "SysMain", "DiagTrack", "BITS",
+        "wuauserv", "DoSvc", "DPS", "WdiServiceHost"
+    ];
+
+    private static readonly HashSet<string> AllowedServicesToThrottle =
+        new(DefaultServicesToThrottle, StringComparer.OrdinalIgnoreCase);
+
     private static readonly string SettingsDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "optiSYS");
     private static readonly string SettingsFile = Path.Combine(SettingsDir, "settings.json");
@@ -27,48 +47,45 @@ public sealed class Settings
 
     // ── Battery optimization settings ────────────────────────────────
     public bool AutoOptimizeOnBattery { get; set; } = true;
+    public bool AutomationPaused { get; set; } = false;
+    public BatteryPreset BatteryPreset { get; set; } = BatteryPreset.Recommended;
     public int DebouncePowerChangeSeconds { get; set; } = 2;
 
     // Battery domain toggles
     public bool EcoQosEnabled { get; set; } = true;
     public bool TimerResolutionEnabled { get; set; } = true;
-    public bool BackgroundServicesEnabled { get; set; } = true;
-    public bool UsbSuspendEnabled { get; set; } = true;
-    public bool NetworkPowerEnabled { get; set; } = true;
-    public bool GpuPowerEnabled { get; set; } = true;
-    public bool CpuParkingEnabled { get; set; } = true;
-    public bool DiskCoalescingEnabled { get; set; } = true;
+    public bool BackgroundServicesEnabled { get; set; } = false;
+    public bool UsbSuspendEnabled { get; set; } = false;
+    public bool NetworkPowerEnabled { get; set; } = false;
+    public bool GpuPowerEnabled { get; set; } = false;
+    public bool CpuParkingEnabled { get; set; } = false;
+    public bool DiskCoalescingEnabled { get; set; } = false;
 
     // Battery domain-specific settings
     public List<string> EcoQosExcludedProcesses { get; set; } =
     [
-        "System", "Idle", "smss", "csrss", "wininit", "services",
-        "lsass", "svchost", "dwm", "winlogon", "fontdrvhost", "conhost",
-        "Memory Compression", "Registry"
+        .. CriticalProcessExclusions
     ];
 
-    public List<string> ServicesToThrottle { get; set; } =
-    [
-        "WSearch", "SysMain", "DiagTrack", "BITS",
-        "wuauserv", "DoSvc", "DPS", "WdiServiceHost"
-    ];
+    public List<string> ServicesToThrottle { get; set; } = [.. DefaultServicesToThrottle];
 
     public int CpuParkingMinProcessorDC { get; set; } = 5;
     public int DiskIdleTimeoutSeconds { get; set; } = 30;
 
     public List<string> TimerResolutionExcludedProcesses { get; set; } =
     [
-        "System", "Idle", "smss", "csrss", "wininit", "services",
-        "lsass", "svchost", "dwm", "winlogon", "fontdrvhost", "conhost",
+        .. CriticalProcessExclusions,
         "audiodg", "NVIDIA Display Container"
     ];
 
     // Memory optimization settings
-    public bool AutoOptimizeMemoryEnabled { get; set; } = false;
+    public bool AutoOptimizeMemoryEnabled { get; set; } = true;
     public int MemoryCheckIntervalSeconds { get; set; } = 5;
     public int MemoryThresholdPercent { get; set; } = 80;
     public int MemoryCooldownSeconds { get; set; } = 30;
-    public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Balanced;
+    public int MemoryCleanupDurationSeconds { get; set; } = 15;
+    public int MemoryRepeatPasses { get; set; } = 2;
+    public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Conservative;
     // NOTE: SelfWorkingSetCapMB must be >= 100 for UI apps.
     // optiRAM defaulted to 25MB which caused System.OutOfMemoryException
     // in WPF's MediaContext.CommitChannel (insufficient memory for rendering).
@@ -84,25 +101,50 @@ public sealed class Settings
 
     public List<string> MemoryExcludedProcesses { get; set; } =
     [
-        "System", "Idle", "smss", "csrss", "wininit", "services",
-        "lsass", "svchost", "dwm", "winlogon", "Memory Compression",
-        "Registry", "fontdrvhost", "conhost"
+        .. CriticalProcessExclusions
+    ];
+    public List<string> ProtectedApplications { get; set; } =
+    [
+        "Code", "Cursor", "devenv", "rider64", "idea64", "clion64", "pycharm64", "webstorm64",
+        "datagrip64", "dotnet", "msbuild", "node", "python", "pwsh", "powershell", "cmd", "wt",
+        "chrome", "msedge", "firefox", "brave", "vivaldi", "obs64", "Teams", "ms-teams",
+        "Zoom", "Discord", "slack"
     ];
 
     // ── Common UI settings ────────────────────────────────────────────
-    public double WindowWidth { get; set; } = 1100;
-    public double WindowHeight { get; set; } = 720;
+    public double WindowWidth { get; set; } = 640;
+    public double WindowHeight { get; set; } = 420;
     public double WindowLeft { get; set; } = double.NaN;
     public double WindowTop { get; set; } = double.NaN;
     public bool MinimizeToTray { get; set; } = true;
-    public bool StartWithWindows { get; set; } = false;
-    public string ThemeMode { get; set; } = "System"; // "System", "Light", "Dark"
+    public bool StartWithWindows { get; set; } = true;
+    public bool HasCompletedOnboarding { get; set; } = false;
+    public string ThemeMode { get; set; } = "Dark"; // "System", "Light", "Dark"
+    public bool UseWindowsAccentColor { get; set; } = false;
+    public string BackdropType { get; set; } = "MicaAlt";
     public int HistoryMaxItems { get; set; } = 50;
     public string SelectedNavItem { get; set; } = "Dashboard";
 
     // ── Paths ────────────────────────────────────────────────────────
     public static string GetSettingsDir() => SettingsDir;
     public static string GetSnapshotPath() => SnapshotFile;
+
+    public static List<string> NormalizeServicesToThrottle(IEnumerable<string>? services) =>
+        services?
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Where(AllowedServicesToThrottle.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
+
+    private static List<string> NormalizeProcessList(IEnumerable<string>? processes) =>
+        processes?
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
 
     // ── Load / Save ──────────────────────────────────────────────────
     public static Settings Load()
@@ -211,6 +253,8 @@ public sealed class Settings
         MemoryCheckIntervalSeconds = Math.Clamp(MemoryCheckIntervalSeconds, 1, 60);
         MemoryThresholdPercent = Math.Clamp(MemoryThresholdPercent, 10, 95);
         MemoryCooldownSeconds = Math.Clamp(MemoryCooldownSeconds, 5, 300);
+        MemoryCleanupDurationSeconds = Math.Clamp(MemoryCleanupDurationSeconds, 5, 60);
+        MemoryRepeatPasses = Math.Clamp(MemoryRepeatPasses, 1, 5);
         CacheMaxPercent = Math.Clamp(CacheMaxPercent, 0, 75);
         SelfWorkingSetCapMB = Math.Clamp(SelfWorkingSetCapMB, 0, 512);
         HysteresisGap = Math.Clamp(HysteresisGap, 5, 30);
@@ -226,10 +270,22 @@ public sealed class Settings
         if (!double.IsFinite(WindowLeft)) WindowLeft = double.NaN;
         if (!double.IsFinite(WindowTop)) WindowTop = double.NaN;
 
-        ThemeMode ??= "System";
-        EcoQosExcludedProcesses ??= [];
-        ServicesToThrottle ??= [];
-        MemoryExcludedProcesses ??= [];
-        TimerResolutionExcludedProcesses ??= [];
+        ThemeMode ??= "Dark";
+        BackdropType = BackdropType switch
+        {
+            "Mica" => "Mica",
+            "MicaAlt" => "MicaAlt",
+            "Acrylic" => "Acrylic",
+            "None" => "None",
+            _ => "MicaAlt"
+        };
+        EcoQosExcludedProcesses = NormalizeProcessList(
+            CriticalProcessExclusions.Concat(EcoQosExcludedProcesses ?? []));
+        ServicesToThrottle = NormalizeServicesToThrottle(ServicesToThrottle);
+        MemoryExcludedProcesses = NormalizeProcessList(
+            CriticalProcessExclusions.Concat(MemoryExcludedProcesses ?? []));
+        TimerResolutionExcludedProcesses = NormalizeProcessList(
+            CriticalProcessExclusions.Concat(TimerResolutionExcludedProcesses ?? []));
+        ProtectedApplications = NormalizeProcessList(ProtectedApplications);
     }
 }

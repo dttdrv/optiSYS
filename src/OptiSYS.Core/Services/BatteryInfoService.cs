@@ -9,6 +9,7 @@ namespace OptiSYS.Core.Services;
 public sealed class BatteryInfoService : IBatteryInfoService
 {
     private readonly INativeBridge _native;
+    private readonly object _gate = new();
     private System.Threading.Timer? _timer;
     private bool _disposed;
 
@@ -22,11 +23,29 @@ public sealed class BatteryInfoService : IBatteryInfoService
 
     public void Start(int intervalSeconds = 5)
     {
-        _timer = new System.Threading.Timer(_ => Refresh(), null,
-            TimeSpan.Zero, TimeSpan.FromSeconds(intervalSeconds));
+        lock (_gate)
+        {
+            if (_disposed || _timer != null)
+                return;
+
+            var dueTime = TimeSpan.FromSeconds(Math.Max(1, intervalSeconds));
+            _timer = new System.Threading.Timer(_ => Refresh(), null, dueTime, dueTime);
+        }
+
+        Refresh();
     }
 
-    public void Stop() { _timer?.Dispose(); _timer = null; }
+    public void Stop()
+    {
+        System.Threading.Timer? timer;
+        lock (_gate)
+        {
+            timer = _timer;
+            _timer = null;
+        }
+
+        timer?.Dispose();
+    }
 
     private void Refresh()
     {

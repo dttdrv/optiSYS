@@ -1,0 +1,199 @@
+using Moq;
+using OptiSYS.Core.Interfaces;
+using OptiSYS.Core.Models;
+using OptiSYS.Services;
+using Xunit;
+
+namespace OptiSYS.Tests.Services;
+
+public sealed class QuietAutomationServiceTests
+{
+    [Fact]
+    public async Task StartAsync_ForcesOnlySafeRuntimeDomains()
+    {
+        var settings = new Settings
+        {
+            BackgroundServicesEnabled = true,
+            UsbSuspendEnabled = true,
+            NetworkPowerEnabled = true,
+            GpuPowerEnabled = true,
+            CpuParkingEnabled = true,
+            DiskCoalescingEnabled = true,
+        };
+        var timer = new FakeTimerService();
+        var service = CreateService(settings, timer);
+
+        await service.StartAsync();
+
+        Assert.True(settings.EcoQosEnabled);
+        Assert.True(settings.TimerResolutionEnabled);
+        Assert.False(settings.BackgroundServicesEnabled);
+        Assert.False(settings.UsbSuspendEnabled);
+        Assert.False(settings.NetworkPowerEnabled);
+        Assert.False(settings.GpuPowerEnabled);
+        Assert.False(settings.CpuParkingEnabled);
+        Assert.False(settings.DiskCoalescingEnabled);
+    }
+
+    [Fact]
+    public async Task StartAsync_ProtectsConfiguredWorkApplicationsFromMemoryCleanup()
+    {
+        var settings = new Settings
+        {
+            MemoryExcludedProcesses = ["custom-daemon"],
+            ProtectedApplications = ["Code", "WindowsTerminal"],
+        };
+        var timer = new FakeTimerService();
+        var optimizer = new Mock<IMemoryOptimizer>();
+        optimizer.SetupProperty(o => o.ExcludedProcesses, []);
+
+        var service = CreateService(settings, timer, optimizer: optimizer);
+
+        await service.StartAsync();
+
+        Assert.Contains("custom-daemon", optimizer.Object.ExcludedProcesses);
+        Assert.Contains("Code", optimizer.Object.ExcludedProcesses);
+        Assert.Contains("WindowsTerminal", optimizer.Object.ExcludedProcesses);
+    }
+
+    [Fact]
+    public async Task TimerTick_WhenMemoryBelowThreshold_DoesNotRunOptimizerOrEngine()
+    {
+        var settings = new Settings { MemoryThresholdPercent = 80 };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+        var engine = new Mock<IOptimizationEngine>();
+
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
+        {
+            TotalPhysicalBytes = 100,
+            AvailablePhysicalBytes = 50,
+        });
+
+        var service = CreateService(settings, timer, memory, optimizer, engine);
+        await service.StartAsync();
+
+        timer.Tick();
+
+        optimizer.Verify(o => o.OptimizeAll(
+            It.IsAny<OptimizationLevel>(),
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<bool>(),
+            It.IsAny<int>(),
+            It.IsAny<bool>()), Times.Never);
+        engine.Verify(e => e.ActivateCategory(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TimerTick_WhenMemoryAboveThreshold_RunsConservativeCleanupOnly()
+    {
+        var settings = new Settings { MemoryThresholdPercent = 50 };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
+        {
+            TotalPhysicalBytes = 100,
+            AvailablePhysicalBytes = 10,
+        });
+        optimizer.Setup(o => o.OptimizeAll(
+                OptimizationLevel.Conservative,
+                0,
+                50,
+                false,
+                0,
+                true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 10 });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        timer.Tick();
+
+        await WaitForAssertionAsync(() =>
+            optimizer.Verify(o => o.OptimizeAll(
+                OptimizationLevel.Conservative,
+                0,
+                50,
+                false,
+                0,
+                true), Times.Once));
+    }
+
+    [Fact]
+    public async Task ApplyBatteryPreset_ActivatesOnlyEngineCategoryAfterSafeSettings()
+    {
+        var settings = new Settings();
+        var timer = new FakeTimerService();
+        var engine = new Mock<IOptimizationEngine>();
+        engine.Setup(e => e.GetAllStatuses()).Returns([]);
+        engine.Setup(e => e.ActivateCategory("Battery")).Returns(new EngineResult { Success = true });
+
+        var service = CreateService(settings, timer, engine: engine);
+        await service.StartAsync();
+
+        service.ApplyBatteryPreset();
+
+        engine.Verify(e => e.ActivateCategory("Battery"), Times.Once);
+        Assert.True(settings.EcoQosEnabled);
+        Assert.True(settings.TimerResolutionEnabled);
+        Assert.False(settings.BackgroundServicesEnabled);
+        Assert.False(settings.CpuParkingEnabled);
+    }
+
+    private static QuietAutomationService CreateService(
+        Settings settings,
+        FakeTimerService timer,
+        Mock<IMemoryInfoService>? memory = null,
+        Mock<IMemoryOptimizer>? optimizer = null,
+        Mock<IOptimizationEngine>? engine = null)
+    {
+        memory ??= new Mock<IMemoryInfoService>();
+        optimizer ??= new Mock<IMemoryOptimizer>();
+        engine ??= new Mock<IOptimizationEngine>();
+
+        return new QuietAutomationService(
+            settings,
+            Mock.Of<IBatteryInfoService>(),
+            memory.Object,
+            optimizer.Object,
+            engine.Object,
+            timer);
+    }
+
+    private static async Task WaitForAssertionAsync(Action assertion)
+    {
+        Exception? last = null;
+        for (var i = 0; i < 20; i++)
+        {
+            try
+            {
+                assertion();
+                return;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                await Task.Delay(10);
+            }
+        }
+
+        throw last ?? new TimeoutException("Assertion did not pass in time.");
+    }
+
+    private sealed class FakeTimerService : ITimerService
+    {
+        private Action? _tick;
+
+        public IDisposable Start(TimeSpan interval, Action tick)
+        {
+            _tick = tick;
+            return Mock.Of<IDisposable>();
+        }
+
+        public void Tick() => _tick?.Invoke();
+    }
+}

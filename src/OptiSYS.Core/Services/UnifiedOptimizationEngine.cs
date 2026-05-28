@@ -1,6 +1,6 @@
+using OptiSYS.Core.Domains.Battery;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
-using OptiSYS.Core.Domains.Battery;
 using MemDomain = OptiSYS.Core.Domains.Memory.MemoryOptimizerDomain;
 
 namespace OptiSYS.Core.Services;
@@ -23,26 +23,24 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     public bool IsActive => _domains.Any(d => d.IsActive);
     public IReadOnlyList<IOptimizationDomain> Domains => _domains.AsReadOnly();
 
-    public UnifiedOptimizationEngine(Settings settings, SnapshotStore snapshotStore)
+    public UnifiedOptimizationEngine(
+        Settings settings,
+        SnapshotStore snapshotStore,
+        IEnumerable<IOptimizationDomain>? domains = null,
+        INativeBridge? native = null)
     {
-        _settings = settings;
-        _snapshotStore = snapshotStore;
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
 
-        // Register all domains in priority order
-        _domains =
-        [
-            // Battery domains
-            new EcoQosDomain(settings),
-            new TimerResolutionDomain(settings),
-            new BackgroundServiceDomain(settings),
-            new UsbSuspendDomain(),
-            new NetworkPowerDomain(),
-            new GpuPowerDomain(),
-            new CpuParkingDomain(settings),
-            new DiskIoCoalescingDomain(settings),
-            // Memory domains
-            new MemDomain(settings),
-        ];
+        var orderedDomains = domains?.ToList();
+        _domains = orderedDomains is { Count: > 0 }
+            ? orderedDomains
+            : BuildDefaultDomains(settings, native ?? NativeBridgeFactory.Create());
+    }
+
+    public UnifiedOptimizationEngine(Settings settings, SnapshotStore snapshotStore)
+        : this(settings, snapshotStore, null)
+    {
     }
 
     /// <summary>Activate all enabled and supported domains for the given category.</summary>
@@ -282,5 +280,24 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         {
             try { domain.Dispose(); } catch { }
         }
+    }
+
+    private static List<IOptimizationDomain> BuildDefaultDomains(Settings settings, INativeBridge native) =>
+    [
+        new EcoQosDomain(settings, native),
+        new TimerResolutionDomain(settings, native),
+        new BackgroundServiceDomain(settings),
+        new UsbSuspendDomain(),
+        new NetworkPowerDomain(),
+        new GpuPowerDomain(),
+        new CpuParkingDomain(settings),
+        new DiskIoCoalescingDomain(settings),
+        BuildDefaultMemoryDomain(settings, native),
+    ];
+
+    private static IOptimizationDomain BuildDefaultMemoryDomain(Settings settings, INativeBridge native)
+    {
+        var memoryInfo = new MemoryInfoService(native);
+        return new MemDomain(settings, new MemoryOptimizer(memoryInfo, native), memoryInfo, ownsDependencies: true);
     }
 }

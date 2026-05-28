@@ -9,16 +9,27 @@ namespace OptiSYS.Core.Domains.Battery;
 /// Clamps inflated timer resolutions back to default.
 /// Many apps set the system timer to 1ms or 0.5ms, forcing 1000-2000 CPU wakeups/sec.
 /// On Windows 11 22H2+: uses PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION.
-/// On older Windows: falls back to NtSetTimerResolution to reset the global timer.
+/// Older Windows builds are observation-only here because changing the global timer
+/// resolution can affect the whole workstation.
 /// </summary>
 public sealed class TimerResolutionDomain : IOptimizationDomain
 {
-    private readonly Settings _settings;
-    private bool _isActive;
-    private uint _originalResolution;
-    private readonly HashSet<uint> _processesIgnored = [];
+    private static readonly HashSet<string> ShellProcessExclusions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer",
+        "ShellExperienceHost",
+        "StartMenuExperienceHost",
+        "SearchHost",
+        "SearchApp",
+        "TextInputHost",
+        "SystemSettings",
+        "Widgets",
+    };
 
-    private const uint DEFAULT_RESOLUTION = 156250; // 15.625ms in 100ns units
+    private readonly Settings _settings;
+    private readonly INativeBridge? _native;
+    private bool _isActive;
+    private readonly HashSet<uint> _processesIgnored = [];
 
     public string Id => "timer-resolution";
     public string DisplayName => "Timer Resolution";
@@ -26,7 +37,11 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
-    public TimerResolutionDomain(Settings settings) { _settings = settings; }
+    public TimerResolutionDomain(Settings settings, INativeBridge? native = null)
+    {
+        _settings = settings;
+        _native = native;
+    }
 
     public DomainSnapshot CaptureBaseline()
     {
@@ -41,9 +56,10 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
     public ApplyResult Apply(DomainSnapshot baseline)
     {
         var sw = Stopwatch.StartNew();
-        _originalResolution = baseline.Get<uint>("currentResolution");
         int ignored = 0, failed = 0, skipped = 0;
-        var exclusions = new HashSet<string>(_settings.TimerResolutionExcludedProcesses, StringComparer.OrdinalIgnoreCase);
+        var exclusions = new HashSet<string>(
+            _settings.TimerResolutionExcludedProcesses.Concat(_settings.ProtectedApplications),
+            StringComparer.OrdinalIgnoreCase);
 
         _processesIgnored.Clear();
 
@@ -51,7 +67,10 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
 
         if (isWin11)
         {
-            var foregroundPid = NativeMethods.GetForegroundProcessId();
+            var nativeForegroundPid = _native?.GetForegroundProcessId() ?? 0;
+            var foregroundPid = nativeForegroundPid > 0
+                ? (uint)nativeForegroundPid
+                : NativeMethods.GetForegroundProcessId();
 
             foreach (var proc in Process.GetProcesses())
             {
@@ -64,42 +83,30 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
                         continue;
                     }
 
-                    if (exclusions.Contains(proc.ProcessName))
+                    if (IsShellProcess(proc.ProcessName) || exclusions.Contains(proc.ProcessName))
                     {
                         skipped++;
                         continue;
                     }
 
-                    var handle = NativeMethods.OpenProcess(NativeMethods.PROCESS_SET_INFORMATION, false, pid);
-                    if (handle == IntPtr.Zero) { skipped++; continue; }
-
-                    try
+                    if (SetTimerResolutionIgnore(proc.Id, enable: true))
                     {
-                        if (NativeMethods.SetProcessTimerResolutionIgnore(handle, true))
-                        {
-                            _processesIgnored.Add(pid);
-                            ignored++;
-                        }
-                        else { failed++; }
+                        _processesIgnored.Add(pid);
+                        ignored++;
                     }
-                    finally { NativeMethods.CloseHandle(handle); }
+                    else { failed++; }
                 }
                 catch { skipped++; }
                 finally { proc.Dispose(); }
             }
         }
 
-        if (_originalResolution < DEFAULT_RESOLUTION)
-        {
-            NativeMethods.NtSetTimerResolution(DEFAULT_RESOLUTION, true, out _);
-        }
-
-        _isActive = true;
+        _isActive = ignored > 0;
         sw.Stop();
 
         var msg = isWin11
-            ? $"Ignored timer on {ignored} processes, reset global to 15.6ms"
-            : "Reset global timer resolution to 15.6ms";
+            ? $"Ignored timer on {ignored} background processes"
+            : "Safe timer clamp requires Windows 11 22H2 or newer";
 
         return ApplyResult.Ok(Id, msg, optimized: ignored, failed: failed, skipped: skipped, duration: sw.Elapsed);
     }
@@ -110,23 +117,11 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
         {
             try
             {
-                var handle = NativeMethods.OpenProcess(
-                    NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
-                    false, pid);
-                if (handle == IntPtr.Zero) continue;
-                try { NativeMethods.SetProcessTimerResolutionIgnore(handle, false); }
-                finally { NativeMethods.CloseHandle(handle); }
+                SetTimerResolutionIgnore((int)pid, enable: false);
             }
             catch { }
         }
         _processesIgnored.Clear();
-
-        try
-        {
-            // Clear our timer resolution request
-            NativeMethods.NtSetTimerResolution(0, false, out _);
-        }
-        catch { }
 
         _isActive = false;
     }
@@ -148,6 +143,24 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
                 : $"Timer at {currentMs:F1}ms",
         };
     }
+
+    private bool SetTimerResolutionIgnore(int pid, bool enable)
+    {
+        if (_native?.SetTimerResolution(enable, pid) == true)
+            return true;
+
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
+            false, (uint)pid);
+        if (handle == IntPtr.Zero)
+            return false;
+
+        try { return NativeMethods.SetProcessTimerResolutionIgnore(handle, enable); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
+    internal static bool IsShellProcess(string processName) =>
+        ShellProcessExclusions.Contains(processName);
 
     public void Dispose() { }
 }

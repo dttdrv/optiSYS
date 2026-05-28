@@ -14,10 +14,31 @@ public class SettingsTests
         settings.Validate();
 
         Assert.True(settings.AutoOptimizeOnBattery);
-        Assert.True(settings.AutoOptimizeMemoryEnabled == false);
+        Assert.False(settings.AutomationPaused);
+        Assert.True(settings.AutoOptimizeMemoryEnabled);
+        Assert.True(settings.EcoQosEnabled);
+        Assert.True(settings.TimerResolutionEnabled);
+        Assert.False(settings.BackgroundServicesEnabled);
+        Assert.False(settings.UsbSuspendEnabled);
+        Assert.False(settings.NetworkPowerEnabled);
+        Assert.False(settings.GpuPowerEnabled);
+        Assert.False(settings.CpuParkingEnabled);
+        Assert.False(settings.DiskCoalescingEnabled);
+        Assert.False(settings.HasCompletedOnboarding);
+        Assert.True(settings.StartWithWindows);
         Assert.Equal(80, settings.MemoryThresholdPercent);
+        Assert.Equal(OptimizationLevel.Conservative, settings.OptimizationLevel);
         Assert.Equal(2, settings.DebouncePowerChangeSeconds);
-        Assert.Equal("System", settings.ThemeMode);
+        Assert.Equal(15, settings.MemoryCleanupDurationSeconds);
+        Assert.Equal(2, settings.MemoryRepeatPasses);
+        Assert.Equal("Dark", settings.ThemeMode);
+        Assert.Equal(640, settings.WindowWidth);
+        Assert.Equal(420, settings.WindowHeight);
+        Assert.Contains("explorer", settings.MemoryExcludedProcesses);
+        Assert.Contains("ShellExperienceHost", settings.EcoQosExcludedProcesses);
+        Assert.Contains("StartMenuExperienceHost", settings.TimerResolutionExcludedProcesses);
+        Assert.Contains("Code", settings.ProtectedApplications);
+        Assert.Contains("chrome", settings.ProtectedApplications);
     }
 
     [Fact]
@@ -27,12 +48,16 @@ public class SettingsTests
         {
             DebouncePowerChangeSeconds = -1,
             MemoryThresholdPercent = 150,
+            MemoryCleanupDurationSeconds = 999,
+            MemoryRepeatPasses = 99,
             WindowWidth = 50
         };
         settings.Validate();
 
         Assert.Equal(1, settings.DebouncePowerChangeSeconds);
         Assert.Equal(95, settings.MemoryThresholdPercent);
+        Assert.Equal(60, settings.MemoryCleanupDurationSeconds);
+        Assert.Equal(5, settings.MemoryRepeatPasses);
         Assert.Equal(400, settings.WindowWidth);
     }
 
@@ -43,13 +68,43 @@ public class SettingsTests
         {
             EcoQosExcludedProcesses = null!,
             MemoryExcludedProcesses = null!,
+            ProtectedApplications = null!,
             ServicesToThrottle = null!
         };
         settings.Validate();
 
         Assert.NotNull(settings.EcoQosExcludedProcesses);
         Assert.NotNull(settings.MemoryExcludedProcesses);
+        Assert.NotNull(settings.ProtectedApplications);
         Assert.NotNull(settings.ServicesToThrottle);
+        Assert.Contains("explorer", settings.MemoryExcludedProcesses);
+        Assert.Contains("ShellExperienceHost", settings.EcoQosExcludedProcesses);
+    }
+
+    [Fact]
+    public void Settings_Validate_RemovesServicesOutsideAllowlist()
+    {
+        var settings = new Settings
+        {
+            ServicesToThrottle = ["WSearch", "Spooler", "BITS", "LanmanServer"]
+        };
+
+        settings.Validate();
+
+        Assert.Equal(["WSearch", "BITS"], settings.ServicesToThrottle);
+    }
+
+    [Fact]
+    public void Settings_Validate_TrimsAndDeduplicatesServicesCaseInsensitive()
+    {
+        var settings = new Settings
+        {
+            ServicesToThrottle = [" WSearch ", "wsearch", "BITS", "bits"]
+        };
+
+        settings.Validate();
+
+        Assert.Equal(["WSearch", "BITS"], settings.ServicesToThrottle);
     }
 }
 

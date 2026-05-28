@@ -6,4 +6,25 @@
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <!--
+      Headless WinUI/CsWinRT builds can fail when Windows SDK discovery depends solely on
+      registry keys that are missing on lean developer machines. Prefer explicit MSBuild
+      properties when already supplied, then environment-driven / well-known install roots.
+    -->
+    <_CanonicalWindowsKitsRoot>$([System.IO.Path]::GetFullPath('C:\Program Files (x86)\Windows Kits\10\'))</_CanonicalWindowsKitsRoot>
+    <_WindowsSdkPathFromEnv Condition="'$(WindowsSdkPath)' == '' and '$(WindowsSdkDir)' != ''">$([System.IO.Path]::GetFullPath('$(WindowsSdkDir)'))</_WindowsSdkPathFromEnv>
+    <_WindowsSdkPathFromCanonical Condition="'$(WindowsSdkPath)' == '' and '$(_WindowsSdkPathFromEnv)' == '' and Exists('$(_CanonicalWindowsKitsRoot)')">$(_CanonicalWindowsKitsRoot)</_WindowsSdkPathFromCanonical>
+
+    <WindowsSdkPath Condition="'$(WindowsSdkPath)' == '' and '$(_WindowsSdkPathFromEnv)' != ''">$(_WindowsSdkPathFromEnv)</WindowsSdkPath>
+    <WindowsSdkPath Condition="'$(WindowsSdkPath)' == '' and '$(_WindowsSdkPathFromCanonical)' != ''">$(_WindowsSdkPathFromCanonical)</WindowsSdkPath>
+
+    <WindowsSdkDir Condition="'$(WindowsSdkDir)' == '' and '$(WindowsSdkPath)' != ''">$(WindowsSdkPath)</WindowsSdkDir>
+
+    <TargetPlatformSdkRootOverride Condition="'$(TargetPlatformSdkRootOverride)' == '' and '$(WindowsSdkPath)' != '' and Exists('$(WindowsSdkPath)References')">$([System.String]::Copy('$(WindowsSdkPath)').TrimEnd('\'))</TargetPlatformSdkRootOverride>
+
+    <CsWinRTWindowsMetadata Condition="'$(CsWinRTWindowsMetadata)' == '' and '$(WindowsSdkPath)' != '' and Exists('$(WindowsSdkPath)UnionMetadata\$(TargetPlatformVersion)\Facade\Windows.winmd')">"$(WindowsSdkPath)UnionMetadata\$(TargetPlatformVersion)\Facade\Windows.winmd"</CsWinRTWindowsMetadata>
+    <CsWinRTWindowsMetadata Condition="'$(CsWinRTWindowsMetadata)' == '' and '$(WindowsSdkPath)' != '' and Exists('$(WindowsSdkPath)UnionMetadata\Facade\Windows.winmd')">"$(WindowsSdkPath)UnionMetadata\Facade\Windows.winmd"</CsWinRTWindowsMetadata>
+  </PropertyGroup>
 </Project>

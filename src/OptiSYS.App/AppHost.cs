@@ -1,9 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using OptiSYS.Core.Interfaces;
+using OptiSYS.Core.Domains.Battery;
+using OptiSYS.Core.Domains.Memory;
 using OptiSYS.Core.Models;
 using OptiSYS.Core.Services;
 using OptiSYS.Services;
-using OptiSYS.ViewModels;
 
 namespace OptiSYS;
 
@@ -11,13 +12,11 @@ namespace OptiSYS;
 /// Tiny static container that owns the single <see cref="IServiceProvider"/> for the app.
 /// Kept static (not a proper <c>IHost</c>) because WinUI 3 apps don't get a generic host
 /// out of the box and for a single-window desktop shell we don't need scopes or lifetimes
-/// beyond "application singleton" vs "per-navigation transient."
+/// beyond "application singleton."
 ///
 /// <para>
 /// <b>Lifecycle:</b> <see cref="Initialize"/> must be called exactly once, from
-/// <see cref="App.OnLaunched"/>, BEFORE constructing <c>MainWindow</c>. Pages resolve their
-/// ViewModel in the code-behind ctor via <see cref="Services"/>.
-/// <see cref="GetRequiredService{T}"/>.
+/// <see cref="App.OnLaunched"/>, BEFORE constructing <c>MainWindow</c>.
 /// </para>
 ///
 /// <para>
@@ -25,8 +24,6 @@ namespace OptiSYS;
 /// <list type="bullet">
 ///   <item>Everything stateful (engine, battery/memory services, settings) is singleton —
 ///         the app has one of each, and crash-recovery / persistence assumes identity.</item>
-///   <item>ViewModels are transient so each navigation gets a fresh VM with fresh timers;
-///         re-visiting a page doesn't resurrect stale state.</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -59,8 +56,8 @@ public static class AppHost
         // would corrupt on-disk state.
         sc.AddSingleton<Settings>(_ => Settings.Load());
 
-        // Native bridge: picks Zig-or-managed at runtime; factory keeps that logic
-        // in one place and out of the container config.
+        // Native Windows bridge: centralizes the P/Invoke implementation used by
+        // telemetry and runtime optimizer domains.
         sc.AddSingleton<INativeBridge>(_ => NativeBridgeFactory.Create());
 
         sc.AddSingleton<SnapshotStore>();
@@ -78,22 +75,30 @@ public static class AppHost
         sc.AddSingleton<MemoryOptimizer>();
         sc.AddSingleton<IMemoryOptimizer>(p => p.GetRequiredService<MemoryOptimizer>());
 
-        // Engine + monitor:  PowerSourceMonitor takes a concrete UnifiedOptimizationEngine
-        // in its ctor, so we register the concrete type as the "root of truth" and expose
-        // IOptimizationEngine as an alias factory.
+        // Register domains explicitly so the unified engine consumes a deterministic
+        // DI-managed order rather than constructing its own private set.
+        sc.AddSingleton<IOptimizationDomain, EcoQosDomain>();
+        sc.AddSingleton<IOptimizationDomain, TimerResolutionDomain>();
+        sc.AddSingleton<IOptimizationDomain, MemoryOptimizerDomain>();
+
+        // Engine + monitor: expose both concrete and interface aliases so startup/runtime
+        // services and tests can resolve the same singleton instances.
         sc.AddSingleton<UnifiedOptimizationEngine>();
         sc.AddSingleton<IOptimizationEngine>(p => p.GetRequiredService<UnifiedOptimizationEngine>());
         sc.AddSingleton<PowerSourceMonitor>();
+        sc.AddSingleton<OptiSYS.Core.Interfaces.IPowerSourceMonitor>(p => p.GetRequiredService<PowerSourceMonitor>());
 
         // ── App-layer seams ───────────────────────────────────────────────────
+        sc.AddSingleton<AppRuntimeCoordinator>();
+        sc.AddSingleton<IAppRuntimeCoordinator>(p => p.GetRequiredService<AppRuntimeCoordinator>());
+        sc.AddSingleton<QuietAutomationService>();
+        sc.AddSingleton<IQuietAutomationService>(p => p.GetRequiredService<QuietAutomationService>());
+        sc.AddSingleton<TrayIconService>();
+        sc.AddSingleton<ITrayIconService>(p => p.GetRequiredService<TrayIconService>());
         sc.AddSingleton<ITimerService, DispatcherTimerService>();
-        sc.AddSingleton<IProcessEnumerator, ProcessEnumerator>();
-
-        // ── ViewModels (transient — fresh instance per navigation) ────────────
-        sc.AddTransient<DashboardViewModel>();
-        sc.AddTransient<BatteryViewModel>();
-        sc.AddTransient<MemoryViewModel>();
-        sc.AddTransient<ProcessesViewModel>();
-        sc.AddTransient<SettingsViewModel>();
+        sc.AddSingleton<IStartupRegistrationStore, CurrentUserStartupRegistrationStore>();
+        sc.AddSingleton<IExecutablePathProvider, ProcessExecutablePathProvider>();
+        sc.AddSingleton<StartupRegistrationService>();
+        sc.AddSingleton<IStartupRegistrationService>(p => p.GetRequiredService<StartupRegistrationService>());
     }
 }

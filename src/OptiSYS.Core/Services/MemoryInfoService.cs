@@ -111,6 +111,48 @@ public sealed class MemoryInfoService : IMemoryInfoService
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        var managedInfo = GetManagedMemoryInfo();
+        if (_native?.GetMemoryInfo(out var nativeInfo) == true)
+        {
+            var current = new MemoryInfo
+            {
+                TotalPhysicalBytes = nativeInfo.TotalPhysicalBytes,
+                AvailablePhysicalBytes = nativeInfo.AvailablePhysicalBytes,
+                CachedBytes = nativeInfo.StandbyCacheNormalPriorityBytes > 0
+                    ? nativeInfo.StandbyCacheNormalPriorityBytes + nativeInfo.StandbyCacheReserveBytes
+                    : managedInfo.CachedBytes,
+                StandbyCacheBytes = nativeInfo.StandbyCacheNormalPriorityBytes > 0
+                    ? nativeInfo.StandbyCacheNormalPriorityBytes + nativeInfo.StandbyCacheReserveBytes
+                    : managedInfo.StandbyCacheBytes,
+                FreeBytes = managedInfo.FreeBytes,
+                ModifiedBytes = nativeInfo.ModifiedPageListBytes > 0
+                    ? nativeInfo.ModifiedPageListBytes
+                    : managedInfo.ModifiedBytes,
+                CommittedBytes = nativeInfo.CommittedBytes > 0
+                    ? nativeInfo.CommittedBytes
+                    : managedInfo.CommittedBytes,
+                CompressedBytes = managedInfo.CompressedBytes,
+                KernelPagedBytes = managedInfo.KernelPagedBytes,
+                KernelNonpagedBytes = managedInfo.KernelNonpagedBytes,
+                CommitTotalBytes = nativeInfo.CommittedBytes > 0
+                    ? nativeInfo.CommittedBytes
+                    : managedInfo.CommitTotalBytes,
+                CommitLimitBytes = managedInfo.CommitLimitBytes,
+                ProcessCount = managedInfo.ProcessCount,
+                ThreadCount = managedInfo.ThreadCount,
+                HandleCount = managedInfo.HandleCount,
+            };
+
+            CurrentInfo = current;
+            return current;
+        }
+
+        CurrentInfo = managedInfo;
+        return managedInfo;
+    }
+
+    private MemoryInfo GetManagedMemoryInfo()
+    {
         var memStatus = new NativeMethods.MEMORYSTATUSEX
         {
             dwLength = (uint)Marshal.SizeOf<NativeMethods.MEMORYSTATUSEX>()
@@ -152,7 +194,7 @@ public sealed class MemoryInfoService : IMemoryInfoService
 
         ulong compressedBytes = GetCompressedMemoryBytes();
 
-        return new MemoryInfo
+        var info = new MemoryInfo
         {
             TotalPhysicalBytes = (long)physTotal,
             AvailablePhysicalBytes = (long)available,
@@ -170,6 +212,7 @@ public sealed class MemoryInfoService : IMemoryInfoService
             ThreadCount = perfInfo.ThreadCount,
             HandleCount = perfInfo.HandleCount,
         };
+        return info;
     }
 
     private ulong GetCompressedMemoryBytes()
