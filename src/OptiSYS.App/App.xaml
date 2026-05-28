@@ -6,25 +6,13 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-                <ResourceDictionary>
-                    <ResourceDictionary.ThemeDictionaries>
-                        <ResourceDictionary x:Key="Light">
-                            <Color x:Key="SystemAccentColor">#5CB865</Color>
-                            <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#5CB865" />
-                        </ResourceDictionary>
-                        <ResourceDictionary x:Key="Dark">
-                            <Color x:Key="SystemAccentColor">#5CB865</Color>
-                            <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#5CB865" />
-                        </ResourceDictionary>
-                        <ResourceDictionary x:Key="Default">
-                            <Color x:Key="SystemAccentColor">#5CB865</Color>
-                            <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#5CB865" />
-                        </ResourceDictionary>
-                        <!-- High contrast: inherit the system palette; never force the brand accent. -->
-                        <ResourceDictionary x:Key="HighContrast" />
-                    </ResourceDictionary.ThemeDictionaries>
-                </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- The app's accent brush, aliased to the live OS accent color. SystemAccentColor is a
+                 built-in WinUI resource that tracks the system accent, so this brush follows the
+                 user's Windows accent instead of a hardcoded colour. The opt-in brand-green accent
+                 overrides this brush at runtime via ThemeManager.ApplyAccentColor. -->
+            <SolidColorBrush x:Key="SystemAccentColorBrush" Color="{ThemeResource SystemAccentColor}" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

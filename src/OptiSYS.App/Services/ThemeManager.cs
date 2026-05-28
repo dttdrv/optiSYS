@@ -74,23 +74,15 @@ internal sealed class ThemeManager
                 return;
             }
 
-            Windows.UI.Color color;
+            // Default: follow the OS accent. WinUI's SystemAccentColor* resources already track the
+            // system accent live, so we override nothing and let them flow through.
             if (_settings.UseWindowsAccentColor)
             {
-                try
-                {
-                    var uiSettings = new Windows.UI.ViewManagement.UISettings();
-                    color = uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent);
-                }
-                catch
-                {
-                    color = Windows.UI.Color.FromArgb(255, 92, 184, 101); // fallback
-                }
+                return;
             }
-            else
-            {
-                color = Windows.UI.Color.FromArgb(255, 92, 184, 101); // #5CB865
-            }
+
+            // Opt-in custom brand accent: override the accent resources with OptiSYS green.
+            var color = Windows.UI.Color.FromArgb(255, 92, 184, 101); // #5CB865
 
             Application.Current.Resources["SystemAccentColor"] = color;
 
