@@ -5,7 +5,6 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 using OptiSYS.Services;
@@ -33,7 +32,6 @@ public sealed partial class MainWindow : Window
     private readonly ObservableCollection<string> _memoryExclusions = new();
     private readonly ObservableCollection<string> _timerExclusions = new();
     private readonly ObservableCollection<string> _protectedApps = new();
-    private readonly List<double> _memoryHistory = new();
     
     private bool _allowExit;
     private bool _initializing = true;
@@ -237,12 +235,36 @@ public sealed partial class MainWindow : Window
     private void RestoreSelectedPage()
     {
         var tag = string.IsNullOrWhiteSpace(_settings.SelectedNavItem) ? "Dashboard" : _settings.SelectedNavItem;
+
+        // Set page content immediately — this only flips the page Grids' Visibility, which is
+        // safe during construction.
+        SwitchToPage(tag);
+
+        // Defer the NavigationView selection: assigning SelectedItem before the control's
+        // template is realized throws COMException 0x80070490 (ERROR_NOT_FOUND).
+        if (NavView.IsLoaded)
+        {
+            SelectNavItem(tag);
+        }
+        else
+        {
+            void OnNavLoaded(object sender, RoutedEventArgs e)
+            {
+                NavView.Loaded -= OnNavLoaded;
+                SelectNavItem(tag);
+            }
+
+            NavView.Loaded += OnNavLoaded;
+        }
+    }
+
+    private void SelectNavItem(string tag)
+    {
         foreach (var entry in NavView.MenuItems)
         {
             if (entry is NavigationViewItem item && item.Tag is string itemTag && itemTag == tag)
             {
                 NavView.SelectedItem = item;
-                SwitchToPage(tag);
                 return;
             }
         }
@@ -431,7 +453,7 @@ public sealed partial class MainWindow : Window
             MemoryCachedText.Text = $"{memory.StandbyGB:F1} GB";
             MemoryProcessesText.Text = $"{memory.ProcessCount:N0}";
 
-            UpdateHistoryChart(memory.UsagePercent);
+            MemoryHistoryChart.AddSample(memory.UsagePercent);
         }
         else
         {
@@ -479,61 +501,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void UpdateHistoryChart(double currentPercent)
-    {
-        _memoryHistory.Add(currentPercent);
-        if (_memoryHistory.Count > 40)
-        {
-            _memoryHistory.RemoveAt(0);
-        }
-
-        RedrawHistoryChart();
-    }
-
-    private void RedrawHistoryChart()
-    {
-        if (HistoryCanvas is null || MemoryHistoryLine is null || MemoryHistoryArea is null)
-        {
-            return;
-        }
-
-        var canvasWidth = HistoryCanvas.ActualWidth;
-        var canvasHeight = HistoryCanvas.ActualHeight;
-
-        if (canvasWidth <= 0 || canvasHeight <= 0 || _memoryHistory.Count == 0)
-        {
-            return;
-        }
-
-        var linePoints = new PointCollection();
-        var areaPoints = new PointCollection();
-
-        // Start area polygon at the bottom-left corner
-        areaPoints.Add(new Windows.Foundation.Point(0, canvasHeight));
-
-        for (int i = 0; i < _memoryHistory.Count; i++)
-        {
-            double x = i * (canvasWidth / Math.Max(1, _memoryHistory.Count - 1));
-            double y = canvasHeight - (_memoryHistory[i] / 100.0 * canvasHeight);
-            var p = new Windows.Foundation.Point(x, y);
-            linePoints.Add(p);
-            areaPoints.Add(p);
-        }
-
-        // Close area polygon at the bottom-right corner
-        var lastX = (_memoryHistory.Count - 1) * (canvasWidth / Math.Max(1, _memoryHistory.Count - 1));
-        areaPoints.Add(new Windows.Foundation.Point(lastX, canvasHeight));
-
-        MemoryHistoryLine.Points = linePoints;
-        MemoryHistoryArea.Points = areaPoints;
-    }
-
-    private void OnHistoryCanvasSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        RedrawHistoryChart();
-    }
-
-    private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
+private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
     {
         text.AppendLine("[memory]");
         if (memory is null || memory.TotalPhysicalBytes <= 0)

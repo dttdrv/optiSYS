@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    xmlns:controls="using:OptiSYS.Controls"
     Title="optiSYS">
 
     
@@ -217,27 +218,7 @@
                                     </StackPanel>
                                 </Grid>
                                 
-                                <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="4">
-                                    <Canvas x:Name="HistoryCanvas" Height="100" HorizontalAlignment="Stretch" Background="Transparent" SizeChanged="OnHistoryCanvasSizeChanged">
-                                        <!-- Subtle grid helper lines -->
-                                        <Line X1="0" Y1="25" X2="2000" Y2="25" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" StrokeDashArray="3,3" />
-                                        <Line X1="0" Y1="50" X2="2000" Y2="50" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" StrokeDashArray="3,3" />
-                                        <Line X1="0" Y1="75" X2="2000" Y2="75" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" StrokeDashArray="3,3" />
-                                        
-                                        <!-- Gradient filled area underneath the line -->
-                                        <Polygon x:Name="MemoryHistoryArea" StrokeThickness="0" Opacity="0.15">
-                                            <Polygon.Fill>
-                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                    <GradientStop Color="{ThemeResource SystemAccentColor}" Offset="0" />
-                                                    <GradientStop Color="Transparent" Offset="1" />
-                                                </LinearGradientBrush>
-                                            </Polygon.Fill>
-                                        </Polygon>
-                                        
-                                        <!-- Line plot -->
-                                        <Polyline x:Name="MemoryHistoryLine" Stroke="{ThemeResource SystemAccentColorBrush}" StrokeThickness="2.5" />
-                                    </Canvas>
-                                </Border>
+                                <controls:HistoryChartControl x:Name="MemoryHistoryChart" />
                                 <Grid>
                                     <TextBlock Text="Last 40 samples (5s interval)" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <TextBlock Text="DPI-Scaled Vector Rendering" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" />

@@ -2,7 +2,11 @@
 
 Goal: make OptiSYS look and feel like a first-class native WinUI 3 / Fluent app.
 Branch: `feat/native-ui-ux`. Verification per item: `build` green → `test` green →
-launch smoke. Visual QA happens at milestone check-ins (no screenshot tooling this session).
+launch smoke. **Smoke = startup.log must reach "window activated" with no _unhandled_
+exception** (process-alive alone is NOT sufficient — the app's UnhandledException handler
+can keep a broken process alive; and launching via automation hits a pre-existing,
+app-handled `InvalidCastException` during WinUI activation that is benign). Visual QA happens
+at milestone check-ins (no screenshot tooling this session).
 
 Status legend: ☐ todo · ◐ in progress · ☑ done
 
@@ -22,9 +26,9 @@ Status legend: ☐ todo · ◐ in progress · ☑ done
 
 ## Milestone D — Native navigation ✅ (needs visual QA)
 - ☑ **#1** Replaced hand-rolled sidebar (5 Buttons + manual visibility + accent borders) with `NavigationView` (PaneDisplayMode=Left, no toggle/back, IsSettingsVisible=false) hosting the existing inline content. Status label + Pause/Resume moved to `PaneFooter`. Removed orphaned `SidebarButtonStyle`. New reflection tests lock `NavView` + the 5 page containers (134→140 tests).
-- ☑ **#12** Persist & restore `SelectedNavItem` via `RestoreSelectedPage()` on startup + save-on-change in `SwitchToPage`.
+- ☑ **#12** Persist & restore `SelectedNavItem` via `RestoreSelectedPage()` on startup + save-on-change in `SwitchToPage`. **Startup-crash fix:** initial `NavView.SelectedItem` assignment is deferred to the `Loaded` event — setting it during construction threw an unhandled `COMException 0x80070490` (caught later via the strengthened log-scan smoke).
 
 ## Milestone E — Code-behind health (TDD)
 - ☐ **#6** Extract `ThemeManager` (theme/backdrop/accent/title-bar colours) out of `MainWindow.xaml.cs`.
 - ☑ **#9** Deduplicated the 3 exclusion-CRUD blocks into shared `AddExclusion`/`RemoveExclusion` helpers; named methods kept as thin wrappers.
-- ☐ **#10** Extract `HistoryChartControl` (canvas + redraw) into its own control.
+- ☑ **#10** Extracted `Controls/HistoryChartControl` (owns rolling buffer + canvas + redraw); MainWindow lost all `Canvas`/`PointCollection`/`_memoryHistory` code; chart is now `<controls:HistoryChartControl/>`. Includes **#11**: grid lines stretch to canvas width (no more `X2="2000"`).
