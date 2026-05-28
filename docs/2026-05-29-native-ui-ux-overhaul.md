@@ -26,5 +26,5 @@ Status legend: ☐ todo · ◐ in progress · ☑ done
 
 ## Milestone E — Code-behind health (TDD)
 - ☐ **#6** Extract `ThemeManager` (theme/backdrop/accent/title-bar colours) out of `MainWindow.xaml.cs`.
-- ☐ **#9** Deduplicate the 3 exclusion-CRUD blocks into one generic helper.
+- ☑ **#9** Deduplicated the 3 exclusion-CRUD blocks into shared `AddExclusion`/`RemoveExclusion` helpers; named methods kept as thin wrappers.
 - ☐ **#10** Extract `HistoryChartControl` (canvas + redraw) into its own control.

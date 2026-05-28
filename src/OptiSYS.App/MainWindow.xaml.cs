@@ -693,17 +693,29 @@ public sealed partial class MainWindow : Window
         RefreshPresentation(forceMemoryPoll: true);
     }
 
-    private void AddMemoryExclusion(string processName)
+    // Shared add/remove for the three exclusion lists (memory, timer, protected apps).
+    private void AddExclusion(string processName, IList<string> settingsList, ObservableCollection<string> uiList)
     {
         processName = processName.Trim();
         if (string.IsNullOrWhiteSpace(processName)) return;
-        if (!_settings.MemoryExcludedProcesses.Contains(processName, StringComparer.OrdinalIgnoreCase))
+        if (settingsList.Contains(processName, StringComparer.OrdinalIgnoreCase)) return;
+
+        settingsList.Add(processName);
+        uiList.Add(processName);
+        _settings.SaveDebounced();
+    }
+
+    private void RemoveExclusion(string item, IList<string> settingsList, ObservableCollection<string> uiList)
+    {
+        if (settingsList.Remove(item))
         {
-            _settings.MemoryExcludedProcesses.Add(processName);
-            _memoryExclusions.Add(processName);
+            uiList.Remove(item);
             _settings.SaveDebounced();
         }
     }
+
+    private void AddMemoryExclusion(string processName) =>
+        AddExclusion(processName, _settings.MemoryExcludedProcesses, _memoryExclusions);
 
     private void OnAddMemoryExclusionClick(object sender, RoutedEventArgs e)
     {
@@ -725,25 +737,12 @@ public sealed partial class MainWindow : Window
     {
         if (sender is Button button && button.CommandParameter is string item)
         {
-            if (_settings.MemoryExcludedProcesses.Remove(item))
-            {
-                _memoryExclusions.Remove(item);
-                _settings.SaveDebounced();
-            }
+            RemoveExclusion(item, _settings.MemoryExcludedProcesses, _memoryExclusions);
         }
     }
 
-    private void AddTimerExclusion(string processName)
-    {
-        processName = processName.Trim();
-        if (string.IsNullOrWhiteSpace(processName)) return;
-        if (!_settings.TimerResolutionExcludedProcesses.Contains(processName, StringComparer.OrdinalIgnoreCase))
-        {
-            _settings.TimerResolutionExcludedProcesses.Add(processName);
-            _timerExclusions.Add(processName);
-            _settings.SaveDebounced();
-        }
-    }
+    private void AddTimerExclusion(string processName) =>
+        AddExclusion(processName, _settings.TimerResolutionExcludedProcesses, _timerExclusions);
 
     private void OnAddTimerExclusionClick(object sender, RoutedEventArgs e)
     {
@@ -765,25 +764,12 @@ public sealed partial class MainWindow : Window
     {
         if (sender is Button button && button.CommandParameter is string item)
         {
-            if (_settings.TimerResolutionExcludedProcesses.Remove(item))
-            {
-                _timerExclusions.Remove(item);
-                _settings.SaveDebounced();
-            }
+            RemoveExclusion(item, _settings.TimerResolutionExcludedProcesses, _timerExclusions);
         }
     }
 
-    private void AddProtectedApp(string processName)
-    {
-        processName = processName.Trim();
-        if (string.IsNullOrWhiteSpace(processName)) return;
-        if (!_settings.ProtectedApplications.Contains(processName, StringComparer.OrdinalIgnoreCase))
-        {
-            _settings.ProtectedApplications.Add(processName);
-            _protectedApps.Add(processName);
-            _settings.SaveDebounced();
-        }
-    }
+    private void AddProtectedApp(string processName) =>
+        AddExclusion(processName, _settings.ProtectedApplications, _protectedApps);
 
     private void OnAddProtectedAppClick(object sender, RoutedEventArgs e)
     {
@@ -830,11 +816,7 @@ public sealed partial class MainWindow : Window
     {
         if (sender is Button button && button.CommandParameter is string item)
         {
-            if (_settings.ProtectedApplications.Remove(item))
-            {
-                _protectedApps.Remove(item);
-                _settings.SaveDebounced();
-            }
+            RemoveExclusion(item, _settings.ProtectedApplications, _protectedApps);
         }
     }
 
