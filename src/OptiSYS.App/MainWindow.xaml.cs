@@ -92,11 +92,16 @@ public sealed partial class MainWindow : Window
             var appWindow = GetAppWindow();
             if (appWindow != null)
             {
+                appWindow.Title = "optiSYS";
+
                 if (AppWindowTitleBar.IsCustomizationSupported())
                 {
                     var titleBar = appWindow.TitleBar;
                     titleBar.ExtendsContentIntoTitleBar = true;
                     UpdateTitleBarButtonsColors();
+                    // Designate the title strip as the draggable region. Without this,
+                    // extending content into the title bar leaves the window undraggable.
+                    SetTitleBar(AppTitleBar);
                 }
                 else
                 {
@@ -126,6 +131,11 @@ public sealed partial class MainWindow : Window
             // Windows 11 system utility standard layout limits
             appWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(width, 800), Math.Max(height, 560)));
 
+            // Enforce a minimum size. WindowsAppSDK 1.6 has no OverlappedPresenter min-size API,
+            // so clamp via the AppWindow.Changed event instead.
+            appWindow.Changed -= OnAppWindowChanged;
+            appWindow.Changed += OnAppWindowChanged;
+
             if (double.IsFinite(_settings.WindowLeft) && double.IsFinite(_settings.WindowTop))
             {
                 appWindow.Move(new Windows.Graphics.PointInt32((int)_settings.WindowLeft, (int)_settings.WindowTop));
@@ -134,6 +144,25 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             StartupLog.WriteException("ConfigureAppWindow failure", ex);
+        }
+    }
+
+    private const int MinWindowWidth = 800;
+    private const int MinWindowHeight = 560;
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!args.DidSizeChange)
+        {
+            return;
+        }
+
+        var size = sender.Size;
+        var width = Math.Max(size.Width, MinWindowWidth);
+        var height = Math.Max(size.Height, MinWindowHeight);
+        if (width != size.Width || height != size.Height)
+        {
+            sender.Resize(new Windows.Graphics.SizeInt32(width, height));
         }
     }
 
@@ -303,10 +332,23 @@ public sealed partial class MainWindow : Window
         UpdateDashboardUI(memory, battery);
     }
 
+    private SolidColorBrush? _accentStatusFallback;
+    private SolidColorBrush? _cautionStatusBrush;
+
+    // Status colours resolved from theme resources so they track the accent/theme and are
+    // allocated at most once, instead of constructing fresh brushes on every timer tick.
+    private Brush AccentStatusBrush =>
+        Application.Current.Resources.TryGetValue("SystemAccentColorBrush", out var value) && value is Brush brush
+            ? brush
+            : _accentStatusFallback ??= new SolidColorBrush(Windows.UI.Color.FromArgb(255, 92, 184, 101));
+
+    private Brush CautionStatusBrush =>
+        _cautionStatusBrush ??= new SolidColorBrush(Windows.UI.Color.FromArgb(255, 240, 165, 0));
+
     private void UpdateDashboardUI(MemoryInfo? memory, BatteryInfo? battery)
     {
-        var accentBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 92, 184, 101)); // #5CB865
-        var cautionBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 230, 162, 2)); // Warning/Amber
+        var accentBrush = AccentStatusBrush;
+        var cautionBrush = CautionStatusBrush;
 
         // Update overall health alert
         if (_settings.AutomationPaused)
@@ -807,6 +849,7 @@ public sealed partial class MainWindow : Window
         {
             PersistWindowPlacement(appWindow);
             appWindow.Closing -= OnAppWindowClosing;
+            appWindow.Changed -= OnAppWindowChanged;
         }
 
         _battery.Updated -= OnBatteryUpdated;
@@ -893,6 +936,12 @@ public sealed partial class MainWindow : Window
     {
         try
         {
+            // In high-contrast mode, respect the system palette — never override the accent.
+            if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+            {
+                return;
+            }
+
             Windows.UI.Color color;
             if (_settings.UseWindowsAccentColor)
             {

@@ -20,6 +20,8 @@
                             <Color x:Key="SystemAccentColor">#5CB865</Color>
                             <SolidColorBrush x:Key="SystemAccentColorBrush" Color="#5CB865" />
                         </ResourceDictionary>
+                        <!-- High contrast: inherit the system palette; never force the brand accent. -->
+                        <ResourceDictionary x:Key="HighContrast" />
                     </ResourceDictionary.ThemeDictionaries>
                 </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>

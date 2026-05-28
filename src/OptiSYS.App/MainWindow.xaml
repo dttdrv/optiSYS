@@ -523,7 +523,7 @@
                                                     <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" />
                                                     <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveMemoryExclusionClick" CommandParameter="{Binding}" Padding="8,4" VerticalAlignment="Center">
                                                         <Button.Resources>
-                                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#20FF0000" />
+                                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
                                                         </Button.Resources>
                                                     </Button>
                                                 </Grid>
@@ -636,7 +636,7 @@
                                                     <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" />
                                                     <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveTimerExclusionClick" CommandParameter="{Binding}" Padding="8,4" VerticalAlignment="Center">
                                                         <Button.Resources>
-                                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#20FF0000" />
+                                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
                                                         </Button.Resources>
                                                     </Button>
                                                 </Grid>
@@ -681,7 +681,7 @@
                                                 <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" FontWeight="SemiBold" />
                                                 <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveProtectedAppClick" CommandParameter="{Binding}" Padding="8,4" VerticalAlignment="Center">
                                                     <Button.Resources>
-                                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#20FF0000" />
+                                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
                                                     </Button.Resources>
                                                 </Button>
                                             </Grid>
