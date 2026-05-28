@@ -45,8 +45,6 @@ public class MainWindowSmokeTests
 
     [Theory]
     [InlineData("DashboardGrid")]
-    [InlineData("MemoryGrid")]
-    [InlineData("PowerGrid")]
     [InlineData("ProtectedAppsGrid")]
     [InlineData("SettingsGrid")]
     public void MainWindow_HasPageContainers(string fieldName)

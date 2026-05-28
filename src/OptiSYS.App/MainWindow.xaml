@@ -1,4 +1,4 @@
-<Window
+﻿<Window
     x:Class="OptiSYS.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -10,7 +10,7 @@
 
     
 
-    <Grid x:Name="ShellRoot" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+    <Grid x:Name="ShellRoot" Background="Transparent">
         <Grid.Resources>
             <Style x:Key="SidebarButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
@@ -55,7 +55,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Sidebar -->
-            <Grid Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+            <Grid Grid.Column="0" Background="Transparent" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -74,36 +74,6 @@
                             <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
                                 <FontIcon Glyph="&#xE80F;" FontSize="16" />
                                 <TextBlock Text="Dashboard" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-
-                    <!-- Memory Optimizer -->
-                    <Button x:Name="MemoryBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Memory" AutomationProperties.Name="Memory Optimizer">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="MemoryAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE964;" FontSize="16" />
-                                <TextBlock Text="Memory Optimizer" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-
-                    <!-- Power & Energy -->
-                    <Button x:Name="PowerBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Power" AutomationProperties.Name="Power &amp; Energy">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="PowerAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE83F;" FontSize="16" />
-                                <TextBlock Text="Power &amp; Energy" VerticalAlignment="Center" />
                             </StackPanel>
                         </Grid>
                     </Button>
@@ -149,43 +119,20 @@
             </Grid>
 
             <!-- Main Content Area -->
-            <Grid Grid.Column="1" Padding="28,24,28,24" Background="Transparent">
+            <Grid Grid.Column="1" Padding="28,24,28,24" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
                 
                 <!-- ==================== DASHBOARD TAB ==================== -->
                 <ScrollViewer x:Name="DashboardGrid" Visibility="Visible" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="16" Margin="0,0,0,16">
-                        <TextBlock Text="System Dashboard" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
-
-                        <!-- Overall Health Status Alert -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                
-                                <Border Background="{ThemeResource SystemAccentColorBrush}" Opacity="0.9" CornerRadius="20" Width="40" Height="40" VerticalAlignment="Center">
-                                    <FontIcon x:Name="HealthStatusIcon" Glyph="&#xE73E;" FontSize="18" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock x:Name="HealthStatusTitle" Text="System is protected and optimized" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <StackPanel Orientation="Horizontal" Spacing="12">
-                                        <TextBlock x:Name="HealthStatusMessage" Text="Safe background checks are running." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        
-                                        <!-- Session Memory Savings Badge -->
-                                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xE964;" FontSize="10" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="TotalFreedBytesText" Text="0 MB" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="saved" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </StackPanel>
-                                
-                                <Button x:Name="ManualTrimButton" Grid.Column="2" Content="Run Cleanup" Style="{StaticResource AccentButtonStyle}" Click="OnManualTrimClick" Padding="16,8" CornerRadius="4" />
-                            </Grid>
-                        </Border>
+                        <!-- Dashboard header row with manual-optimize action -->
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="System Dashboard" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                            <Button x:Name="ManualTrimButton" Grid.Column="1" Content="Optimize now" Style="{StaticResource AccentButtonStyle}" Click="OnManualTrimClick" Padding="16,8" CornerRadius="4" VerticalAlignment="Center" />
+                        </Grid>
 
                         <!-- Live Telemetry Card Row -->
                         <Grid ColumnSpacing="16">
@@ -230,6 +177,20 @@
                                         </StackPanel>
                                         <TextBlock x:Name="MemoryProcessesText" Grid.Row="1" Grid.Column="1" Text="--" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </Grid>
+
+                                    <!-- Memory optimization mode -->
+                                    <Grid ColumnSpacing="8" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Mode" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="OptimizationLevelComboBox" Grid.Column="1" MinWidth="140" VerticalAlignment="Center" SelectionChanged="OnSettingsChanged">
+                                            <ComboBoxItem Content="Normal" />
+                                            <ComboBoxItem Content="Balanced" />
+                                            <ComboBoxItem Content="Max" />
+                                        </ComboBox>
+                                    </Grid>
                                 </StackPanel>
                             </Border>
 
@@ -239,7 +200,7 @@
                                     <Grid>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <FontIcon x:Name="PowerIcon" Glyph="&#xE83F;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Power &amp; Performance" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Efficiency" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
                                     <StackPanel Spacing="2">
@@ -269,6 +230,19 @@
                                         </StackPanel>
                                         <TextBlock x:Name="BatteryRemainingText" Grid.Row="1" Grid.Column="1" Text="N/A" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </Grid>
+
+                                    <!-- Battery care profile -->
+                                    <Grid ColumnSpacing="8" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Profile" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="BatteryPresetComboBox" Grid.Column="1" MinWidth="140" VerticalAlignment="Center" SelectionChanged="OnBatteryPresetChanged">
+                                            <ComboBoxItem Content="Recommended" />
+                                            <ComboBoxItem Content="Saver" />
+                                        </ComboBox>
+                                    </Grid>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -295,292 +269,6 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- ==================== MEMORY OPTIMIZER TAB ==================== -->
-                <ScrollViewer x:Name="MemoryGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                    <Grid ColumnSpacing="24" Margin="0,0,0,16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="6.5*" />
-                            <ColumnDefinition Width="3.5*" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Spacing="16">
-                            <TextBlock Text="Memory Optimization" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
-
-                            <!-- Settings Group: Behavior -->
-                            <TextBlock Text="Trigger Policies" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            
-                            <!-- Automatic Memory Optimization Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Automatic Memory Optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Monitor memory pressure and release resources when limits are exceeded." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <ToggleSwitch x:Name="AutoOptimizeMemoryToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
-                                </Grid>
-                            </Border>
-
-                            <!-- Trigger Threshold Slider Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <StackPanel Spacing="8">
-                                    <Grid ColumnSpacing="16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Glyph="&#xE950;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <TextBlock Text="Trigger Threshold" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock Text="Memory pressure level at which automatic cleanup is triggered." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <TextBlock x:Name="MemoryThresholdValueLabel" Grid.Column="2" Text="80%" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                    </Grid>
-                                    <Slider x:Name="MemoryThresholdSlider" Minimum="10" Maximum="95" Value="80" StepFrequency="5" TickFrequency="10" ValueChanged="OnMemoryThresholdChanged" Margin="40,0,0,0" />
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Cooldown Slider Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <StackPanel Spacing="8">
-                                    <Grid ColumnSpacing="16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Glyph="&#xE916;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <TextBlock Text="Check &amp; Cooldown Interval" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock Text="Minimum seconds to wait between successive automatic cleanups." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <TextBlock x:Name="MemoryCooldownValueLabel" Grid.Column="2" Text="30 seconds" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                    </Grid>
-                                    <Slider x:Name="MemoryCooldownSlider" Minimum="5" Maximum="300" Value="30" StepFrequency="5" ValueChanged="OnMemoryCooldownChanged" Margin="40,0,0,0" />
-                                </StackPanel>
-                            </Border>
-
-                            <TextBlock Text="Optimization Level" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" />
-
-                            <!-- Aggressiveness Dropdown Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE781;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Optimization Aggressiveness" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Determine which memory APIs and page lists to target." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <ComboBox x:Name="OptimizationLevelComboBox" Grid.Column="2" Width="180" VerticalAlignment="Center" SelectionChanged="OnSettingsChanged">
-                                        <ComboBoxItem Content="Conservative" />
-                                        <ComboBoxItem Content="Balanced" />
-                                        <ComboBoxItem Content="Aggressive" />
-                                    </ComboBox>
-                                </Grid>
-                            </Border>
-
-                            <!-- Effectiveness Tracking Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE9D2;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Effectiveness Tracking" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Skip optimization steps that historically recover negligible memory." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <ToggleSwitch x:Name="EffectivenessTrackingToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
-                                </Grid>
-                            </Border>
-
-                            <!-- self-cap slider card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <StackPanel Spacing="8">
-                                    <Grid ColumnSpacing="16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Glyph="&#xE734;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                            <TextBlock Text="optiSYS Working Set Cap" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                            <TextBlock Text="Limit optiSYS's own background memory footprint." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <TextBlock x:Name="SelfCapValueLabel" Grid.Column="2" Text="100 MB" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                    </Grid>
-                                    <Slider x:Name="SelfCapSlider" Minimum="50" Maximum="512" Value="100" StepFrequency="10" ValueChanged="OnSelfCapChanged" Margin="40,0,0,0" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- Exclusions List -->
-                        <StackPanel Grid.Column="1" Spacing="16">
-                            <TextBlock Text="Exclusions" Style="{StaticResource SubtitleTextBlockStyle}" />
-                            <TextBlock Text="Processes in this list are never trimmed during automatic cleanups." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="MemoryExclusionInput" PlaceholderText="Process name (e.g., chrome)" KeyDown="OnMemoryExclusionInputKeyDown" />
-                                <Button Content="Add" Grid.Column="1" Click="OnAddMemoryExclusionClick" Style="{StaticResource AccentButtonStyle}" />
-                            </Grid>
-
-                            <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
-                                <ListView x:Name="MemoryExclusionsListView" MinHeight="160" MaxHeight="420" SelectionMode="None">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,4" Padding="12,8">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <FontIcon Glyph="&#xE71D;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                    <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" />
-                                                    <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveMemoryExclusionClick" CommandParameter="{Binding}" AutomationProperties.Name="{Binding}" ToolTipService.ToolTip="Remove" Padding="8,4" VerticalAlignment="Center">
-                                                        <Button.Resources>
-                                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
-                                                        </Button.Resources>
-                                                    </Button>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                </ScrollViewer>
-
-                <!-- ==================== POWER & ENERGY TAB ==================== -->
-                <ScrollViewer x:Name="PowerGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                    <Grid ColumnSpacing="24" Margin="0,0,0,16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="6.5*" />
-                            <ColumnDefinition Width="3.5*" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Spacing="16">
-                            <TextBlock Text="Power &amp; Energy" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
-
-                            <TextBlock Text="Battery Policies" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-
-                            <!-- Optimize on Battery Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xEBB5;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Optimize on Battery Power" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Enable battery optimizations automatically when running on DC power." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <ToggleSwitch x:Name="AutoOptimizeOnBatteryToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
-                                </Grid>
-                            </Border>
-
-                            <!-- Battery Care Profile Card -->
-                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE705;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Battery Care Profile" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Select the system adjustment profile when on battery power." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <ComboBox x:Name="BatteryPresetComboBox" Grid.Column="2" Width="180" VerticalAlignment="Center" SelectionChanged="OnBatteryPresetChanged">
-                                        <ComboBoxItem Content="Recommended" />
-                                        <ComboBoxItem Content="Saver" />
-                                    </ComboBox>
-                                </Grid>
-                            </Border>
-
-                            <!-- Policy Info Panel -->
-                            <Border CornerRadius="8" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" Padding="16" Margin="0,8,0,0">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Text="Automatic Adjustments on Battery" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="{ThemeResource SystemAccentColorBrush}" />
-                                        <TextBlock Text="Efficiency Mode (EcoQoS) set on background threads" Style="{StaticResource CaptionTextBlockStyle}" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="{ThemeResource SystemAccentColorBrush}" />
-                                        <TextBlock Text="Precision timers throttled for energy recovery" Style="{StaticResource CaptionTextBlockStyle}" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <FontIcon Glyph="&#xE73E;" FontSize="12" Foreground="{ThemeResource SystemAccentColorBrush}" />
-                                        <TextBlock Text="Non-essential hardware and system tasks paused" Style="{StaticResource CaptionTextBlockStyle}" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- Timer Exclusions List -->
-                        <StackPanel Grid.Column="1" Spacing="16">
-                            <TextBlock Text="Timer Exclusions" Style="{StaticResource SubtitleTextBlockStyle}" />
-                            <TextBlock Text="Processes that require high-precision timers (e.g., media players, games) and should be excluded from throttling." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TimerExclusionInput" PlaceholderText="Process name (e.g., vlc)" KeyDown="OnTimerExclusionInputKeyDown" />
-                                <Button Content="Add" Grid.Column="1" Click="OnAddTimerExclusionClick" Style="{StaticResource AccentButtonStyle}" />
-                            </Grid>
-
-                            <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
-                                <ListView x:Name="TimerExclusionsListView" MinHeight="160" MaxHeight="420" SelectionMode="None">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,4" Padding="12,8">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <FontIcon Glyph="&#xE916;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                                    <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" />
-                                                    <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveTimerExclusionClick" CommandParameter="{Binding}" AutomationProperties.Name="{Binding}" ToolTipService.ToolTip="Remove" Padding="8,4" VerticalAlignment="Center">
-                                                        <Button.Resources>
-                                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
-                                                        </Button.Resources>
-                                                    </Button>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </Border>
-                        </StackPanel>
-                    </Grid>
-                </ScrollViewer>
 
                 <!-- ==================== PROTECTED APPLICATIONS TAB ==================== -->
                 <ScrollViewer x:Name="ProtectedAppsGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
@@ -630,6 +318,101 @@
                 <ScrollViewer x:Name="SettingsGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left" Margin="0,0,0,16">
                         <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
+
+                        <TextBlock Text="Memory" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                        <!-- Automatic Memory Optimization Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Automatic Memory Optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="Monitor memory pressure and release resources when limits are exceeded." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="AutoOptimizeMemoryToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Trigger Threshold Slider Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE950;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="Trigger Threshold" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Text="Memory pressure level at which automatic cleanup is triggered." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="MemoryThresholdValueLabel" Grid.Column="2" Text="80%" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                                <Slider x:Name="MemoryThresholdSlider" Minimum="10" Maximum="95" Value="80" StepFrequency="5" TickFrequency="10" ValueChanged="OnMemoryThresholdChanged" Margin="40,0,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Cooldown Slider Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                            <StackPanel Spacing="8">
+                                <Grid ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE916;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="Check &amp; Cooldown Interval" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Text="Minimum seconds to wait between successive automatic cleanups." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="MemoryCooldownValueLabel" Grid.Column="2" Text="30 seconds" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                                <Slider x:Name="MemoryCooldownSlider" Minimum="5" Maximum="300" Value="30" StepFrequency="5" ValueChanged="OnMemoryCooldownChanged" Margin="40,0,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Effectiveness Tracking Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE9D2;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Effectiveness Tracking" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="Skip optimization steps that historically recover negligible memory." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="EffectivenessTrackingToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="Efficiency" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" />
+
+                        <!-- Optimize on Battery Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xEBB5;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Optimize on Battery Power" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="Enable battery optimizations automatically when running on DC power." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="AutoOptimizeOnBatteryToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
 
                         <TextBlock Text="General App settings" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 

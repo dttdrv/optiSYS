@@ -121,7 +121,7 @@ public sealed class Settings
     public bool HasCompletedOnboarding { get; set; } = false;
     public string ThemeMode { get; set; } = "Dark"; // "System", "Light", "Dark"
     public bool UseWindowsAccentColor { get; set; } = true;
-    public string BackdropType { get; set; } = "MicaAlt";
+    public string BackdropType { get; set; } = "Acrylic";
     public int HistoryMaxItems { get; set; } = 50;
     public string SelectedNavItem { get; set; } = "Dashboard";
 

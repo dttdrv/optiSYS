@@ -30,8 +30,6 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherQueueTimer _refreshTimer;
     private readonly ThemeManager _theme;
     
-    private readonly ObservableCollection<string> _memoryExclusions = new();
-    private readonly ObservableCollection<string> _timerExclusions = new();
     private readonly ObservableCollection<string> _protectedApps = new();
     
     private bool _allowExit;
@@ -65,8 +63,6 @@ public sealed partial class MainWindow : Window
         }
 
         // Setup Exclusions and Lists Data Binding
-        MemoryExclusionsListView.ItemsSource = _memoryExclusions;
-        TimerExclusionsListView.ItemsSource = _timerExclusions;
         ProtectedAppsListView.ItemsSource = _protectedApps;
 
         LoadExclusionsFromSettings();
@@ -75,7 +71,14 @@ public sealed partial class MainWindow : Window
         _initializing = false;
 
         // Restore the last-viewed page (safe with the sidebar — only toggles Visibility/borders).
-        SwitchToPage(string.IsNullOrWhiteSpace(_settings.SelectedNavItem) ? "Dashboard" : _settings.SelectedNavItem);
+        // Only Dashboard / ProtectedApps / Settings remain; map any legacy value to Dashboard.
+        var restoreTag = _settings.SelectedNavItem switch
+        {
+            "ProtectedApps" => "ProtectedApps",
+            "Settings" => "Settings",
+            _ => "Dashboard"
+        };
+        SwitchToPage(restoreTag);
 
         _refreshTimer = DispatcherQueue.CreateTimer();
         _refreshTimer.Interval = TimeSpan.FromSeconds(5);
@@ -217,14 +220,10 @@ public sealed partial class MainWindow : Window
     private void SwitchToPage(string tag)
     {
         DashboardGrid.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        MemoryGrid.Visibility = tag == "Memory" ? Visibility.Visible : Visibility.Collapsed;
-        PowerGrid.Visibility = tag == "Power" ? Visibility.Visible : Visibility.Collapsed;
         ProtectedAppsGrid.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
         SettingsGrid.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
         DashboardAccentBorder.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        MemoryAccentBorder.Visibility = tag == "Memory" ? Visibility.Visible : Visibility.Collapsed;
-        PowerAccentBorder.Visibility = tag == "Power" ? Visibility.Visible : Visibility.Collapsed;
         ProtectedAppsAccentBorder.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
         SettingsAccentBorder.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
@@ -244,18 +243,6 @@ public sealed partial class MainWindow : Window
 
     private void LoadExclusionsFromSettings()
     {
-        _memoryExclusions.Clear();
-        foreach (var app in _settings.MemoryExcludedProcesses)
-        {
-            _memoryExclusions.Add(app);
-        }
-
-        _timerExclusions.Clear();
-        foreach (var app in _settings.TimerResolutionExcludedProcesses)
-        {
-            _timerExclusions.Add(app);
-        }
-
         _protectedApps.Clear();
         foreach (var app in _settings.ProtectedApplications)
         {
@@ -272,8 +259,6 @@ public sealed partial class MainWindow : Window
         MemoryCooldownValueLabel.Text = $"{_settings.MemoryCooldownSeconds} seconds";
         OptimizationLevelComboBox.SelectedIndex = (int)_settings.OptimizationLevel;
         EffectivenessTrackingToggle.IsOn = _settings.EffectivenessTrackingEnabled;
-        SelfCapSlider.Value = _settings.SelfWorkingSetCapMB;
-        SelfCapValueLabel.Text = $"{_settings.SelfWorkingSetCapMB} MB";
 
         AutoOptimizeOnBatteryToggle.IsOn = _settings.AutoOptimizeOnBattery;
         BatteryPresetComboBox.SelectedIndex = (int)_settings.BatteryPreset;
@@ -359,47 +344,27 @@ public sealed partial class MainWindow : Window
         var accentBrush = AccentStatusBrush;
         var cautionBrush = CautionStatusBrush;
 
-        // Update overall health alert
+        // Update sidebar protection status
         if (_settings.AutomationPaused)
         {
-            HealthStatusIcon.Glyph = "\uE71A"; // Pause
-            HealthStatusIcon.Foreground = cautionBrush;
-            HealthStatusTitle.Text = "Safe optimization is paused";
-            HealthStatusMessage.Text = "Background checks and auto-cleanup rules are currently suspended.";
-            
             SidebarStatusLabel.Text = "Optimization Paused";
             SidebarStatusLabel.Foreground = cautionBrush;
             ToggleProtectionBtn.Content = "Resume Optimization";
         }
         else if (_automation.IsCleanupRunning)
         {
-            HealthStatusIcon.Glyph = "\uE72C"; // Sync
-            HealthStatusIcon.Foreground = accentBrush;
-            HealthStatusTitle.Text = "Trimming memory working sets...";
-            HealthStatusMessage.Text = _automation.LastActivity;
-            
             SidebarStatusLabel.Text = "Optimizing...";
             SidebarStatusLabel.Foreground = accentBrush;
             ToggleProtectionBtn.Content = "Pause Optimization";
         }
         else if (battery is not null && battery.IsOnBattery)
         {
-            HealthStatusIcon.Glyph = "\uE83F"; // Battery
-            HealthStatusIcon.Foreground = accentBrush;
-            HealthStatusTitle.Text = $"Running on Battery (Preset: {_settings.BatteryPreset})";
-            HealthStatusMessage.Text = _automation.LastActivity;
-            
             SidebarStatusLabel.Text = "On Battery (Protected)";
             SidebarStatusLabel.Foreground = accentBrush;
             ToggleProtectionBtn.Content = "Pause Optimization";
         }
         else
         {
-            HealthStatusIcon.Glyph = "\uE73E"; // Shield
-            HealthStatusIcon.Foreground = accentBrush;
-            HealthStatusTitle.Text = "System is protected and optimized";
-            HealthStatusMessage.Text = _automation.LastActivity;
-            
             SidebarStatusLabel.Text = "Protection Active";
             SidebarStatusLabel.Foreground = accentBrush;
             ToggleProtectionBtn.Content = "Pause Optimization";
@@ -423,11 +388,6 @@ public sealed partial class MainWindow : Window
             MemoryProgressBar.Value = 0;
             MemoryCachedText.Text = "-- GB";
             MemoryProcessesText.Text = "--";
-        }
-
-        if (TotalFreedBytesText != null)
-        {
-            TotalFreedBytesText.Text = FormatFreedBytes(_automation.TotalFreedBytes);
         }
 
         // Update Battery Card
@@ -509,9 +469,9 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         ManualTrimButton.Content = "Optimizing...";
         
         await _automation.RunMemoryCleanupAsync();
-        
+
         RefreshPresentation(forceMemoryPoll: true);
-        ManualTrimButton.Content = "Run Cleanup";
+        ManualTrimButton.Content = "Optimize now";
         ManualTrimButton.IsEnabled = true;
     }
 
@@ -541,14 +501,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         if (_initializing || _settings is null) return;
         _settings.MemoryCooldownSeconds = (int)MemoryCooldownSlider.Value;
         MemoryCooldownValueLabel.Text = $"{_settings.MemoryCooldownSeconds} seconds";
-        _settings.SaveDebounced();
-    }
-
-    private void OnSelfCapChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.SelfWorkingSetCapMB = (int)SelfCapSlider.Value;
-        SelfCapValueLabel.Text = $"{_settings.SelfWorkingSetCapMB} MB";
         _settings.SaveDebounced();
     }
 
@@ -596,7 +548,7 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.StartWithWindows = true;
         _settings.ThemeMode = "Dark";
         _settings.UseWindowsAccentColor = false;
-        _settings.BackdropType = "MicaAlt";
+        _settings.BackdropType = "Acrylic";
 
         _settings.MemoryExcludedProcesses = new List<string>(Settings.CriticalProcessExclusions);
         _settings.TimerResolutionExcludedProcesses = new List<string>(Settings.CriticalProcessExclusions) { "audiodg", "NVIDIA Display Container" };
@@ -640,60 +592,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         {
             uiList.Remove(item);
             _settings.SaveDebounced();
-        }
-    }
-
-    private void AddMemoryExclusion(string processName) =>
-        AddExclusion(processName, _settings.MemoryExcludedProcesses, _memoryExclusions);
-
-    private void OnAddMemoryExclusionClick(object sender, RoutedEventArgs e)
-    {
-        AddMemoryExclusion(MemoryExclusionInput.Text);
-        MemoryExclusionInput.Text = string.Empty;
-    }
-
-    private void OnMemoryExclusionInputKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key == Windows.System.VirtualKey.Enter)
-        {
-            AddMemoryExclusion(MemoryExclusionInput.Text);
-            MemoryExclusionInput.Text = string.Empty;
-            e.Handled = true;
-        }
-    }
-
-    private void OnRemoveMemoryExclusionClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.CommandParameter is string item)
-        {
-            RemoveExclusion(item, _settings.MemoryExcludedProcesses, _memoryExclusions);
-        }
-    }
-
-    private void AddTimerExclusion(string processName) =>
-        AddExclusion(processName, _settings.TimerResolutionExcludedProcesses, _timerExclusions);
-
-    private void OnAddTimerExclusionClick(object sender, RoutedEventArgs e)
-    {
-        AddTimerExclusion(TimerExclusionInput.Text);
-        TimerExclusionInput.Text = string.Empty;
-    }
-
-    private void OnTimerExclusionInputKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key == Windows.System.VirtualKey.Enter)
-        {
-            AddTimerExclusion(TimerExclusionInput.Text);
-            TimerExclusionInput.Text = string.Empty;
-            e.Handled = true;
-        }
-    }
-
-    private void OnRemoveTimerExclusionClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.CommandParameter is string item)
-        {
-            RemoveExclusion(item, _settings.TimerResolutionExcludedProcesses, _timerExclusions);
         }
     }
 
@@ -855,12 +753,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         };
         _theme.ApplyBackdrop();
         _settings.SaveDebounced();
-    }
-
-    private static string FormatFreedBytes(long bytes)
-    {
-        if (bytes <= 0) return "0 MB";
-        return OptiSYS.Core.Models.OptimizationResult.FormatBytesStatic(bytes);
     }
 
     private void OnTrayRunCleanupRequested()
