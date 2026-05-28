@@ -67,7 +67,7 @@
                 <!-- Navigation Links -->
                 <StackPanel Grid.Row="0" Margin="12,16,12,0" Spacing="4">
                     <!-- Dashboard -->
-                    <Button x:Name="DashboardBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Dashboard">
+                    <Button x:Name="DashboardBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Dashboard" AutomationProperties.Name="Dashboard">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -82,7 +82,7 @@
                     </Button>
 
                     <!-- Memory Optimizer -->
-                    <Button x:Name="MemoryBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Memory">
+                    <Button x:Name="MemoryBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Memory" AutomationProperties.Name="Memory Optimizer">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -97,7 +97,7 @@
                     </Button>
 
                     <!-- Power & Energy -->
-                    <Button x:Name="PowerBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Power">
+                    <Button x:Name="PowerBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Power" AutomationProperties.Name="Power &amp; Energy">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -112,7 +112,7 @@
                     </Button>
 
                     <!-- Protected Apps -->
-                    <Button x:Name="ProtectedAppsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="ProtectedApps">
+                    <Button x:Name="ProtectedAppsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="ProtectedApps" AutomationProperties.Name="Protected Applications">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -127,7 +127,7 @@
                     </Button>
 
                     <!-- Settings -->
-                    <Button x:Name="SettingsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Settings">
+                    <Button x:Name="SettingsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Settings" AutomationProperties.Name="Settings">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -210,7 +210,7 @@
                                         <TextBlock x:Name="MemoryPercentText" Text="--%" Style="{StaticResource HeaderTextBlockStyle}" FontWeight="Bold" />
                                         <TextBlock x:Name="MemoryGBText" Text="-- GB / -- GB" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
-                                    <ProgressBar x:Name="MemoryProgressBar" Minimum="0" Maximum="100" Value="0" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" Foreground="{ThemeResource SystemAccentColorBrush}" Height="6" CornerRadius="3" />
+                                    <ProgressBar x:Name="MemoryProgressBar" AutomationProperties.Name="Memory usage percentage" Minimum="0" Maximum="100" Value="0" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" Foreground="{ThemeResource SystemAccentColorBrush}" Height="6" CornerRadius="3" />
                                     <Grid ColumnSpacing="8" RowSpacing="6">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -249,7 +249,7 @@
                                         <TextBlock x:Name="BatteryPercentText" Text="AC" Style="{StaticResource HeaderTextBlockStyle}" FontWeight="Bold" />
                                         <TextBlock x:Name="BatterySourceText" Text="Connected to power" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
-                                    <ProgressBar x:Name="BatteryProgressBar" Minimum="0" Maximum="100" Value="100" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" Foreground="{ThemeResource SystemAccentColorBrush}" Height="6" CornerRadius="3" />
+                                    <ProgressBar x:Name="BatteryProgressBar" AutomationProperties.Name="Battery charge percentage" Minimum="0" Maximum="100" Value="100" Background="{ThemeResource ControlAltFillColorSecondaryBrush}" Foreground="{ThemeResource SystemAccentColorBrush}" Height="6" CornerRadius="3" />
                                     <Grid ColumnSpacing="8" RowSpacing="6">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -509,7 +509,7 @@
                             </Grid>
 
                             <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
-                                <ListView x:Name="MemoryExclusionsListView" Height="300" SelectionMode="None">
+                                <ListView x:Name="MemoryExclusionsListView" MinHeight="160" MaxHeight="420" SelectionMode="None">
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
                                             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,4" Padding="12,8">
@@ -521,7 +521,7 @@
                                                     </Grid.ColumnDefinitions>
                                                     <FontIcon Glyph="&#xE71D;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                                     <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" />
-                                                    <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveMemoryExclusionClick" CommandParameter="{Binding}" Padding="8,4" VerticalAlignment="Center">
+                                                    <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveMemoryExclusionClick" CommandParameter="{Binding}" AutomationProperties.Name="{Binding}" ToolTipService.ToolTip="Remove" Padding="8,4" VerticalAlignment="Center">
                                                         <Button.Resources>
                                                             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
                                                         </Button.Resources>
@@ -622,7 +622,7 @@
                             </Grid>
 
                             <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
-                                <ListView x:Name="TimerExclusionsListView" Height="300" SelectionMode="None">
+                                <ListView x:Name="TimerExclusionsListView" MinHeight="160" MaxHeight="420" SelectionMode="None">
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
                                             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,4" Padding="12,8">
@@ -634,7 +634,7 @@
                                                     </Grid.ColumnDefinitions>
                                                     <FontIcon Glyph="&#xE916;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                                     <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" />
-                                                    <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveTimerExclusionClick" CommandParameter="{Binding}" Padding="8,4" VerticalAlignment="Center">
+                                                    <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveTimerExclusionClick" CommandParameter="{Binding}" AutomationProperties.Name="{Binding}" ToolTipService.ToolTip="Remove" Padding="8,4" VerticalAlignment="Center">
                                                         <Button.Resources>
                                                             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
                                                         </Button.Resources>
@@ -667,7 +667,7 @@
                         </Grid>
 
                         <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
-                            <ListView x:Name="ProtectedAppsListView" Height="340" SelectionMode="None">
+                            <ListView x:Name="ProtectedAppsListView" MinHeight="200" MaxHeight="520" SelectionMode="None">
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
                                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,4" Padding="12,8">
@@ -679,7 +679,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <FontIcon Glyph="&#xE73E;" FontSize="14" Foreground="{ThemeResource SystemAccentColorBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
                                                 <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" FontWeight="SemiBold" />
-                                                <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveProtectedAppClick" CommandParameter="{Binding}" Padding="8,4" VerticalAlignment="Center">
+                                                <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveProtectedAppClick" CommandParameter="{Binding}" AutomationProperties.Name="{Binding}" ToolTipService.ToolTip="Remove" Padding="8,4" VerticalAlignment="Center">
                                                     <Button.Resources>
                                                         <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
                                                     </Button.Resources>

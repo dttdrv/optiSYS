@@ -13,12 +13,12 @@ Status legend: ☐ todo · ◐ in progress · ☑ done
 - ☑ **#7** Enforce min window size via `AppWindow.Changed` clamp (WinAppSDK 1.6 has no presenter min-size API) — cannot shrink below 800×560.
 - ☑ **#4** Add `HighContrast` theme dict + skip accent override under HC + replace literal `#20FF0000` hover with `{ThemeResource SystemFillColorCriticalBackground}`.
 
-## Milestone B — Accessibility
-- ☐ **#5** `AutomationProperties.Name` on nav buttons, icon-only delete buttons, action buttons, progress bars; delete buttons announce the row item.
+## Milestone B — Accessibility ✅
+- ☑ **#5** `AutomationProperties.Name` on the 5 nav buttons + both progress bars; delete buttons bound to the row item (+ "Remove" tooltip). Action buttons (`ManualTrimButton`, `ToggleProtectionBtn`) intentionally keep their changing `Content` as the name so Narrator announces state transitions.
 
 ## Milestone C — Layout robustness
-- ☐ **#8** Exclusion/protected `ListView`s: drop fixed `Height` for stretch/`MaxHeight`.
-- ☐ **#11** Chart grid lines: bind `X2` to canvas width instead of `X2="2000"`.
+- ☑ **#8** Exclusion/protected `ListView`s: replaced fixed `Height` with a `MinHeight`/`MaxHeight` band (160–420, 200–520) so short lists don't waste space and long lists cap-and-scroll.
+- ☐ **#11** Chart grid lines width → **folded into #10** (HistoryChartControl extraction owns the canvas).
 
 ## Milestone D — Native navigation
 - ☐ **#1** Replace hand-rolled sidebar with `NavigationView` (hosting existing inline content; no Page/Frame re-fragmentation).
