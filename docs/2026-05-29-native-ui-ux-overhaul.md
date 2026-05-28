@@ -8,7 +8,7 @@ can keep a broken process alive; and launching via automation hits a pre-existin
 app-handled `InvalidCastException` during WinUI activation that is benign). Visual QA happens
 at milestone check-ins (no screenshot tooling this session).
 
-Status legend: ☐ todo · ◐ in progress · ☑ done
+Status legend: ☐ todo · ◐ in progress · ☑ done — **ALL 13 ITEMS COMPLETE** (pending your visual QA + merge to `master`).
 
 ## Milestone A — Theming & correctness ✅
 - ☑ **#13** Set `AppWindow.Title = "optiSYS"` — alt-tab/taskbar show correct title.
@@ -28,7 +28,7 @@ Status legend: ☐ todo · ◐ in progress · ☑ done
 - ☑ **#1** Replaced hand-rolled sidebar (5 Buttons + manual visibility + accent borders) with `NavigationView` (PaneDisplayMode=Left, no toggle/back, IsSettingsVisible=false) hosting the existing inline content. Status label + Pause/Resume moved to `PaneFooter`. Removed orphaned `SidebarButtonStyle`. New reflection tests lock `NavView` + the 5 page containers (134→140 tests).
 - ☑ **#12** Persist & restore `SelectedNavItem` via `RestoreSelectedPage()` on startup + save-on-change in `SwitchToPage`. **Startup-crash fix:** initial `NavView.SelectedItem` assignment is deferred to the `Loaded` event — setting it during construction threw an unhandled `COMException 0x80070490` (caught later via the strengthened log-scan smoke).
 
-## Milestone E — Code-behind health (TDD)
-- ☐ **#6** Extract `ThemeManager` (theme/backdrop/accent/title-bar colours) out of `MainWindow.xaml.cs`.
+## Milestone E — Code-behind health (TDD) ✅
+- ☑ **#6** Extracted `Services/ThemeManager` (theme/backdrop/accent/title-bar-button colours) out of `MainWindow.xaml.cs`; window now holds a `_theme` field and delegates. Faithful move, behaviour unchanged.
 - ☑ **#9** Deduplicated the 3 exclusion-CRUD blocks into shared `AddExclusion`/`RemoveExclusion` helpers; named methods kept as thin wrappers.
 - ☑ **#10** Extracted `Controls/HistoryChartControl` (owns rolling buffer + canvas + redraw); MainWindow lost all `Canvas`/`PointCollection`/`_memoryHistory` code; chart is now `<controls:HistoryChartControl/>`. Includes **#11**: grid lines stretch to canvas width (no more `X2="2000"`).

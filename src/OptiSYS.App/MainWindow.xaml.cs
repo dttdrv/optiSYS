@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window
     private readonly ITrayIconService _tray;
     private readonly IStartupRegistrationService _startup;
     private readonly DispatcherQueueTimer _refreshTimer;
+    private readonly ThemeManager _theme;
     
     private readonly ObservableCollection<string> _memoryExclusions = new();
     private readonly ObservableCollection<string> _timerExclusions = new();
@@ -48,10 +49,12 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         AppVersionText.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.3"} // Active System Protection";
 
+        _theme = new ThemeManager(this, ShellRoot, GetAppWindow, _settings);
+
         ConfigureTitleBar();
-        ApplyThemeMode();
-        ApplyBackdrop();
-        ApplyAccentColor();
+        _theme.ApplyThemeMode();
+        _theme.ApplyBackdrop();
+        _theme.ApplyAccentColor();
         ConfigureAppWindow();
         HookTray();
         HookRuntimeEvents();
@@ -98,7 +101,7 @@ public sealed partial class MainWindow : Window
                 {
                     var titleBar = appWindow.TitleBar;
                     titleBar.ExtendsContentIntoTitleBar = true;
-                    UpdateTitleBarButtonsColors();
+                    _theme.UpdateTitleBarButtonsColors();
                     // Designate the title strip as the draggable region. Without this,
                     // extending content into the title bar leaves the window undraggable.
                     SetTitleBar(AppTitleBar);
@@ -615,9 +618,9 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
             2 => "Dark",
             _ => "Dark"
         };
-        ApplyThemeMode();
-        ApplyAccentColor();
-        UpdateTitleBarButtonsColors();
+        _theme.ApplyThemeMode();
+        _theme.ApplyAccentColor();
+        _theme.UpdateTitleBarButtonsColors();
         _settings.SaveDebounced();
     }
 
@@ -653,9 +656,9 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _initializing = true;
         LoadExclusionsFromSettings();
         InitializeControlValues();
-        ApplyThemeMode();
-        ApplyBackdrop();
-        ApplyAccentColor();
+        _theme.ApplyThemeMode();
+        _theme.ApplyBackdrop();
+        _theme.ApplyAccentColor();
         _initializing = false;
 
         RefreshPresentation(forceMemoryPoll: true);
@@ -872,161 +875,12 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         }
     }
 
-    private void ApplyThemeMode()
-    {
-        try
-        {
-            ShellRoot.RequestedTheme = _settings.ThemeMode switch
-            {
-                "Light" => ElementTheme.Light,
-                "Dark" => ElementTheme.Dark,
-                _ => ElementTheme.Default,
-            };
-        }
-        catch (Exception ex)
-        {
-            StartupLog.WriteException("ApplyThemeMode failure", ex);
-        }
-    }
-
-    private void ApplyBackdrop()
-    {
-        try
-        {
-            SystemBackdrop = _settings.BackdropType switch
-            {
-                "Mica" => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.Base },
-                "MicaAlt" => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt },
-                "Acrylic" => new DesktopAcrylicBackdrop(),
-                _ => null
-            };
-        }
-        catch (Exception ex)
-        {
-            StartupLog.WriteException("ApplyBackdrop failure, falling back to None", ex);
-            SystemBackdrop = null;
-        }
-    }
-
-    private void ApplyAccentColor()
-    {
-        try
-        {
-            // In high-contrast mode, respect the system palette — never override the accent.
-            if (new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
-            {
-                return;
-            }
-
-            Windows.UI.Color color;
-            if (_settings.UseWindowsAccentColor)
-            {
-                try
-                {
-                    var uiSettings = new Windows.UI.ViewManagement.UISettings();
-                    color = uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Accent);
-                }
-                catch
-                {
-                    color = Windows.UI.Color.FromArgb(255, 92, 184, 101); // fallback
-                }
-            }
-            else
-            {
-                color = Windows.UI.Color.FromArgb(255, 92, 184, 101); // #5CB865
-            }
-
-            Application.Current.Resources["SystemAccentColor"] = color;
-
-            foreach (var key in new[] { "Light", "Dark", "Default" })
-            {
-                if (Application.Current.Resources.ThemeDictionaries.TryGetValue(key, out var dictObj) &&
-                    dictObj is ResourceDictionary dict)
-                {
-                    dict["SystemAccentColor"] = color;
-                }
-            }
-
-            var accentBrush = new SolidColorBrush(color);
-            Application.Current.Resources["SystemAccentColorBrush"] = accentBrush;
-            Application.Current.Resources["SystemFillColorSuccessBrush"] = accentBrush;
-
-            if (ShellRoot != null)
-            {
-                var currentTheme = ShellRoot.RequestedTheme;
-                ShellRoot.RequestedTheme = ElementTheme.Default;
-                ShellRoot.RequestedTheme = currentTheme;
-            }
-        }
-        catch (Exception ex)
-        {
-            StartupLog.WriteException("ApplyAccentColor failure", ex);
-        }
-    }
-
-    private void UpdateTitleBarButtonsColors()
-    {
-        try
-        {
-            var appWindow = GetAppWindow();
-            if (appWindow != null && AppWindowTitleBar.IsCustomizationSupported())
-            {
-                var titleBar = appWindow.TitleBar;
-                titleBar.ButtonBackgroundColor = Colors.Transparent;
-                titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-
-                var isDark = IsDarkThemeActive();
-                if (isDark)
-                {
-                    titleBar.ButtonForegroundColor = Colors.White;
-                    titleBar.ButtonHoverForegroundColor = Colors.White;
-                    titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(20, 255, 255, 255);
-                    titleBar.ButtonPressedForegroundColor = Colors.White;
-                    titleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(40, 255, 255, 255);
-                    titleBar.ButtonInactiveForegroundColor = Colors.Gray;
-                }
-                else
-                {
-                    titleBar.ButtonForegroundColor = Colors.Black;
-                    titleBar.ButtonHoverForegroundColor = Colors.Black;
-                    titleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(20, 0, 0, 0);
-                    titleBar.ButtonPressedForegroundColor = Colors.Black;
-                    titleBar.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(40, 0, 0, 0);
-                    titleBar.ButtonInactiveForegroundColor = Colors.LightGray;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            StartupLog.WriteException("UpdateTitleBarButtonsColors failure", ex);
-        }
-    }
-
-    private bool IsDarkThemeActive()
-    {
-        var theme = ShellRoot?.RequestedTheme ?? ElementTheme.Default;
-        if (theme == ElementTheme.Default)
-        {
-            try
-            {
-                var uiSettings = new Windows.UI.ViewManagement.UISettings();
-                var bgColor = uiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
-                return bgColor.R < 128;
-            }
-            catch
-            {
-                return true;
-            }
-        }
-        return theme == ElementTheme.Dark;
-    }
-
     private void OnUseWindowsAccentColorToggled(object sender, RoutedEventArgs e)
     {
         if (_initializing || _settings is null) return;
         _settings.UseWindowsAccentColor = UseWindowsAccentColorToggle.IsOn;
-        ApplyAccentColor();
-        UpdateTitleBarButtonsColors();
+        _theme.ApplyAccentColor();
+        _theme.UpdateTitleBarButtonsColors();
         _settings.SaveDebounced();
     }
 
@@ -1041,7 +895,7 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
             3 => "None",
             _ => "MicaAlt"
         };
-        ApplyBackdrop();
+        _theme.ApplyBackdrop();
         _settings.SaveDebounced();
     }
 
