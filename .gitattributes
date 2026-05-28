@@ -1,0 +1,28 @@
+# Normalize line endings: let Git decide per file, with explicit overrides below.
+* text=auto
+
+# Source & text
+*.cs      text diff=csharp
+*.xaml    text
+*.csproj  text
+*.props   text
+*.targets text
+*.json    text
+*.md      text
+*.py      text
+*.svg     text
+
+# Windows-tooling files that expect CRLF
+*.sln     text eol=crlf
+*.ps1     text eol=crlf
+*.iss     text eol=crlf
+*.manifest text eol=crlf
+
+# Binary assets (never normalize / diff)
+*.png   binary
+*.ico   binary
+*.zip   binary
+*.winmd binary
+*.dll   binary
+*.exe   binary
+*.pdb   binary
