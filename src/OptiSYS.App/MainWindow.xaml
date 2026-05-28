@@ -10,7 +10,7 @@
 
     
 
-    <Grid x:Name="ShellRoot" Background="Transparent">
+    <Grid x:Name="ShellRoot" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
         <Grid.Resources>
             <Style x:Key="SidebarButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
@@ -40,9 +40,6 @@
             <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center" Margin="16,0,0,0" Spacing="8">
                 <FontIcon Glyph="&#xE964;" FontSize="14" Foreground="{ThemeResource SystemAccentColorBrush}" />
                 <TextBlock Text="optiSYS" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <Border CornerRadius="4" Background="{ThemeResource SystemFillColorSuccessBackgroundBrush}" Padding="6,2" VerticalAlignment="Center" Margin="8,0,0,0">
-                    <TextBlock Text="SAFE OPTIMIZER" FontSize="9" FontWeight="Bold" Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
-                </Border>
             </StackPanel>
         </Grid>
 
@@ -295,50 +292,6 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- Background Care Options Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="Active Policy Features" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <Grid RowSpacing="12" ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-
-                                    <Border Grid.Row="0" Grid.Column="0" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <FontIcon Glyph="&#xE964;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Memory Trimming (Active)" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Row="0" Grid.Column="1" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <FontIcon Glyph="&#xE713;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Efficiency Mode / EcoQoS (Active)" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Row="1" Grid.Column="0" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <FontIcon Glyph="&#xE916;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Timer Resolution Tuning (Active)" Style="{StaticResource BodyTextBlockStyle}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Border>
-
-                                    <Border Grid.Row="1" Grid.Column="1" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
-                                        <StackPanel Orientation="Horizontal" Spacing="10">
-                                            <FontIcon Glyph="&#xE73E;" FontSize="16" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Safe Runtime Protection only" Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 
