@@ -10,20 +10,6 @@
     
 
     <Grid x:Name="ShellRoot" Background="Transparent">
-    <Grid.Resources>
-        <Style x:Key="SidebarButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="12,8" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Height" Value="40" />
-            <Setter Property="Margin" Value="0,2" />
-        </Style>
-    </Grid.Resources>
-
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" /> <!-- Custom Title Bar -->
             <RowDefinition Height="*" />    <!-- Main Content -->
@@ -51,105 +37,49 @@
         <TextBlock x:Name="FooterText" Visibility="Collapsed" />
 
         <!-- Main Workspace Layout -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="240" /> <!-- Sidebar -->
-                <ColumnDefinition Width="*" />   <!-- Content Area -->
-            </Grid.ColumnDefinitions>
+        <NavigationView x:Name="NavView"
+                        Grid.Row="1"
+                        PaneDisplayMode="Left"
+                        OpenPaneLength="240"
+                        IsBackButtonVisible="Collapsed"
+                        IsPaneToggleButtonVisible="False"
+                        IsSettingsVisible="False"
+                        SelectionChanged="OnNavSelectionChanged">
 
-            <!-- Sidebar -->
-            <Grid Grid.Column="0" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+            <NavigationView.MenuItems>
+                <NavigationViewItem Tag="Dashboard" Content="Dashboard">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE80F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="Memory" Content="Memory Optimizer">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE964;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="Power" Content="Power &amp; Energy">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE83F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="ProtectedApps" Content="Protected Applications">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE73E;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="Settings" Content="Settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
 
-                <!-- Navigation Links -->
-                <StackPanel Grid.Row="0" Margin="12,16,12,0" Spacing="4">
-                    <!-- Dashboard -->
-                    <Button x:Name="DashboardBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Dashboard" AutomationProperties.Name="Dashboard">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="DashboardAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Visible" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE80F;" FontSize="16" />
-                                <TextBlock Text="Dashboard" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-
-                    <!-- Memory Optimizer -->
-                    <Button x:Name="MemoryBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Memory" AutomationProperties.Name="Memory Optimizer">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="MemoryAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE964;" FontSize="16" />
-                                <TextBlock Text="Memory Optimizer" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-
-                    <!-- Power & Energy -->
-                    <Button x:Name="PowerBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Power" AutomationProperties.Name="Power &amp; Energy">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="PowerAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE83F;" FontSize="16" />
-                                <TextBlock Text="Power &amp; Energy" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-
-                    <!-- Protected Apps -->
-                    <Button x:Name="ProtectedAppsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="ProtectedApps" AutomationProperties.Name="Protected Applications">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="ProtectedAppsAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE73E;" FontSize="16" />
-                                <TextBlock Text="Protected Applications" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
-
-                    <!-- Settings -->
-                    <Button x:Name="SettingsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Settings" AutomationProperties.Name="Settings">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="SettingsAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE713;" FontSize="16" />
-                                <TextBlock Text="Settings" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
+            <NavigationView.PaneFooter>
+                <StackPanel Spacing="8" Padding="4,12,4,4">
+                    <TextBlock x:Name="SidebarStatusLabel" Text="Protection Active" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource SystemAccentColorBrush}" HorizontalAlignment="Center" />
+                    <Button x:Name="ToggleProtectionBtn" Click="OnToggleProtectionClick" HorizontalAlignment="Stretch" Content="Pause Optimization" Style="{StaticResource AccentButtonStyle}" CornerRadius="4" Padding="8" />
                 </StackPanel>
-
-                <!-- Sidebar Footer (Status & Automation controls) -->
-                <Border Grid.Row="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,16">
-                    <StackPanel Spacing="8">
-                        <TextBlock x:Name="SidebarStatusLabel" Text="Protection Active" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource SystemAccentColorBrush}" HorizontalAlignment="Center" />
-                        <Button x:Name="ToggleProtectionBtn" Click="OnToggleProtectionClick" HorizontalAlignment="Stretch" Content="Pause Optimization" Style="{StaticResource AccentButtonStyle}" CornerRadius="4" Padding="8" />
-                    </StackPanel>
-                </Border>
-            </Grid>
+            </NavigationView.PaneFooter>
 
             <!-- Main Content Area -->
             <Grid Grid.Column="1" Padding="28,24,28,24" Background="Transparent">
@@ -827,6 +757,6 @@
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
-        </Grid>
+        </NavigationView>
     </Grid>
 </Window>

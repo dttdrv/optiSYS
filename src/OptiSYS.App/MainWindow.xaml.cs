@@ -73,6 +73,8 @@ public sealed partial class MainWindow : Window
         
         _initializing = false;
 
+        RestoreSelectedPage();
+
         _refreshTimer = DispatcherQueue.CreateTimer();
         _refreshTimer.Interval = TimeSpan.FromSeconds(5);
         _refreshTimer.Tick += (_, _) => RefreshPresentation();
@@ -202,9 +204,9 @@ public sealed partial class MainWindow : Window
     private void OnAutomationStateChanged() =>
         DispatcherQueue.TryEnqueue(() => RefreshPresentation());
 
-    private void SidebarBtn_Click(object sender, RoutedEventArgs e)
+    private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        if (sender is Button button && button.Tag is string tag)
+        if (args.SelectedItem is NavigationViewItem item && item.Tag is string tag)
         {
             SwitchToPage(tag);
         }
@@ -212,19 +214,43 @@ public sealed partial class MainWindow : Window
 
     private void SwitchToPage(string tag)
     {
-        // Toggle pages visibility
+        // Content elements may not exist yet if NavigationView raises SelectionChanged during load.
+        if (DashboardGrid is null)
+        {
+            return;
+        }
+
         DashboardGrid.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         MemoryGrid.Visibility = tag == "Memory" ? Visibility.Visible : Visibility.Collapsed;
         PowerGrid.Visibility = tag == "Power" ? Visibility.Visible : Visibility.Collapsed;
         ProtectedAppsGrid.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
         SettingsGrid.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
-        // Toggle selected accent borders
-        DashboardAccentBorder.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        MemoryAccentBorder.Visibility = tag == "Memory" ? Visibility.Visible : Visibility.Collapsed;
-        PowerAccentBorder.Visibility = tag == "Power" ? Visibility.Visible : Visibility.Collapsed;
-        ProtectedAppsAccentBorder.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsAccentBorder.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
+        // Persist the active page so it is restored next launch (skip during init / no-op changes).
+        if (!_initializing && _settings.SelectedNavItem != tag)
+        {
+            _settings.SelectedNavItem = tag;
+            _settings.SaveDebounced();
+        }
+    }
+
+    private void RestoreSelectedPage()
+    {
+        var tag = string.IsNullOrWhiteSpace(_settings.SelectedNavItem) ? "Dashboard" : _settings.SelectedNavItem;
+        foreach (var entry in NavView.MenuItems)
+        {
+            if (entry is NavigationViewItem item && item.Tag is string itemTag && itemTag == tag)
+            {
+                NavView.SelectedItem = item;
+                SwitchToPage(tag);
+                return;
+            }
+        }
+
+        if (NavView.MenuItems.Count > 0)
+        {
+            NavView.SelectedItem = NavView.MenuItems[0];
+        }
     }
 
     private void OnToggleProtectionClick(object sender, RoutedEventArgs e)

@@ -42,4 +42,29 @@ public class MainWindowSmokeTests
         Assert.NotNull(field);
         Assert.Equal(typeof(TextBlock), field!.FieldType);
     }
+
+    [Fact]
+    public void MainWindow_HasNavigationViewShell()
+    {
+        var field = typeof(OptiSYS.MainWindow).GetField(
+            "NavView", BindingFlags.NonPublic | BindingFlags.Instance);
+
+        Assert.NotNull(field);
+        Assert.Equal(typeof(NavigationView), field!.FieldType);
+    }
+
+    [Theory]
+    [InlineData("DashboardGrid")]
+    [InlineData("MemoryGrid")]
+    [InlineData("PowerGrid")]
+    [InlineData("ProtectedAppsGrid")]
+    [InlineData("SettingsGrid")]
+    public void MainWindow_HasPageContainers(string fieldName)
+    {
+        var field = typeof(OptiSYS.MainWindow).GetField(
+            fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
+
+        Assert.NotNull(field);
+        Assert.Equal(typeof(ScrollViewer), field!.FieldType);
+    }
 }

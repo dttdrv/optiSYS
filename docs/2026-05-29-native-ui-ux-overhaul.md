@@ -20,9 +20,9 @@ Status legend: ☐ todo · ◐ in progress · ☑ done
 - ☑ **#8** Exclusion/protected `ListView`s: replaced fixed `Height` with a `MinHeight`/`MaxHeight` band (160–420, 200–520) so short lists don't waste space and long lists cap-and-scroll.
 - ☐ **#11** Chart grid lines width → **folded into #10** (HistoryChartControl extraction owns the canvas).
 
-## Milestone D — Native navigation
-- ☐ **#1** Replace hand-rolled sidebar with `NavigationView` (hosting existing inline content; no Page/Frame re-fragmentation).
-- ☐ **#12** Persist & restore `SelectedNavItem` across sessions (folded into #1).
+## Milestone D — Native navigation ✅ (needs visual QA)
+- ☑ **#1** Replaced hand-rolled sidebar (5 Buttons + manual visibility + accent borders) with `NavigationView` (PaneDisplayMode=Left, no toggle/back, IsSettingsVisible=false) hosting the existing inline content. Status label + Pause/Resume moved to `PaneFooter`. Removed orphaned `SidebarButtonStyle`. New reflection tests lock `NavView` + the 5 page containers (134→140 tests).
+- ☑ **#12** Persist & restore `SelectedNavItem` via `RestoreSelectedPage()` on startup + save-on-change in `SwitchToPage`.
 
 ## Milestone E — Code-behind health (TDD)
 - ☐ **#6** Extract `ThemeManager` (theme/backdrop/accent/title-bar colours) out of `MainWindow.xaml.cs`.
