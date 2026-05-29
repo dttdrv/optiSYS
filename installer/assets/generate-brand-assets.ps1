@@ -17,8 +17,9 @@ $appAssets = Join-Path (Split-Path -Parent (Split-Path -Parent $root)) 'src\Opti
 New-Item -ItemType Directory -Force -Path $gen | Out-Null
 
 # 1) Installer icon = the app mark + a download-arrow badge on the lower-right, so the setup
-#    file is recognizably "install optiSYS". Composited from AppIcon.png and saved as an .ico.
-function New-SetupIcon([int]$size) {
+#    file is recognizably "install optiSYS". Written as a proper MULTI-SIZE PNG-in-ICO (like
+#    AppIcon.ico) — a single-image .ico renders as a broken/fallback glyph in Explorer.
+function New-SetupBitmap([int]$size) {
     $bmp = New-Object System.Drawing.Bitmap($size, $size)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
@@ -30,44 +31,65 @@ function New-SetupIcon([int]$size) {
     $appPng.Dispose()
 
     # Download badge: a white circle on the lower-right with an accent download arrow.
-    $r = [int]($size * 0.34)
-    $cx = [int]($size - $r - $size * 0.04)
-    $cy = [int]($size - $r - $size * 0.04)
+    $r = [single]($size * 0.34)
+    $cx = [single]($size - $r - $size * 0.04)
+    $cy = [single]($size - $r - $size * 0.04)
     $white = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
     $accentBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 36, 130, 150))
     $g.FillEllipse($white, ($cx - $r), ($cy - $r), ($r * 2), ($r * 2))
 
-    # Download arrow (accent): vertical stem + downward head + a base bar.
     $aw = [single]($r * 0.30)               # stem half-width
     $ah = [single]($r * 0.70)               # arrow total half-height
     $top = [single]($cy - $ah)
     $headY = [single]($cy + $ah * 0.15)
-    $stem = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $stem.AddRectangle((New-Object System.Drawing.RectangleF(($cx - $aw), $top, ($aw * 2), ($headY - $top))))
-    $g.FillPath($accentBrush, $stem)
+    $g.FillRectangle($accentBrush, ($cx - $aw), $top, ($aw * 2), ($headY - $top))
     $head = @(
         (New-Object System.Drawing.PointF(($cx - $aw * 2.1), $headY)),
         (New-Object System.Drawing.PointF(($cx + $aw * 2.1), $headY)),
         (New-Object System.Drawing.PointF($cx, ($cy + $ah)))
     )
     $g.FillPolygon($accentBrush, $head)
-    $baseBar = New-Object System.Drawing.RectangleF(($cx - $r * 0.55), ($cy + $ah * 1.15), ($r * 1.10), [single]($r * 0.20))
-    $g.FillRectangle($accentBrush, $baseBar)
+    $g.FillRectangle($accentBrush, ($cx - $r * 0.55), ($cy + $ah * 1.15), ($r * 1.10), [single]($r * 0.20))
 
-    $white.Dispose(); $accentBrush.Dispose(); $stem.Dispose(); $g.Dispose()
+    $white.Dispose(); $accentBrush.Dispose(); $g.Dispose()
     return $bmp
 }
 
-$setupBmp = New-SetupIcon 256
-# PNG preview (for eyeballing) + the .ico the installer actually uses.
-$setupBmp.Save((Join-Path $gen 'SetupIcon-preview.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-$hicon = $setupBmp.GetHicon()
-$icon = [System.Drawing.Icon]::FromHandle($hicon)
-$fs = [System.IO.File]::Create((Join-Path $gen 'SetupIcon.ico'))
-$icon.Save($fs)
-$fs.Close()
-$icon.Dispose()
-$setupBmp.Dispose()
+function Get-PngBytes([System.Drawing.Bitmap]$bmp) {
+    $ms = New-Object System.IO.MemoryStream
+    $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bytes = $ms.ToArray()
+    $ms.Dispose()
+    return ,$bytes
+}
+
+# Assemble a multi-size ICO whose images are PNG-compressed (standard for modern icons).
+$sizes = @(256, 128, 64, 48, 32, 16)
+$pngs = @()
+foreach ($s in $sizes) {
+    $b = New-SetupBitmap $s
+    if ($s -eq 256) { $b.Save((Join-Path $gen 'SetupIcon-preview.png'), [System.Drawing.Imaging.ImageFormat]::Png) }
+    $pngs += , (Get-PngBytes $b)
+    $b.Dispose()
+}
+
+$icoStream = New-Object System.IO.MemoryStream
+$bw = New-Object System.IO.BinaryWriter($icoStream)
+$bw.Write([UInt16]0); $bw.Write([UInt16]1); $bw.Write([UInt16]$pngs.Count)   # ICONDIR
+$offset = 6 + 16 * $pngs.Count
+for ($i = 0; $i -lt $pngs.Count; $i++) {
+    $dim = [Byte]($sizes[$i] -band 0xFF)   # 256 -> 0
+    $bw.Write($dim); $bw.Write($dim)       # width, height
+    $bw.Write([Byte]0); $bw.Write([Byte]0) # colors, reserved
+    $bw.Write([UInt16]1); $bw.Write([UInt16]32)  # planes, bpp
+    $bw.Write([UInt32]$pngs[$i].Length)    # bytesInRes
+    $bw.Write([UInt32]$offset)             # imageOffset
+    $offset += $pngs[$i].Length
+}
+foreach ($p in $pngs) { $bw.Write($p) }
+$bw.Flush()
+[System.IO.File]::WriteAllBytes((Join-Path $gen 'SetupIcon.ico'), $icoStream.ToArray())
+$bw.Dispose(); $icoStream.Dispose()
 
 # Palette matched to the gradient-pulse icon (#163A4F -> #4FA5B7 on a near-black field).
 $bgTop    = [System.Drawing.Color]::FromArgb(255, 18, 26, 32)
