@@ -24,7 +24,8 @@ public class SettingsTests
         Assert.False(settings.GpuPowerEnabled);
         Assert.False(settings.CpuParkingEnabled);
         Assert.False(settings.DiskCoalescingEnabled);
-        Assert.True(settings.WiFiOptimizerEnabled);   // part of the all-in-one automatic optimization
+        Assert.True(settings.WiFiOptimizerEnabled);     // part of the all-in-one automatic optimization
+        Assert.True(settings.ServicesManualEnabled);    // AIO set; admin-gated, no-op unless elevated
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
         Assert.Equal(60, settings.MemoryThresholdPercent);

@@ -156,6 +156,7 @@ public class ServiceRegistrationTests
             "cpu-parking",
             "disk-coalescing",
             "wifi-optimizer",
+            "services-manual",
         ], domains);
     }
 
@@ -175,7 +176,7 @@ public class ServiceRegistrationTests
         {
             "ecoqos", "timer-resolution", "background-services", "usb-suspend",
             "network-power", "gpu-power", "cpu-parking", "disk-coalescing", "wifi-optimizer",
-            "memory-optimize",
+            "services-manual", "memory-optimize",
         };
 
         Assert.Equal(ids.Length, ids.Distinct().Count());            // no duplicate Ids

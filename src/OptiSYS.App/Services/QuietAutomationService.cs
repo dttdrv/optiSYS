@@ -90,7 +90,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
         _settings.EffectivenessTrackingEnabled = true;
         RefreshMemoryExclusions();
         if (!_settings.AutomationPaused)
-            SetWiFiOptimization(true);   // Wi-Fi latency optimizer is part of the AIO automatic set
+            SetOptionalOptimizations(true);   // Wi-Fi + (admin) services tune-up are part of the AIO set
         _memoryWatcher = _timer.Start(
             TimeSpan.FromSeconds(Math.Max(3, _settings.MemoryCheckIntervalSeconds)),
             () => _ = EvaluateMemoryPressureAsync());
@@ -193,29 +193,33 @@ public sealed class QuietAutomationService : IQuietAutomationService
 
         _settings.AutomationPaused = paused;
         _settings.SaveDebounced();
-        SetWiFiOptimization(!paused);   // revert Wi-Fi when paused, re-apply when resumed
+        SetOptionalOptimizations(!paused);   // revert Wi-Fi + services when paused, re-apply when resumed
         Publish(paused
             ? "Safe optimization is paused."
             : "Safe optimization resumed.");
     }
 
-    private const string WiFiDomainId = "wifi-optimizer";
+    // The AIO opt-in domains activated/reverted with the master switch. Each is a clean no-op when
+    // unsupported (no Wi-Fi adapter; services-manual when unelevated), so this stays frictionless.
+    private static readonly string[] OptionalDomainIds = ["wifi-optimizer", "services-manual"];
 
     /// <summary>
-    /// Activate or revert the Wi-Fi latency optimizer alongside the master automatic-optimization
-    /// state. A no-op on machines with no Wi-Fi adapter (the domain reports unsupported) and fully
-    /// wrapped so a WLAN hiccup can never disrupt automation.
+    /// Activate or revert the optional AIO domains alongside the master automatic-optimization
+    /// state. Per-domain wrapped so one domain's hiccup can never disrupt the others or automation.
     /// </summary>
-    private void SetWiFiOptimization(bool enable)
+    private void SetOptionalOptimizations(bool enable)
     {
-        try
+        foreach (var id in OptionalDomainIds)
         {
-            if (enable) _engine.ActivateDomain(WiFiDomainId);
-            else _engine.RevertDomain(WiFiDomainId);
-        }
-        catch (Exception ex)
-        {
-            Publish($"Wi-Fi optimization {(enable ? "activation" : "revert")} skipped: {ex.Message}");
+            try
+            {
+                if (enable) _engine.ActivateDomain(id);
+                else _engine.RevertDomain(id);
+            }
+            catch (Exception ex)
+            {
+                Publish($"{id} {(enable ? "activation" : "revert")} skipped: {ex.Message}");
+            }
         }
     }
 

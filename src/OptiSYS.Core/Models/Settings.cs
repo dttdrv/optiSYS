@@ -56,6 +56,32 @@ public sealed class Settings
         "SteamService"
     ];
 
+    /// <summary>
+    /// Conservative, hand-curated set of genuinely non-essential services optiSYS flips from
+    /// Automatic → Manual start (it never STOPS them). Each still starts on demand, so the change
+    /// is unnoticeable. Admin-gated. Kept deliberately small to honor "affects no workflow."
+    /// </summary>
+    public static IReadOnlyList<string> ServicesToSetManual { get; } =
+    [
+        "MapsBroker",    // Downloaded Maps Manager — only the Maps app uses it
+        "Fax",           // Fax
+        "lltdsvc",       // Link-Layer Topology Discovery Mapper — network map view
+        "RetailDemo",    // Retail Demo Service — in-store demo mode
+    ];
+
+    /// <summary>
+    /// Hard block-list: services whose start type must NEVER be changed, even if one were
+    /// mistakenly added to <see cref="ServicesToSetManual"/>. Defensive belt-and-suspenders.
+    /// </summary>
+    public static IReadOnlyList<string> ServicesNeverManual { get; } =
+    [
+        "Audiosrv", "AudioEndpointBuilder", "RpcSs", "RpcEptMapper", "DcomLaunch",
+        "BrokerInfrastructure", "SystemEventsBroker", "MpsSvc", "BFE", "WinDefend",
+        "Dhcp", "Dnscache", "NlaSvc", "Wcmsvc", "WinHttpAutoProxySvc", "WlanSvc",
+        "SamSs", "RasMan", "EapHost", "Schedule", "Power", "ProfSvc", "CryptSvc",
+        "UserManager", "Themes",
+    ];
+
     private static readonly HashSet<string> AllowedServicesToThrottle =
         new(DefaultServicesToThrottle, StringComparer.OrdinalIgnoreCase);
 
@@ -96,6 +122,11 @@ public sealed class Settings
     public bool WiFiOptimizerEnabled { get; set; } = true;
     public bool WiFiDisableBackgroundScan { get; set; } = true;
     public bool WiFiStreamingMode { get; set; } = true;
+
+    // Services-to-Manual — part of the AIO set, but ADMIN-GATED (only applies when the app runs
+    // elevated, granted once via the installer checkbox). ON by default to match that checkbox;
+    // a clean no-op when unelevated. Only flips Automatic→Manual start (never stops a service).
+    public bool ServicesManualEnabled { get; set; } = true;
 
     // Battery domain-specific settings
     public List<string> EcoQosExcludedProcesses { get; set; } =
