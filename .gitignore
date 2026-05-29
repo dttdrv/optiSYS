@@ -73,3 +73,6 @@ src/OptiSYS.Installer/Resources/app.zip
 # Editor scratch / manual backups
 *.bak
 *.custom
+
+# Installer asset-generator preview (regenerated each build)
+installer/assets/generated/SetupIcon-preview.png
