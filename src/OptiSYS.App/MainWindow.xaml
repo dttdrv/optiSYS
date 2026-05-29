@@ -348,7 +348,7 @@
                             <Grid>
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="optiSYS Optimizer Suite" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock x:Name="AppVersionText" Text="Version 0.2.1 // Active System Protection" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Name="AppVersionText" Text="Version 0.2.2 // Active System Protection" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
                                         <Run Text="Developed by " /><Hyperlink NavigateUri="https://dttdrv.xyz" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="Single">Deyan Todorov</Hyperlink>
                                     </TextBlock>
