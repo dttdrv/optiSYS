@@ -142,12 +142,41 @@ public class ServiceRegistrationTests
         using var provider = (ServiceProvider)BuildProvider();
         var domains = provider.GetServices<IOptimizationDomain>().Select(d => d.Id).ToArray();
 
+        // All nine built domains are now registered (was 3 — the six battery-category
+        // domains were complete but unwired). Apply runs in this order; Revert reverses.
         Assert.Equal(
         [
             "ecoqos",
             "timer-resolution",
             "memory-optimize",
+            "background-services",
+            "usb-suspend",
+            "network-power",
+            "gpu-power",
+            "cpu-parking",
+            "disk-coalescing",
         ], domains);
     }
 
+    /// <summary>
+    /// Every registered domain's <see cref="IOptimizationDomain.Id"/> must be a key the
+    /// engine's enable-switch recognizes. We can't reflect into the private switch, so we
+    /// pin the resolved Id set against the known-good keys — a typo'd or duplicate Id
+    /// (which would silently never enable) fails here.
+    /// </summary>
+    [Fact]
+    public void OptimizationDomains_HaveUniqueIdsMatchingEngineSwitchKeys()
+    {
+        using var provider = (ServiceProvider)BuildProvider();
+        var ids = provider.GetServices<IOptimizationDomain>().Select(d => d.Id).ToArray();
+
+        var knownSwitchKeys = new[]
+        {
+            "ecoqos", "timer-resolution", "background-services", "usb-suspend",
+            "network-power", "gpu-power", "cpu-parking", "disk-coalescing", "memory-optimize",
+        };
+
+        Assert.Equal(ids.Length, ids.Distinct().Count());            // no duplicate Ids
+        Assert.All(ids, id => Assert.Contains(id, knownSwitchKeys)); // every Id is switch-recognized
+    }
 }

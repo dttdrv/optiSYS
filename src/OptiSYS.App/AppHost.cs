@@ -81,6 +81,17 @@ public static class AppHost
         sc.AddSingleton<IOptimizationDomain, TimerResolutionDomain>();
         sc.AddSingleton<IOptimizationDomain, MemoryOptimizerDomain>();
 
+        // The battery-category domains below are complete but ship gated OFF (their
+        // Settings flags default false), so registering them only makes them reachable
+        // as opt-in — ActivateCategory skips any whose IsDomainEnabled flag is false.
+        // Apply iterates registration order; Revert iterates the reverse.
+        sc.AddSingleton<IOptimizationDomain, BackgroundServiceDomain>();
+        sc.AddSingleton<IOptimizationDomain, UsbSuspendDomain>();
+        sc.AddSingleton<IOptimizationDomain, NetworkPowerDomain>();
+        sc.AddSingleton<IOptimizationDomain, GpuPowerDomain>();
+        sc.AddSingleton<IOptimizationDomain, CpuParkingDomain>();
+        sc.AddSingleton<IOptimizationDomain, DiskIoCoalescingDomain>();
+
         // Engine + monitor: expose both concrete and interface aliases so startup/runtime
         // services and tests can resolve the same singleton instances.
         sc.AddSingleton<UnifiedOptimizationEngine>();
