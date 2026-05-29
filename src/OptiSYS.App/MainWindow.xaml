@@ -108,14 +108,6 @@
                         </Grid>
                     </Button>
                 </StackPanel>
-
-                <!-- Sidebar Footer (Status & Automation controls) -->
-                <Border Grid.Row="1" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,16">
-                    <StackPanel Spacing="8">
-                        <TextBlock x:Name="SidebarStatusLabel" Text="Protection Active" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource SystemAccentColorBrush}" HorizontalAlignment="Center" />
-                        <Button x:Name="ToggleProtectionBtn" Click="OnToggleProtectionClick" HorizontalAlignment="Stretch" Content="Pause Optimization" Style="{StaticResource AccentButtonStyle}" CornerRadius="4" Padding="8" />
-                    </StackPanel>
-                </Border>
             </Grid>
 
             <!-- Main Content Area — inset panel with a rounded top-left corner, so the acrylic
@@ -126,14 +118,21 @@
                 <!-- ==================== DASHBOARD TAB ==================== -->
                 <ScrollViewer x:Name="DashboardGrid" Visibility="Visible" VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="16" Margin="0,0,0,16">
-                        <!-- Dashboard header row with manual-optimize action -->
+                        <!-- Dashboard header row with manual-optimize + pause actions -->
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="System Dashboard" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
-                            <Button x:Name="ManualTrimButton" Grid.Column="1" Content="Optimize now" Style="{StaticResource AccentButtonStyle}" Click="OnManualTrimClick" Padding="16,8" CornerRadius="4" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button x:Name="ManualTrimButton" Style="{StaticResource AccentButtonStyle}" Click="OnManualTrimClick" Width="40" Height="40" Padding="0" CornerRadius="4" VerticalAlignment="Center" ToolTipService.ToolTip="Optimize now" AutomationProperties.Name="Optimize now">
+                                    <FontIcon Glyph="&#xE768;" FontSize="16" />
+                                </Button>
+                                <Button x:Name="PauseToggleButton" Click="OnToggleProtectionClick" Width="40" Height="40" Padding="0" CornerRadius="4" VerticalAlignment="Center" ToolTipService.ToolTip="Pause optimization" AutomationProperties.Name="Pause optimization">
+                                    <FontIcon x:Name="PauseToggleIcon" Glyph="&#xE769;" FontSize="16" />
+                                </Button>
+                            </StackPanel>
                         </Grid>
 
                         <!-- Live Telemetry Card Row -->
@@ -150,6 +149,10 @@
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <FontIcon Glyph="&#xE964;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Memory Health" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel x:Name="MemoryPausedIndicator" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <FontIcon Glyph="&#xE769;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Paused" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
                                     <StackPanel Spacing="2">
@@ -203,6 +206,10 @@
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <FontIcon x:Name="PowerIcon" Glyph="&#xE83F;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Efficiency" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel x:Name="EfficiencyPausedIndicator" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
+                                            <FontIcon Glyph="&#xE769;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Paused" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
                                     <StackPanel Spacing="2">
@@ -340,46 +347,6 @@
                             </Grid>
                         </Border>
 
-                        <!-- Trigger Threshold Slider Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE950;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Trigger Threshold" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Memory pressure level at which automatic cleanup is triggered." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <TextBlock x:Name="MemoryThresholdValueLabel" Grid.Column="2" Text="80%" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                </Grid>
-                                <Slider x:Name="MemoryThresholdSlider" Minimum="10" Maximum="95" Value="80" StepFrequency="5" TickFrequency="10" ValueChanged="OnMemoryThresholdChanged" Margin="40,0,0,0" />
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Cooldown Slider Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <StackPanel Spacing="8">
-                                <Grid ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE916;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                        <TextBlock Text="Check &amp; Cooldown Interval" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="Minimum seconds to wait between successive automatic cleanups." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <TextBlock x:Name="MemoryCooldownValueLabel" Grid.Column="2" Text="30 seconds" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                </Grid>
-                                <Slider x:Name="MemoryCooldownSlider" Minimum="5" Maximum="300" Value="30" StepFrequency="5" ValueChanged="OnMemoryCooldownChanged" Margin="40,0,0,0" />
-                            </StackPanel>
-                        </Border>
-
                         <!-- Effectiveness Tracking Card -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
                             <Grid ColumnSpacing="16">
@@ -449,66 +416,6 @@
                                     <TextBlock Text="Closing the app window keeps it running in the taskbar tray." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-
-                        <!-- App Theme Mode Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE790;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="App Theme Mode" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Choose Light, Dark, or sync with System preferences." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ComboBox x:Name="ThemeModeComboBox" Grid.Column="2" Width="180" VerticalAlignment="Center" SelectionChanged="OnThemeModeChanged">
-                                    <ComboBoxItem Content="System Default" />
-                                    <ComboBoxItem Content="Light" />
-                                    <ComboBoxItem Content="Dark" />
-                                </ComboBox>
-                            </Grid>
-                        </Border>
-
-                        <!-- Use Windows Accent Color Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE790;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Use Windows Accent Color" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Sync optiSYS color palette with your system personalization settings." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="UseWindowsAccentColorToggle" Grid.Column="2" IsOn="False" Toggled="OnUseWindowsAccentColorToggled" VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-
-                        <!-- Window Backdrop Style Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE7B5;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Window Backdrop Style" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Choose the translucency effect applied to the window background." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ComboBox x:Name="BackdropTypeComboBox" Grid.Column="2" Width="180" VerticalAlignment="Center" SelectionChanged="OnBackdropTypeChanged">
-                                    <ComboBoxItem Content="Mica Alt (Recommended)" />
-                                    <ComboBoxItem Content="Mica (Subtle)" />
-                                    <ComboBoxItem Content="Acrylic (Classic Translucent)" />
-                                    <ComboBoxItem Content="None (Solid Color)" />
-                                </ComboBox>
                             </Grid>
                         </Border>
 

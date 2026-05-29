@@ -26,12 +26,14 @@ public class SettingsTests
         Assert.False(settings.DiskCoalescingEnabled);
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
-        Assert.Equal(80, settings.MemoryThresholdPercent);
+        Assert.Equal(50, settings.MemoryThresholdPercent);
+        Assert.Equal(15, settings.MemoryCheckIntervalSeconds);
+        Assert.Equal(15, settings.MemoryCooldownSeconds);
         Assert.Equal(OptimizationLevel.Conservative, settings.OptimizationLevel);
         Assert.Equal(2, settings.DebouncePowerChangeSeconds);
         Assert.Equal(15, settings.MemoryCleanupDurationSeconds);
         Assert.Equal(2, settings.MemoryRepeatPasses);
-        Assert.Equal("Dark", settings.ThemeMode);
+        Assert.Equal("System", settings.ThemeMode);
         Assert.Equal(640, settings.WindowWidth);
         Assert.Equal(420, settings.WindowHeight);
         Assert.Contains("explorer", settings.MemoryExcludedProcesses);

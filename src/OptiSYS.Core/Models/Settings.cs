@@ -80,9 +80,9 @@ public sealed class Settings
 
     // Memory optimization settings
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
-    public int MemoryCheckIntervalSeconds { get; set; } = 5;
-    public int MemoryThresholdPercent { get; set; } = 80;
-    public int MemoryCooldownSeconds { get; set; } = 30;
+    public int MemoryCheckIntervalSeconds { get; set; } = 15;
+    public int MemoryThresholdPercent { get; set; } = 50;
+    public int MemoryCooldownSeconds { get; set; } = 15;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
     public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Conservative;
@@ -119,7 +119,7 @@ public sealed class Settings
     public bool MinimizeToTray { get; set; } = true;
     public bool StartWithWindows { get; set; } = true;
     public bool HasCompletedOnboarding { get; set; } = false;
-    public string ThemeMode { get; set; } = "Dark"; // "System", "Light", "Dark"
+    public string ThemeMode { get; set; } = "System"; // "System", "Light", "Dark"
     public bool UseWindowsAccentColor { get; set; } = true;
     public string BackdropType { get; set; } = "Acrylic";
     public int HistoryMaxItems { get; set; } = 50;

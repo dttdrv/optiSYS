@@ -253,10 +253,6 @@ public sealed partial class MainWindow : Window
     private void InitializeControlValues()
     {
         AutoOptimizeMemoryToggle.IsOn = _settings.AutoOptimizeMemoryEnabled;
-        MemoryThresholdSlider.Value = _settings.MemoryThresholdPercent;
-        MemoryThresholdValueLabel.Text = $"{_settings.MemoryThresholdPercent}%";
-        MemoryCooldownSlider.Value = _settings.MemoryCooldownSeconds;
-        MemoryCooldownValueLabel.Text = $"{_settings.MemoryCooldownSeconds} seconds";
         OptimizationLevelComboBox.SelectedIndex = (int)_settings.OptimizationLevel;
         EffectivenessTrackingToggle.IsOn = _settings.EffectivenessTrackingEnabled;
 
@@ -265,23 +261,6 @@ public sealed partial class MainWindow : Window
 
         StartWithWindowsToggle.IsOn = _settings.StartWithWindows;
         MinimizeToTrayToggle.IsOn = _settings.MinimizeToTray;
-        ThemeModeComboBox.SelectedIndex = _settings.ThemeMode switch
-        {
-            "System" => 0,
-            "Light" => 1,
-            "Dark" => 2,
-            _ => 2
-        };
-
-        UseWindowsAccentColorToggle.IsOn = _settings.UseWindowsAccentColor;
-        BackdropTypeComboBox.SelectedIndex = _settings.BackdropType switch
-        {
-            "MicaAlt" => 0,
-            "Mica" => 1,
-            "Acrylic" => 2,
-            "None" => 3,
-            _ => 0
-        };
     }
 
     private void RefreshPresentation(bool forceMemoryPoll = false)
@@ -326,49 +305,17 @@ public sealed partial class MainWindow : Window
         UpdateDashboardUI(memory, battery);
     }
 
-    private SolidColorBrush? _accentStatusFallback;
-    private SolidColorBrush? _cautionStatusBrush;
-
-    // Status colours resolved from theme resources so they track the accent/theme and are
-    // allocated at most once, instead of constructing fresh brushes on every timer tick.
-    private Brush AccentStatusBrush =>
-        Application.Current.Resources.TryGetValue("SystemAccentColorBrush", out var value) && value is Brush brush
-            ? brush
-            : _accentStatusFallback ??= new SolidColorBrush(Windows.UI.Color.FromArgb(255, 92, 184, 101));
-
-    private Brush CautionStatusBrush =>
-        _cautionStatusBrush ??= new SolidColorBrush(Windows.UI.Color.FromArgb(255, 240, 165, 0));
-
     private void UpdateDashboardUI(MemoryInfo? memory, BatteryInfo? battery)
     {
-        var accentBrush = AccentStatusBrush;
-        var cautionBrush = CautionStatusBrush;
-
-        // Update sidebar protection status
-        if (_settings.AutomationPaused)
-        {
-            SidebarStatusLabel.Text = "Optimization Paused";
-            SidebarStatusLabel.Foreground = cautionBrush;
-            ToggleProtectionBtn.Content = "Resume Optimization";
-        }
-        else if (_automation.IsCleanupRunning)
-        {
-            SidebarStatusLabel.Text = "Optimizing...";
-            SidebarStatusLabel.Foreground = accentBrush;
-            ToggleProtectionBtn.Content = "Pause Optimization";
-        }
-        else if (battery is not null && battery.IsOnBattery)
-        {
-            SidebarStatusLabel.Text = "On Battery (Protected)";
-            SidebarStatusLabel.Foreground = accentBrush;
-            ToggleProtectionBtn.Content = "Pause Optimization";
-        }
-        else
-        {
-            SidebarStatusLabel.Text = "Protection Active";
-            SidebarStatusLabel.Foreground = accentBrush;
-            ToggleProtectionBtn.Content = "Pause Optimization";
-        }
+        // Update paused indicators + pause/resume button affordance
+        var paused = _settings.AutomationPaused;
+        var pausedVisibility = paused ? Visibility.Visible : Visibility.Collapsed;
+        MemoryPausedIndicator.Visibility = pausedVisibility;
+        EfficiencyPausedIndicator.Visibility = pausedVisibility;
+        PauseToggleIcon.Glyph = paused ? "" : ""; // Play (resume) when paused, Pause when running
+        var pauseTooltip = paused ? "Resume optimization" : "Pause optimization";
+        ToolTipService.SetToolTip(PauseToggleButton, pauseTooltip);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PauseToggleButton, pauseTooltip);
 
         // Update Memory Card
         if (memory is not null && memory.TotalPhysicalBytes > 0)
@@ -488,22 +435,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.SaveDebounced();
     }
 
-    private void OnMemoryThresholdChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.MemoryThresholdPercent = (int)MemoryThresholdSlider.Value;
-        MemoryThresholdValueLabel.Text = $"{_settings.MemoryThresholdPercent}%";
-        _settings.SaveDebounced();
-    }
-
-    private void OnMemoryCooldownChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.MemoryCooldownSeconds = (int)MemoryCooldownSlider.Value;
-        MemoryCooldownValueLabel.Text = $"{_settings.MemoryCooldownSeconds} seconds";
-        _settings.SaveDebounced();
-    }
-
     private void OnBatteryPresetChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing || _settings is null) return;
@@ -518,27 +449,11 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.SaveDebounced();
     }
 
-    private void OnThemeModeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.ThemeMode = ThemeModeComboBox.SelectedIndex switch
-        {
-            0 => "System",
-            1 => "Light",
-            2 => "Dark",
-            _ => "Dark"
-        };
-        _theme.ApplyThemeMode();
-        _theme.ApplyAccentColor();
-        _theme.UpdateTitleBarButtonsColors();
-        _settings.SaveDebounced();
-    }
-
     private void OnResetSettingsClick(object sender, RoutedEventArgs e)
     {
         _settings.AutoOptimizeMemoryEnabled = true;
-        _settings.MemoryThresholdPercent = 80;
-        _settings.MemoryCooldownSeconds = 30;
+        _settings.MemoryThresholdPercent = 50;
+        _settings.MemoryCooldownSeconds = 15;
         _settings.OptimizationLevel = OptimizationLevel.Conservative;
         _settings.EffectivenessTrackingEnabled = true;
         _settings.SelfWorkingSetCapMB = 100;
@@ -546,8 +461,8 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.BatteryPreset = BatteryPreset.Recommended;
         _settings.MinimizeToTray = true;
         _settings.StartWithWindows = true;
-        _settings.ThemeMode = "Dark";
-        _settings.UseWindowsAccentColor = false;
+        _settings.ThemeMode = "System";
+        _settings.UseWindowsAccentColor = true;
         _settings.BackdropType = "Acrylic";
 
         _settings.MemoryExcludedProcesses = new List<string>(Settings.CriticalProcessExclusions);
@@ -729,30 +644,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
             StartupLog.WriteException("GetAppWindow interop failure", ex);
             return null;
         }
-    }
-
-    private void OnUseWindowsAccentColorToggled(object sender, RoutedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.UseWindowsAccentColor = UseWindowsAccentColorToggle.IsOn;
-        _theme.ApplyAccentColor();
-        _theme.UpdateTitleBarButtonsColors();
-        _settings.SaveDebounced();
-    }
-
-    private void OnBackdropTypeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _settings.BackdropType = BackdropTypeComboBox.SelectedIndex switch
-        {
-            0 => "MicaAlt",
-            1 => "Mica",
-            2 => "Acrylic",
-            3 => "None",
-            _ => "MicaAlt"
-        };
-        _theme.ApplyBackdrop();
-        _settings.SaveDebounced();
     }
 
     private void OnTrayRunCleanupRequested()
