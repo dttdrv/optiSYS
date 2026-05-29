@@ -18,23 +18,39 @@ public sealed class HealthScoreCalculatorTests
         var battery = new BatteryInfo { PowerSource = PowerSource.Ac, HasBattery = true, ChargePercent = 90 };
         var freedBytes = (long)(EightGb * 0.10); // exactly the target
 
-        var score = HealthScoreCalculator.Compute(memory, battery, freedBytes, battSavings: 999);
+        var score = HealthScoreCalculator.Compute(memory, battery, freedBytes, battEfficiency: 999);
 
-        score.Should().Be(76, "battery terms drop on AC and battSavings is ignored");
+        score.Should().Be(76, "battery terms drop on AC and battEfficiency is ignored");
     }
 
     [Fact]
-    public void Compute_OnBattery_BlendsMemoryAndBatteryTerms()
+    public void Compute_OnBattery_BlendsMemoryAndBatteryEfficiency()
     {
-        // MemHeadroom = 60, MemSavings = 100, BattLevel = 50, BattSavings = 20.
-        // Expected = 0.30*60 + 0.20*100 + 0.30*50 + 0.20*20 = 18 + 20 + 15 + 4 = 57.
+        // MemHeadroom = 60, MemSavings = 100, BattEfficiency = 50 (neutral / at baseline).
+        // Expected = 0.50*60 + 0.20*100 + 0.30*50 = 30 + 20 + 15 = 65. Charge % is irrelevant.
         var memory = MemoryAt(EightGb, usedPercent: 40);
         var battery = new BatteryInfo { PowerSource = PowerSource.Battery, HasBattery = true, ChargePercent = 50 };
         var freedBytes = (long)(EightGb * 0.10);
 
-        var score = HealthScoreCalculator.Compute(memory, battery, freedBytes, battSavings: 20);
+        var score = HealthScoreCalculator.Compute(memory, battery, freedBytes, battEfficiency: 50);
 
-        score.Should().Be(57);
+        score.Should().Be(65);
+    }
+
+    [Fact]
+    public void Compute_OnBattery_IgnoresChargePercent()
+    {
+        // Two batteries differing ONLY in charge % must yield the same score: the formula
+        // no longer factors in how full the battery is, only how efficiently it drains.
+        var memory = MemoryAt(EightGb, usedPercent: 40);
+        var freedBytes = (long)(EightGb * 0.10);
+        var nearlyEmpty = new BatteryInfo { PowerSource = PowerSource.Battery, HasBattery = true, ChargePercent = 5 };
+        var nearlyFull = new BatteryInfo { PowerSource = PowerSource.Battery, HasBattery = true, ChargePercent = 95 };
+
+        var lowScore = HealthScoreCalculator.Compute(memory, nearlyEmpty, freedBytes, battEfficiency: 50);
+        var highScore = HealthScoreCalculator.Compute(memory, nearlyFull, freedBytes, battEfficiency: 50);
+
+        lowScore.Should().Be(highScore, "charge % must not influence the score");
     }
 
     [Fact]
@@ -45,7 +61,7 @@ public sealed class HealthScoreCalculatorTests
         var battery = new BatteryInfo { PowerSource = PowerSource.Ac, HasBattery = false };
         var freedBytes = EightGb; // way over target
 
-        var score = HealthScoreCalculator.Compute(memory, battery, freedBytes, battSavings: 0);
+        var score = HealthScoreCalculator.Compute(memory, battery, freedBytes, battEfficiency: 0);
 
         // 0.60*50 + 0.40*100 = 70
         score.Should().Be(70);
@@ -57,18 +73,19 @@ public sealed class HealthScoreCalculatorTests
         var memory = MemoryAt(EightGb, usedPercent: 100); // MemHeadroom = 0
         var battery = new BatteryInfo { PowerSource = PowerSource.Ac, HasBattery = false };
 
-        var score = HealthScoreCalculator.Compute(memory, battery, totalFreedBytes: 0, battSavings: 0);
+        var score = HealthScoreCalculator.Compute(memory, battery, totalFreedBytes: 0, battEfficiency: 0);
 
         score.Should().BeInRange(0, 100);
         score.Should().Be(0);
     }
 
     [Fact]
-    public void Evaluate_FirstBatterySample_ProducesZeroBattSavings()
+    public void Evaluate_FirstBatterySample_ProducesNeutralBattEfficiency()
     {
-        // No prior baseline -> BattSavings = 0, so battery contributes only via BattLevel.
-        // MemHeadroom = 60, MemSavings = 0 (no freed), BattLevel = 80, BattSavings = 0.
-        // Expected = 0.30*60 + 0.20*0 + 0.30*80 + 0.20*0 = 18 + 24 = 42.
+        // No prior baseline -> the first reliable drain sample seeds the baseline and is, by
+        // definition, "at baseline" => BattEfficiency = 50 (neutral). Charge % is ignored.
+        // MemHeadroom = 60, MemSavings = 0 (no freed), BattEfficiency = 50.
+        // Expected = 0.50*60 + 0.20*0 + 0.30*50 = 30 + 15 = 45.
         var calc = new HealthScoreCalculator();
         var memory = MemoryAt(EightGb, usedPercent: 40);
         var battery = new BatteryInfo
@@ -81,11 +98,31 @@ public sealed class HealthScoreCalculatorTests
 
         var score = calc.Evaluate(memory, battery, totalFreedBytes: 0);
 
-        score.Should().Be(42);
+        score.Should().Be(45);
     }
 
     [Fact]
-    public void Evaluate_LighterDrainThanBaseline_RewardsBattSavings()
+    public void Evaluate_NoDrainSample_StaysNeutral_NotPunished()
+    {
+        // Fresh boot on battery with no usable drain reading yet -> neutral 50, not 0.
+        // MemHeadroom = 60, MemSavings = 0, BattEfficiency = 50 -> 0.50*60 + 0.30*50 = 45.
+        var calc = new HealthScoreCalculator();
+        var memory = MemoryAt(EightGb, usedPercent: 40);
+        var battery = new BatteryInfo
+        {
+            PowerSource = PowerSource.Battery,
+            HasBattery = true,
+            ChargePercent = 80,
+            DrainRateMilliwatts = 0,
+        };
+
+        var score = calc.Evaluate(memory, battery, totalFreedBytes: 0);
+
+        score.Should().Be(45, "a fresh boot with no drain sample is neutral, not punished");
+    }
+
+    [Fact]
+    public void Evaluate_LighterDrainThanBaseline_RaisesScore()
     {
         var calc = new HealthScoreCalculator();
         var memory = MemoryAt(EightGb, usedPercent: 40);

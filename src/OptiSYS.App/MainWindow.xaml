@@ -38,7 +38,7 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center" Margin="16,0,0,0" Spacing="8">
-                <FontIcon Glyph="&#xE964;" FontSize="14" Foreground="{ThemeResource SystemAccentColorBrush}" />
+                <Image Source="ms-appx:///Assets/AppIcon.png" Width="18" Height="18" VerticalAlignment="Center" />
                 <TextBlock Text="optiSYS" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>

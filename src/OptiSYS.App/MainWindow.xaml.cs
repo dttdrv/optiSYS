@@ -101,6 +101,14 @@ public sealed partial class MainWindow : Window
             {
                 appWindow.Title = "optiSYS";
 
+                // Force the window icon from the shipped .ico so the taskbar / alt-tab refresh
+                // past Windows' cached exe icon (the embedded resource alone can read stale).
+                var icoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+                if (System.IO.File.Exists(icoPath))
+                {
+                    appWindow.SetIcon(icoPath);
+                }
+
                 if (AppWindowTitleBar.IsCustomizationSupported())
                 {
                     var titleBar = appWindow.TitleBar;
