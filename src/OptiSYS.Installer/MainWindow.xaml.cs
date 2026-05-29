@@ -311,6 +311,12 @@ namespace OptiSYS.Installer
                     key?.DeleteValue("optiSYS", false);
                 }
 
+                // Remove the self-provisioned elevated logon task, if the app created one
+                // (opt-in "Run with highest privileges"). Best-effort: the asInvoker installer
+                // may lack rights to delete a HighestAvailable task, in which case it harmlessly
+                // points at a now-deleted exe and no-ops on next logon.
+                DeleteElevationTask();
+
                 // Delete uninstaller registry keys
                 Registry.CurrentUser.DeleteSubKeyTree(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\optiSYS", false);
 
@@ -345,6 +351,24 @@ namespace OptiSYS.Installer
                 MessageBox.Show(this, $"Uninstallation encountered an error: {ex.Message}", "optiSYS Setup Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 ShowFinishedScreen();
             }
+        }
+
+        private static void DeleteElevationTask()
+        {
+            try
+            {
+                using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "schtasks.exe",
+                    Arguments = "/Delete /TN \"OptiSYS\" /F",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                });
+                p?.WaitForExit(5000);
+            }
+            catch { /* no task, or insufficient rights — non-critical */ }
         }
 
         private void UpdateProgress(int percent, string message)

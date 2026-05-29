@@ -146,6 +146,20 @@ public sealed class Settings
     public double WindowTop { get; set; } = double.NaN;
     public bool MinimizeToTray { get; set; } = true;
     public bool StartWithWindows { get; set; } = true;
+
+    /// <summary>
+    /// Opt-in: run optiSYS elevated at logon via a self-provisioned Task Scheduler task
+    /// (one-time UAC, then silent). When false, the plain HKCU Run-key autostart is used.
+    /// </summary>
+    public bool UseTaskScheduler { get; set; } = false;
+
+    /// <summary>
+    /// Transient UI state: set when <see cref="UseTaskScheduler"/> is on but the elevated
+    /// logon task is missing/stale and we are not elevated — drives a non-nagging
+    /// "Grant admin access" banner. Recomputed at startup; not a persisted user intent.
+    /// </summary>
+    public bool ElevationPending { get; set; } = false;
+
     public bool HasCompletedOnboarding { get; set; } = false;
     public string ThemeMode { get; set; } = "System"; // "System", "Light", "Dark"
     public bool UseWindowsAccentColor { get; set; } = true;

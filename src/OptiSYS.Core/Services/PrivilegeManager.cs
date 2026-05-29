@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using OptiSYS.Core.Native;
 
 namespace OptiSYS.Core.Services;
@@ -10,6 +11,25 @@ namespace OptiSYS.Core.Services;
 public static class PrivilegeManager
 {
     private const int ERROR_NOT_ALL_ASSIGNED = 1300;
+
+    /// <summary>
+    /// True when the current process token is a member of the local Administrators role
+    /// (i.e. we hold an elevated token). This is the single source of truth that
+    /// admin-gated domains check before attempting HKLM / SCM writes — when false they
+    /// skip and report "needs admin" rather than failing with ERROR_ACCESS_DENIED.
+    /// </summary>
+    public static bool IsProcessElevated()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public static bool EnablePrivilege(string privilegeName)
     {

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Services;
+using OptiSYS.Services.Elevation;
 
 namespace OptiSYS;
 
@@ -35,6 +36,17 @@ public partial class App : Application
         try
         {
             StartupLog.Write("OnLaunched: entered");
+
+            // Step 0 — elevated provisioning child. When launched via runas with
+            // --provision-elevation, we hold an elevated token: register the logon task and
+            // exit immediately, before any DI/window work (this instance never shows UI).
+            if (IsProvisionElevationLaunch(Environment.GetCommandLineArgs()))
+            {
+                var created = new TaskSchedulerService().CreateOrUpdateTask();
+                StartupLog.Write($"OnLaunched: --provision-elevation handled, taskCreated={created}; exiting");
+                Environment.Exit(0);
+                return;
+            }
 
             // Step 1 — build the DI container. Must happen before `new MainWindow()` because
             // the shell resolves its application services through AppHost.Services.
@@ -88,6 +100,10 @@ public partial class App : Application
     internal static bool IsBackgroundLaunch(string activationArguments, IReadOnlyList<string> commandLineArguments) =>
         activationArguments.Contains("--background", StringComparison.OrdinalIgnoreCase) ||
         commandLineArguments.Any(arg => string.Equals(arg, "--background", StringComparison.OrdinalIgnoreCase));
+
+    internal static bool IsProvisionElevationLaunch(IReadOnlyList<string> commandLineArguments) =>
+        commandLineArguments.Any(arg =>
+            string.Equals(arg, ElevationHelper.ProvisionArgument, StringComparison.OrdinalIgnoreCase));
 
     internal static async Task<IAppRuntimeCoordinator> InitializeRuntimeAsync(IServiceProvider services)
     {

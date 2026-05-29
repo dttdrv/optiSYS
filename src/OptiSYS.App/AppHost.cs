@@ -111,5 +111,6 @@ public static class AppHost
         sc.AddSingleton<IExecutablePathProvider, ProcessExecutablePathProvider>();
         sc.AddSingleton<StartupRegistrationService>();
         sc.AddSingleton<IStartupRegistrationService>(p => p.GetRequiredService<StartupRegistrationService>());
+        sc.AddSingleton<OptiSYS.Services.Elevation.ITaskSchedulerService, OptiSYS.Services.Elevation.TaskSchedulerService>();
     }
 }

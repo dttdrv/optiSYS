@@ -1,6 +1,7 @@
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 using OptiSYS.Models;
+using OptiSYS.Services.Elevation;
 
 namespace OptiSYS.Services;
 
@@ -20,6 +21,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
     private readonly IQuietAutomationService _automation;
     private readonly ITrayIconService _tray;
     private readonly IStartupRegistrationService _startup;
+    private readonly ITaskSchedulerService _taskScheduler;
     private readonly Settings _settings;
     private readonly HealthScoreCalculator _scoreCalculator = new();
     private readonly object _startGate = new();
@@ -33,6 +35,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         IQuietAutomationService automation,
         ITrayIconService tray,
         IStartupRegistrationService startup,
+        ITaskSchedulerService taskScheduler,
         Settings settings)
     {
         _battery = battery ?? throw new ArgumentNullException(nameof(battery));
@@ -41,6 +44,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         _automation = automation ?? throw new ArgumentNullException(nameof(automation));
         _tray = tray ?? throw new ArgumentNullException(nameof(tray));
         _startup = startup ?? throw new ArgumentNullException(nameof(startup));
+        _taskScheduler = taskScheduler ?? throw new ArgumentNullException(nameof(taskScheduler));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
     }
 
@@ -62,11 +66,47 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         // first automation timer can bind to the UI dispatcher safely.
         await _memory.WarmUpAsync();
         await _automation.StartAsync();
-        _startup.Apply(_settings.StartWithWindows);
+        ConfigureAutostartBackend();
         _battery.Updated += OnBatteryUpdated;
         _automation.StateChanged += OnAutomationStateChanged;
         _powerSourceMonitor.PowerSourceChanged += OnPowerSourceChanged;
         RefreshTraySnapshot();
+    }
+
+    /// <summary>
+    /// Selects the autostart backend. Default (<see cref="Settings.UseTaskScheduler"/> = false)
+    /// is the plain HKCU Run-key path — unchanged from before. When the elevated-logon mode is
+    /// enabled, the Task Scheduler task IS the autostart, so the Run key is removed (no double
+    /// launch); if the task is missing/stale we self-heal silently when already elevated, or
+    /// flag <see cref="Settings.ElevationPending"/> for the UI banner when we are not (never
+    /// prompts for UAC at boot). The task is left untouched on the off-path to keep the common
+    /// startup cheap — disabling the mode deletes it at the toggle, not here.
+    /// </summary>
+    private void ConfigureAutostartBackend()
+    {
+        if (!_settings.UseTaskScheduler)
+        {
+            _startup.Apply(_settings.StartWithWindows);
+            return;
+        }
+
+        _startup.Apply(false);
+
+        if (!_taskScheduler.NeedsProvisioning())
+        {
+            _settings.ElevationPending = false;
+            return;
+        }
+
+        if (_taskScheduler.IsElevated)
+        {
+            _taskScheduler.CreateOrUpdateTask();
+            _settings.ElevationPending = false;
+        }
+        else
+        {
+            _settings.ElevationPending = true;
+        }
     }
 
     /// <summary>

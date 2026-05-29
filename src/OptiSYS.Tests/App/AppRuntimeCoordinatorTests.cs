@@ -5,6 +5,7 @@ using OptiSYS.Core.Models;
 using OptiSYS;
 using OptiSYS.Models;
 using OptiSYS.Services;
+using OptiSYS.Services.Elevation;
 using Xunit;
 
 namespace OptiSYS.Tests.App;
@@ -20,6 +21,7 @@ public class AppRuntimeCoordinatorTests
         var automation = new Mock<IQuietAutomationService>();
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
         var settings = new Settings();
         var warmUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -34,6 +36,7 @@ public class AppRuntimeCoordinatorTests
             automation.Object,
             tray.Object,
             startup.Object,
+            taskScheduler.Object,
             settings);
 
         var startTask = coordinator.StartAsync();
@@ -71,6 +74,7 @@ public class AppRuntimeCoordinatorTests
         var automation = new Mock<IQuietAutomationService>();
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
         // Start opposite to the transition target so each case is a real change.
         var settings = new Settings
         {
@@ -93,6 +97,7 @@ public class AppRuntimeCoordinatorTests
             automation.Object,
             tray.Object,
             startup.Object,
+            taskScheduler.Object,
             settings);
 
         await coordinator.StartAsync();
@@ -115,6 +120,7 @@ public class AppRuntimeCoordinatorTests
         var automation = new Mock<IQuietAutomationService>();
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
         var settings = new Settings();
 
         var coordinator = new AppRuntimeCoordinator(
@@ -124,6 +130,7 @@ public class AppRuntimeCoordinatorTests
             automation.Object,
             tray.Object,
             startup.Object,
+            taskScheduler.Object,
             settings);
 
         coordinator.Dispose();
@@ -160,6 +167,102 @@ public class AppRuntimeCoordinatorTests
         Assert.Equal(expected, OptiSYS.App.IsBackgroundLaunch(activationArguments, commandLineArguments));
     }
 
+    [Theory]
+    [InlineData(new[] { "OptiSYS.exe" }, false)]
+    [InlineData(new[] { "OptiSYS.exe", "--background" }, false)]
+    [InlineData(new[] { "OptiSYS.exe", "--provision-elevation" }, true)]
+    [InlineData(new[] { "OptiSYS.exe", "--PROVISION-ELEVATION" }, true)]
+    public void IsProvisionElevationLaunch_DetectsArgumentCaseInsensitively(
+        string[] commandLineArguments,
+        bool expected)
+    {
+        Assert.Equal(expected, OptiSYS.App.IsProvisionElevationLaunch(commandLineArguments));
+    }
+
+    [Fact]
+    public async Task ConfigureAutostartBackend_RunKeyMode_AppliesRunKey_AndLeavesTaskUntouched()
+    {
+        var settings = new Settings { UseTaskScheduler = false, StartWithWindows = true };
+        var (coordinator, startup, task) = BuildForBackend(settings);
+
+        await coordinator.StartAsync();
+
+        startup.Verify(s => s.Apply(true), Times.Once);     // today's HKCU Run-key path, unchanged
+        task.Verify(t => t.NeedsProvisioning(), Times.Never);
+        task.Verify(t => t.CreateOrUpdateTask(), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConfigureAutostartBackend_TaskModeElevated_NeedsProvisioning_SelfHealsSilently()
+    {
+        var settings = new Settings { UseTaskScheduler = true };
+        var (coordinator, startup, task) = BuildForBackend(settings);
+        task.Setup(t => t.NeedsProvisioning()).Returns(true);
+        task.Setup(t => t.IsElevated).Returns(true);
+
+        await coordinator.StartAsync();
+
+        task.Verify(t => t.CreateOrUpdateTask(), Times.Once);  // already elevated → no UAC
+        startup.Verify(s => s.Apply(false), Times.Once);       // Run key removed (no double launch)
+        Assert.False(settings.ElevationPending);
+    }
+
+    [Fact]
+    public async Task ConfigureAutostartBackend_TaskModeUnelevated_NeedsProvisioning_FlagsPending_NoBootPrompt()
+    {
+        var settings = new Settings { UseTaskScheduler = true };
+        var (coordinator, startup, task) = BuildForBackend(settings);
+        task.Setup(t => t.NeedsProvisioning()).Returns(true);
+        task.Setup(t => t.IsElevated).Returns(false);
+
+        await coordinator.StartAsync();
+
+        task.Verify(t => t.CreateOrUpdateTask(), Times.Never); // never prompts for UAC at boot
+        startup.Verify(s => s.Apply(false), Times.Once);
+        Assert.True(settings.ElevationPending);                // UI banner drives the one-time grant
+    }
+
+    [Fact]
+    public async Task ConfigureAutostartBackend_TaskModeAlreadyProvisioned_NoReprovision_ClearsPending()
+    {
+        var settings = new Settings { UseTaskScheduler = true, ElevationPending = true };
+        var (coordinator, startup, task) = BuildForBackend(settings);
+        task.Setup(t => t.NeedsProvisioning()).Returns(false);
+
+        await coordinator.StartAsync();
+
+        task.Verify(t => t.CreateOrUpdateTask(), Times.Never);
+        startup.Verify(s => s.Apply(false), Times.Once);
+        Assert.False(settings.ElevationPending);
+    }
+
+    private static (AppRuntimeCoordinator coordinator, Mock<IStartupRegistrationService> startup, Mock<ITaskSchedulerService> task)
+        BuildForBackend(Settings settings)
+    {
+        var battery = new Mock<IBatteryInfoService>();
+        var memory = new Mock<IMemoryInfoService>();
+        var powerMonitor = new Mock<IPowerSourceMonitor>();
+        var automation = new Mock<IQuietAutomationService>();
+        var tray = new Mock<ITrayIconService>();
+        var startup = new Mock<IStartupRegistrationService>();
+        var task = new Mock<ITaskSchedulerService>();
+
+        memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.GetActiveBatteryStatuses()).Returns([]);
+
+        var coordinator = new AppRuntimeCoordinator(
+            battery.Object,
+            memory.Object,
+            powerMonitor.Object,
+            automation.Object,
+            tray.Object,
+            startup.Object,
+            task.Object,
+            settings);
+        return (coordinator, startup, task);
+    }
+
     [Fact]
     public async Task StartAsync_PreservesCallerSynchronizationContext_ForAutomationStartup()
     {
@@ -175,6 +278,7 @@ public class AppRuntimeCoordinatorTests
         var automation = new ContextCapturingAutomationService();
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
         var settings = new Settings();
 
         memory.Setup(m => m.WarmUpAsync()).Returns(async () =>
@@ -189,6 +293,7 @@ public class AppRuntimeCoordinatorTests
                 automation,
                 tray.Object,
                 startup.Object,
+                taskScheduler.Object,
                 settings);
 
             await coordinator.StartAsync();
