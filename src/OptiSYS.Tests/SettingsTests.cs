@@ -24,11 +24,12 @@ public class SettingsTests
         Assert.False(settings.GpuPowerEnabled);
         Assert.False(settings.CpuParkingEnabled);
         Assert.False(settings.DiskCoalescingEnabled);
+        Assert.True(settings.WiFiOptimizerEnabled);   // part of the all-in-one automatic optimization
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
-        Assert.Equal(50, settings.MemoryThresholdPercent);
-        Assert.Equal(15, settings.MemoryCheckIntervalSeconds);
-        Assert.Equal(15, settings.MemoryCooldownSeconds);
+        Assert.Equal(60, settings.MemoryThresholdPercent);
+        Assert.Equal(30, settings.MemoryCheckIntervalSeconds);
+        Assert.Equal(30, settings.MemoryCooldownSeconds);
         Assert.Equal(OptimizationLevel.Conservative, settings.OptimizationLevel);
         Assert.Equal(2, settings.DebouncePowerChangeSeconds);
         Assert.Equal(15, settings.MemoryCleanupDurationSeconds);

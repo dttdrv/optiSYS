@@ -240,6 +240,45 @@ public sealed class QuietAutomationServiceTests
         Assert.False(settings.CpuParkingEnabled);
     }
 
+    [Fact]
+    public async Task StartAsync_WhenNotPaused_ActivatesWiFiOptimizer()
+    {
+        var settings = new Settings { AutomationPaused = false };
+        var engine = new Mock<IOptimizationEngine>();
+        var service = CreateService(settings, new FakeTimerService(), engine: engine);
+
+        await service.StartAsync();
+
+        engine.Verify(e => e.ActivateDomain("wifi-optimizer"), Times.Once);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenPaused_DoesNotActivateWiFiOptimizer()
+    {
+        var settings = new Settings { AutomationPaused = true };
+        var engine = new Mock<IOptimizationEngine>();
+        var service = CreateService(settings, new FakeTimerService(), engine: engine);
+
+        await service.StartAsync();
+
+        engine.Verify(e => e.ActivateDomain("wifi-optimizer"), Times.Never);
+    }
+
+    [Fact]
+    public async Task SetAutomationPaused_RevertsWiFiOnPause_AndReactivatesOnResume()
+    {
+        var settings = new Settings { AutomationPaused = false };
+        var engine = new Mock<IOptimizationEngine>();
+        var service = CreateService(settings, new FakeTimerService(), engine: engine);
+        await service.StartAsync();   // activate #1 (not paused)
+
+        service.SetAutomationPaused(true);
+        engine.Verify(e => e.RevertDomain("wifi-optimizer"), Times.Once);
+
+        service.SetAutomationPaused(false);
+        engine.Verify(e => e.ActivateDomain("wifi-optimizer"), Times.Exactly(2)); // startup + resume
+    }
+
     private static QuietAutomationService CreateService(
         Settings settings,
         FakeTimerService timer,

@@ -89,10 +89,11 @@ public sealed class Settings
     public bool CpuParkingEnabled { get; set; } = false;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
-    // Wi-Fi latency optimizer (opt-in, default OFF). Unelevated + session-scoped + reversible.
-    // A pure latency win: disabling the background scan removes 100ms+ spikes on the active
-    // connection; streaming mode prioritizes it. The one trade-off is slower roaming between APs.
-    public bool WiFiOptimizerEnabled { get; set; } = false;
+    // Wi-Fi latency optimizer — part of the all-in-one automatic optimization (ON by default).
+    // Unelevated + session-scoped + reversible. Disabling the background scan removes 100ms+
+    // spikes on the active connection; streaming mode prioritizes it. Activated/reverted together
+    // with the master "Automatic optimization" switch; a no-op on machines without a Wi-Fi adapter.
+    public bool WiFiOptimizerEnabled { get; set; } = true;
     public bool WiFiDisableBackgroundScan { get; set; } = true;
     public bool WiFiStreamingMode { get; set; } = true;
 
@@ -113,11 +114,13 @@ public sealed class Settings
         "audiodg", "NVIDIA Display Container"
     ];
 
-    // Memory optimization settings
+    // Memory optimization settings. Threshold + interval are baked-in defaults (no UI knobs):
+    // 60% acts only under genuine pressure (typical systems idle at 40-60%) while the predictive
+    // trigger catches climbs earlier; 30s keeps overhead low. Tuned with the AIO simplification.
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
-    public int MemoryCheckIntervalSeconds { get; set; } = 15;
-    public int MemoryThresholdPercent { get; set; } = 50;
-    public int MemoryCooldownSeconds { get; set; } = 15;
+    public int MemoryCheckIntervalSeconds { get; set; } = 30;
+    public int MemoryThresholdPercent { get; set; } = 60;
+    public int MemoryCooldownSeconds { get; set; } = 30;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
     public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Conservative;

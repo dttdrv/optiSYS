@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     
     private bool _allowExit;
     private bool _initializing = true;
+    private bool _suppressAutoToggle;
 
     public MainWindow()
     {
@@ -249,6 +250,15 @@ public sealed partial class MainWindow : Window
         RefreshPresentation();
     }
 
+    // The single Settings master switch — the canonical on/off for all automatic optimization.
+    // Stays in sync with the dashboard pause button (both drive AutomationPaused).
+    private void OnAutomaticOptimizationToggled(object sender, RoutedEventArgs e)
+    {
+        if (_initializing || _suppressAutoToggle || _settings is null) return;
+        _automation.SetAutomationPaused(!AutomaticOptimizationToggle.IsOn);
+        RefreshPresentation();
+    }
+
     private void LoadExclusionsFromSettings()
     {
         _protectedApps.Clear();
@@ -260,11 +270,9 @@ public sealed partial class MainWindow : Window
 
     private void InitializeControlValues()
     {
-        AutoOptimizeMemoryToggle.IsOn = _settings.AutoOptimizeMemoryEnabled;
+        // Master AIO switch: ON when automation is running (not paused).
+        AutomaticOptimizationToggle.IsOn = !_settings.AutomationPaused;
         OptimizationLevelComboBox.SelectedIndex = (int)_settings.OptimizationLevel;
-        EffectivenessTrackingToggle.IsOn = _settings.EffectivenessTrackingEnabled;
-
-        AutoOptimizeOnBatteryToggle.IsOn = _settings.AutoOptimizeOnBattery;
         BatteryPresetComboBox.SelectedIndex = (int)_settings.BatteryPreset;
 
         StartWithWindowsToggle.IsOn = _settings.StartWithWindows;
@@ -332,6 +340,12 @@ public sealed partial class MainWindow : Window
         var pauseTooltip = paused ? "Resume optimization" : "Pause optimization";
         ToolTipService.SetToolTip(PauseToggleButton, pauseTooltip);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PauseToggleButton, pauseTooltip);
+
+        // Keep the Settings master switch in step with the pause button (guard the programmatic
+        // assignment so it doesn't re-enter the Toggled handler).
+        _suppressAutoToggle = true;
+        AutomaticOptimizationToggle.IsOn = !paused;
+        _suppressAutoToggle = false;
 
         // Update Memory Card
         if (memory is not null && memory.TotalPhysicalBytes > 0)
@@ -428,14 +442,18 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
 
     private async void OnManualTrimClick(object sender, RoutedEventArgs e)
     {
+        // Keep the icon-only button's glyph intact — only toggle enabled state for feedback.
+        // (Setting Content to a string destroyed the FontIcon and left cut-off "Optimize" text.)
         ManualTrimButton.IsEnabled = false;
-        ManualTrimButton.Content = "Optimizing...";
-        
-        await _automation.RunMemoryCleanupAsync();
-
-        RefreshPresentation(forceMemoryPoll: true);
-        ManualTrimButton.Content = "Optimize now";
-        ManualTrimButton.IsEnabled = true;
+        try
+        {
+            await _automation.RunMemoryCleanupAsync();
+            RefreshPresentation(forceMemoryPoll: true);
+        }
+        finally
+        {
+            ManualTrimButton.IsEnabled = true;
+        }
     }
 
     private async void OnDeepCleanClick(object sender, RoutedEventArgs e)
@@ -454,10 +472,7 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
     {
         if (_initializing || _settings is null) return;
 
-        _settings.AutoOptimizeMemoryEnabled = AutoOptimizeMemoryToggle.IsOn;
         _settings.OptimizationLevel = (OptimizationLevel)OptimizationLevelComboBox.SelectedIndex;
-        _settings.EffectivenessTrackingEnabled = EffectivenessTrackingToggle.IsOn;
-        _settings.AutoOptimizeOnBattery = AutoOptimizeOnBatteryToggle.IsOn;
         _settings.MinimizeToTray = MinimizeToTrayToggle.IsOn;
 
         _settings.SaveDebounced();

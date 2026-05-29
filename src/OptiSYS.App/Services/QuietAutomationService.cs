@@ -84,7 +84,13 @@ public sealed class QuietAutomationService : IQuietAutomationService
         }
 
         ApplySafeDomainSettings();
+        // AIO baked-in constants (no UI knobs anymore): memory auto-optimization and effectiveness
+        // tracking are always on under the hood; the master switch governs the run state via pause.
+        _settings.AutoOptimizeMemoryEnabled = true;
+        _settings.EffectivenessTrackingEnabled = true;
         RefreshMemoryExclusions();
+        if (!_settings.AutomationPaused)
+            SetWiFiOptimization(true);   // Wi-Fi latency optimizer is part of the AIO automatic set
         _memoryWatcher = _timer.Start(
             TimeSpan.FromSeconds(Math.Max(3, _settings.MemoryCheckIntervalSeconds)),
             () => _ = EvaluateMemoryPressureAsync());
@@ -187,9 +193,30 @@ public sealed class QuietAutomationService : IQuietAutomationService
 
         _settings.AutomationPaused = paused;
         _settings.SaveDebounced();
+        SetWiFiOptimization(!paused);   // revert Wi-Fi when paused, re-apply when resumed
         Publish(paused
             ? "Safe optimization is paused."
             : "Safe optimization resumed.");
+    }
+
+    private const string WiFiDomainId = "wifi-optimizer";
+
+    /// <summary>
+    /// Activate or revert the Wi-Fi latency optimizer alongside the master automatic-optimization
+    /// state. A no-op on machines with no Wi-Fi adapter (the domain reports unsupported) and fully
+    /// wrapped so a WLAN hiccup can never disrupt automation.
+    /// </summary>
+    private void SetWiFiOptimization(bool enable)
+    {
+        try
+        {
+            if (enable) _engine.ActivateDomain(WiFiDomainId);
+            else _engine.RevertDomain(WiFiDomainId);
+        }
+        catch (Exception ex)
+        {
+            Publish($"Wi-Fi optimization {(enable ? "activation" : "revert")} skipped: {ex.Message}");
+        }
     }
 
     public IReadOnlyList<DomainStatus> GetActiveBatteryStatuses() =>

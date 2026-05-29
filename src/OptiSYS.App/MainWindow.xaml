@@ -328,9 +328,10 @@
                     <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left" Margin="0,0,0,16">
                         <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
 
-                        <TextBlock Text="Memory" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="Optimization" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
 
-                        <!-- Automatic Memory Optimization Card -->
+                        <!-- The single master switch. Everything else (memory tuning, predictive
+                             trimming, Wi-Fi latency, efficiency-follows-power) runs under the hood. -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
@@ -340,46 +341,10 @@
                                 </Grid.ColumnDefinitions>
                                 <FontIcon Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Automatic Memory Optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Monitor memory pressure and release resources when limits are exceeded." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Text="Automatic optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="Keeps your PC fast and efficient in the background — frees memory under pressure and reduces Wi-Fi latency. Fully automatic and reversible; nothing to configure." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="AutoOptimizeMemoryToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-
-                        <!-- Effectiveness Tracking Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE9D2;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Effectiveness Tracking" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Skip optimization steps that historically recover negligible memory." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="EffectivenessTrackingToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-
-                        <TextBlock Text="Efficiency" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" />
-
-                        <!-- Optimize on Battery Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xEBB5;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Optimize on Battery Power" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Enable battery optimizations automatically when running on DC power." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ToggleSwitch x:Name="AutoOptimizeOnBatteryToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
+                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
 
