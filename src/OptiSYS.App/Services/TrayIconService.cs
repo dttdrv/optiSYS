@@ -317,9 +317,9 @@ public sealed class TrayIconService : ITrayIconService
 
         internal static string FormatScore(int score)
         {
-            var clamped = Math.Clamp(score, 0, 100);
-            // "100" is 3 digits and crowds the 32px canvas; show "OK" at full health instead.
-            return clamped >= 100 ? "OK" : clamped.ToString();
+            // Always the numeric score (0–100). "100" is 3 digits but the renderer already
+            // drops to a smaller font for 3-char strings, so it fits the 32px canvas.
+            return Math.Clamp(score, 0, 100).ToString();
         }
     }
 

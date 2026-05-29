@@ -36,6 +36,17 @@ public sealed class TrayIconServiceTests
         color.A.Should().Be(255);
     }
 
+    [Theory]
+    [InlineData(0, "0")]
+    [InlineData(42, "42")]
+    [InlineData(100, "100")]   // full health shows the number, never "OK"
+    [InlineData(150, "100")]   // clamped
+    [InlineData(-5, "0")]      // clamped
+    public void FormatScore_AlwaysRendersTheClampedNumber(int score, string expected)
+    {
+        TrayIconService.ScoreIconRenderer.FormatScore(score).Should().Be(expected);
+    }
+
     private static nint PackNotifyIconLParam(uint iconId, uint eventId) =>
         unchecked((nint)(((ulong)iconId << 16) | eventId));
 }
