@@ -184,8 +184,8 @@ public sealed class Settings
     ];
 
     // ── Common UI settings ────────────────────────────────────────────
-    public double WindowWidth { get; set; } = 640;
-    public double WindowHeight { get; set; } = 420;
+    public double WindowWidth { get; set; } = 1280;
+    public double WindowHeight { get; set; } = 720;
     public double WindowLeft { get; set; } = double.NaN;
     public double WindowTop { get; set; } = double.NaN;
     public bool MinimizeToTray { get; set; } = true;
@@ -237,7 +237,6 @@ public sealed class Settings
     {
         try
         {
-            MigrateOldSettings();
             if (!File.Exists(SettingsFile))
                 return new Settings();
 
@@ -249,53 +248,6 @@ public sealed class Settings
         catch
         {
             return new Settings();
-        }
-    }
-
-    /// <summary>One-time migration from optiBAT and optiRAM settings dirs.</summary>
-    private static void MigrateOldSettings()
-    {
-        if (File.Exists(SettingsFile)) return;
-
-        // Try optiRAM first (more settings to preserve)
-        var ramDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "optiRAM");
-        var ramFile = Path.Combine(ramDir, "settings.json");
-        if (File.Exists(ramFile))
-        {
-            try
-            {
-                Directory.CreateDirectory(SettingsDir);
-                File.Copy(ramFile, SettingsFile, overwrite: false);
-                return;
-            }
-            catch { /* Migration failure is non-critical */ }
-        }
-
-        // Try RAMSpeed (legacy name)
-        var oldDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RAMSpeed");
-        var oldFile = Path.Combine(oldDir, "settings.json");
-        if (File.Exists(oldFile))
-        {
-            try
-            {
-                Directory.CreateDirectory(SettingsDir);
-                File.Copy(oldFile, SettingsFile, overwrite: false);
-                return;
-            }
-            catch { }
-        }
-
-        // Try optiBAT
-        var batDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "optiBAT");
-        var batFile = Path.Combine(batDir, "settings.json");
-        if (File.Exists(batFile))
-        {
-            try
-            {
-                Directory.CreateDirectory(SettingsDir);
-                File.Copy(batFile, SettingsFile, overwrite: false);
-            }
-            catch { }
         }
     }
 

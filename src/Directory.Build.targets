@@ -104,4 +104,31 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- Deploy the window-icon assets next to the executable. The MRT/PRI no-ops above stop the
+       normal WinUI asset pipeline from carrying Assets\, so the app's own icon files never reach
+       the build/publish output. ConfigureTitleBar reads BaseDirectory\Assets\AppIcon.ico (window
+       HICON via AppWindow.SetIcon — drives the taskbar/alt-tab/thumbnail icon) and AppIcon.png
+       (the in-window title-bar icon) at runtime; without these copies both silently no-op and the
+       window falls back to the generic placeholder icon. Condition-gated to the App project (only
+       it has Assets\AppIcon.ico), so it is inert for Core / Tests. -->
+  <ItemGroup>
+    <AppIconAssets Include="$(MSBuildProjectDirectory)\Assets\AppIcon.ico;$(MSBuildProjectDirectory)\Assets\AppIcon.png" />
+  </ItemGroup>
+
+  <Target Name="CopyAppIconAssetsToOutput"
+          AfterTargets="Build"
+          Condition="Exists('$(MSBuildProjectDirectory)\Assets\AppIcon.ico')">
+    <Copy SourceFiles="@(AppIconAssets)"
+          DestinationFiles="@(AppIconAssets->'$(TargetDir)Assets\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="CopyAppIconAssetsToPublishDir"
+          AfterTargets="Publish"
+          Condition="Exists('$(MSBuildProjectDirectory)\Assets\AppIcon.ico')">
+    <Copy SourceFiles="@(AppIconAssets)"
+          DestinationFiles="@(AppIconAssets->'$(PublishDir)Assets\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

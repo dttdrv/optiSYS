@@ -47,6 +47,13 @@ if (-not (Test-Path $controlXbf)) {
     throw "Publish is missing '$controlXbf' — the compiled-XAML copy target regressed (Directory.Build.targets)."
 }
 
+# Guard the window-icon assets: without them the installed app's title-bar/taskbar/thumbnail
+# icon silently falls back to the generic Windows placeholder (AppWindow.SetIcon no-ops).
+$appIco = Join-Path $publishDir "Assets\AppIcon.ico"
+if (-not (Test-Path $appIco)) {
+    throw "Publish is missing '$appIco' — the icon-asset copy target regressed (Directory.Build.targets)."
+}
+
 Write-Host "--- Compile installer (Inno Setup) ---" -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 & $iscc $issPath

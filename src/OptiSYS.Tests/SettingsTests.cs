@@ -36,8 +36,8 @@ public class SettingsTests
         Assert.Equal(15, settings.MemoryCleanupDurationSeconds);
         Assert.Equal(2, settings.MemoryRepeatPasses);
         Assert.Equal("System", settings.ThemeMode);
-        Assert.Equal(640, settings.WindowWidth);
-        Assert.Equal(420, settings.WindowHeight);
+        Assert.Equal(1280, settings.WindowWidth);
+        Assert.Equal(720, settings.WindowHeight);
         Assert.Contains("explorer", settings.MemoryExcludedProcesses);
         Assert.Contains("ShellExperienceHost", settings.EcoQosExcludedProcesses);
         Assert.Contains("StartMenuExperienceHost", settings.TimerResolutionExcludedProcesses);

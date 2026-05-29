@@ -142,26 +142,57 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            var width = double.IsFinite(_settings.WindowWidth) ? (int)_settings.WindowWidth : 1100;
-            var height = double.IsFinite(_settings.WindowHeight) ? (int)_settings.WindowHeight : 720;
-            
-            // Windows 11 system utility standard layout limits
-            appWindow.Resize(new Windows.Graphics.SizeInt32(Math.Max(width, 800), Math.Max(height, 560)));
+            var width = double.IsFinite(_settings.WindowWidth) ? (int)_settings.WindowWidth : MinWindowWidth;
+            var height = double.IsFinite(_settings.WindowHeight) ? (int)_settings.WindowHeight : MinWindowHeight;
+
+            // Work area (physical px, same units as AppWindow) of the monitor this window opens on.
+            var work = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+
+            // Never below the usable minimum, never larger than the monitor.
+            width = Math.Clamp(width, MinWindowWidth, Math.Max(MinWindowWidth, work.Width));
+            height = Math.Clamp(height, MinWindowHeight, Math.Max(MinWindowHeight, work.Height));
+            appWindow.Resize(new Windows.Graphics.SizeInt32(width, height));
 
             // Enforce a minimum size. WindowsAppSDK 1.6 has no OverlappedPresenter min-size API,
             // so clamp via the AppWindow.Changed event instead.
             appWindow.Changed -= OnAppWindowChanged;
             appWindow.Changed += OnAppWindowChanged;
 
-            if (double.IsFinite(_settings.WindowLeft) && double.IsFinite(_settings.WindowTop))
-            {
-                appWindow.Move(new Windows.Graphics.PointInt32((int)_settings.WindowLeft, (int)_settings.WindowTop));
-            }
+            // Place the window on-screen. A saved position is honored only when fully visible;
+            // otherwise center. Without this, a stale off-screen position renders a taskbar button
+            // and thumbnail but never appears on the desktop.
+            var pos = ResolveOnScreenPosition(work, width, height);
+            appWindow.Move(pos);
+            StartupLog.Write($"ConfigureAppWindow: req={_settings.WindowWidth}x{_settings.WindowHeight} work={work.Width}x{work.Height}@({work.X},{work.Y}) -> {width}x{height} @({pos.X},{pos.Y})");
         }
         catch (Exception ex)
         {
             StartupLog.WriteException("ConfigureAppWindow failure", ex);
         }
+    }
+
+    /// <summary>
+    /// Returns a top-left point that keeps the whole window inside <paramref name="work"/>: the
+    /// saved position when it is set and fully on-screen, otherwise the centered position.
+    /// </summary>
+    private Windows.Graphics.PointInt32 ResolveOnScreenPosition(Windows.Graphics.RectInt32 work, int width, int height)
+    {
+        if (double.IsFinite(_settings.WindowLeft) && double.IsFinite(_settings.WindowTop))
+        {
+            var x = (int)_settings.WindowLeft;
+            var y = (int)_settings.WindowTop;
+            var fullyVisible = x >= work.X && y >= work.Y
+                && x + width <= work.X + work.Width
+                && y + height <= work.Y + work.Height;
+            if (fullyVisible)
+            {
+                return new Windows.Graphics.PointInt32(x, y);
+            }
+        }
+
+        var cx = work.X + Math.Max(0, (work.Width - width) / 2);
+        var cy = work.Y + Math.Max(0, (work.Height - height) / 2);
+        return new Windows.Graphics.PointInt32(cx, cy);
     }
 
     private const int MinWindowWidth = 800;
@@ -170,6 +201,13 @@ public sealed partial class MainWindow : Window
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
         if (!args.DidSizeChange)
+        {
+            return;
+        }
+
+        // Only clamp in the normal (restored) state. Resizing while minimized or maximized fights
+        // the OS and — for minimize — corrupts the restore placement, leaving the window off-screen.
+        if ((sender.Presenter as OverlappedPresenter)?.State is { } state and not OverlappedPresenterState.Restored)
         {
             return;
         }
@@ -567,8 +605,30 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ShowWindow(hwnd, SW_RESTORE);
+        EnsureWindowOnScreen();
         SetForegroundWindow(hwnd);
         Activate();
+    }
+
+    /// <summary>Recenter the window if it has drifted off the visible work area, so a restore
+    /// always brings it back into view (defends against a stale/parked off-screen position).</summary>
+    private void EnsureWindowOnScreen()
+    {
+        if (GetAppWindow() is not { } appWindow)
+        {
+            return;
+        }
+
+        var work = DisplayArea.GetFromWindowId(appWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var pos = appWindow.Position;
+        var size = appWindow.Size;
+        var fullyVisible = pos.X >= work.X && pos.Y >= work.Y
+            && pos.X + size.Width <= work.X + work.Width
+            && pos.Y + size.Height <= work.Y + work.Height;
+        if (!fullyVisible)
+        {
+            appWindow.Move(ResolveOnScreenPosition(work, size.Width, size.Height));
+        }
     }
 
     private void OnClosed(object sender, WindowEventArgs args)
@@ -595,6 +655,14 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
     {
         try
         {
+            // Only persist a real, restored placement. Saving while minimized/maximized would
+            // capture the -32000 parked coordinate and the min-clamp size, which then re-applies
+            // as garbage geometry on the next launch.
+            if (appWindow.Presenter is OverlappedPresenter { State: not OverlappedPresenterState.Restored })
+            {
+                return;
+            }
+
             _settings.WindowLeft = appWindow.Position.X;
             _settings.WindowTop = appWindow.Position.Y;
             _settings.WindowWidth = appWindow.Size.Width;
