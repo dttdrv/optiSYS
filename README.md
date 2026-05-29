@@ -64,3 +64,7 @@ powershell -ExecutionPolicy Bypass -File installer/build-installer.ps1
 ## Requirements
 
 Windows 10 (build 1809 or later) or Windows 11, x64.
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).
