@@ -1,154 +1,59 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$srcRoot = Join-Path $repoRoot "src"
-$appProjectPath = Join-Path $srcRoot "OptiSYS.App\OptiSYS.App.csproj"
-$installerProjectPath = Join-Path $srcRoot "OptiSYS.Installer\OptiSYS.Installer.csproj"
+# Builds the shippable optiSYS installer end-to-end: refresh brand assets -> build + test ->
+# publish the app (Release, self-contained) -> compile the Inno Setup installer.
+#
+# (The old WPF "Animated Fluent" installer + its app.zip pipeline were retired in favor of the
+# small, native, robust Inno installer. The OptiSYS.Installer project is no longer built here.)
+
+$repoRoot   = Split-Path -Parent $PSScriptRoot
+$srcRoot    = Join-Path $repoRoot "src"
+$appProject = Join-Path $srcRoot "OptiSYS.App\OptiSYS.App.csproj"
 $publishDir = Join-Path $PSScriptRoot "publish\release-win-x64"
-$distDir = Join-Path $PSScriptRoot "dist"
-$zipPath = Join-Path $srcRoot "OptiSYS.Installer\Resources\app.zip"
-$extractPriPayloadScript = Join-Path $srcRoot "Extract-WinUiPriPayload.ps1"
-$brandAssetScript = Join-Path $PSScriptRoot "assets\generate_brand_assets.py"
+$distDir    = Join-Path $PSScriptRoot "dist"
+$issPath    = Join-Path $PSScriptRoot "OptiSYS.iss"
+$brandScript = Join-Path $PSScriptRoot "assets\generate-brand-assets.ps1"
 
-Write-Host "--- Generating Brand Assets ---" -ForegroundColor Cyan
-python $brandAssetScript
-if ($LASTEXITCODE -ne 0) {
-    throw "Brand asset generation failed."
-}
+$iscc = @(
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) { throw "Inno Setup 6 (ISCC.exe) not found — install from https://jrsoftware.org/isdl.php" }
 
-# Clean previous build artifacts
-Write-Host "--- Cleaning Up Old Builds ---" -ForegroundColor Cyan
-if (Test-Path $publishDir) {
-    Remove-Item $publishDir -Recurse -Force
-}
-if (Test-Path $zipPath) {
-    Remove-Item $zipPath -Force
-}
-New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
-New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+Write-Host "--- Brand assets (matches the current app icon) ---" -ForegroundColor Cyan
+powershell -NoProfile -ExecutionPolicy Bypass -File $brandScript
+if ($LASTEXITCODE -ne 0) { throw "brand asset generation failed" }
 
 Push-Location $srcRoot
 try {
-    # Build solution
-    Write-Host "--- Building Solution ---" -ForegroundColor Cyan
-    dotnet build OptiSYS.sln
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet build failed."
-    }
-
-    # Run automated tests
-    Write-Host "--- Running Tests ---" -ForegroundColor Cyan
-    dotnet test OptiSYS.Tests\OptiSYS.Tests.csproj
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet test failed."
-    }
-
-    # Publish OptiSYS.App
-    Write-Host "--- Publishing OptiSYS.App ---" -ForegroundColor Cyan
-    dotnet publish $appProjectPath -c Release -r win-x64 --self-contained true -o $publishDir
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet publish failed."
-    }
+    Write-Host "--- Build + Test ---" -ForegroundColor Cyan
+    dotnet build OptiSYS.sln -c Debug --nologo -v minimal
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
+    dotnet test OptiSYS.Tests\OptiSYS.Tests.csproj -c Debug --no-build --nologo
+    if ($LASTEXITCODE -ne 0) { throw "dotnet test failed" }
 }
-finally {
-    Pop-Location
+finally { Pop-Location }
+
+Write-Host "--- Publish app (Release, self-contained win-x64) ---" -ForegroundColor Cyan
+if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
+dotnet publish $appProject -c Release -r win-x64 --self-contained true -o $publishDir --nologo -v minimal
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed" }
+
+# Guard the headless-PRI XAML-copy regression: the published app crashes without this.
+$controlXbf = Join-Path $publishDir "Controls\HistoryChartControl.xbf"
+if (-not (Test-Path $controlXbf)) {
+    throw "Publish is missing '$controlXbf' — the compiled-XAML copy target regressed (Directory.Build.targets)."
 }
 
-# Run WinUI PRI Extraction script
-Write-Host "--- Extracting WinUI Resources ---" -ForegroundColor Cyan
-$exePath = Join-Path $publishDir "OptiSYS.exe"
-if (-not (Test-Path $exePath)) {
-    throw "Publish output is missing '$exePath'."
-}
+Write-Host "--- Compile installer (Inno Setup) ---" -ForegroundColor Cyan
+New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+& $iscc $issPath
+if ($LASTEXITCODE -ne 0) { throw "ISCC compile failed" }
 
-$priPath = Join-Path $publishDir "Microsoft.UI.Xaml.Controls.pri"
-if (-not (Test-Path $priPath)) {
-    throw "Publish output is missing '$priPath'."
-}
-
-if (-not (Test-Path $extractPriPayloadScript)) {
-    throw "WinUI PRI extraction script was not found at '$extractPriPayloadScript'."
-}
-
-& $extractPriPayloadScript `
-    -PriPath $priPath `
-    -OutputRoot $publishDir `
-    -WindowsSdkDir $env:WindowsSdkDir `
-    -NuGetPackageRoot $env:NUGET_PACKAGES
-
-# Validate all files are present in publish dir before zipping
-$requiredWinUiPayload = @(
-    "Microsoft.UI.Xaml\Themes\generic.xbf",
-    "Microsoft.UI.Xaml\Themes\themeresources.xbf",
-    "Microsoft.UI.Xaml\DensityStyles\Compact.xbf",
-    "Microsoft.UI.Xaml\DensityStyles\CompactDatePickerTimePickerFlyout.xbf"
-)
-
-$requiredCompiledXaml = @(
-    "App.xaml",
-    "App.xbf",
-    "MainWindow.xaml",
-    "MainWindow.xbf"
-)
-
-$missingPayload = @(
-    $requiredWinUiPayload |
-        Where-Object { -not (Test-Path (Join-Path $publishDir $_)) }
-)
-if ($missingPayload.Count -gt 0) {
-    throw "Publish output is missing required WinUI payload files: $($missingPayload -join ', ')"
-}
-
-$missingCompiledXaml = @(
-    $requiredCompiledXaml |
-        Where-Object { -not (Test-Path (Join-Path $publishDir $_)) }
-)
-if ($missingCompiledXaml.Count -gt 0) {
-    throw "Publish output is missing compiled XAML artifacts: $($missingCompiledXaml -join ', ')"
-}
-
-# Zip the published application folder
-Write-Host "--- Archiving Application Payload ---" -ForegroundColor Cyan
-if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-# Using System.IO.Compression.ZipFile to create the archive cleanly without full path issues
-[System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
-[System.IO.Compression.ZipFile]::CreateFromDirectory($publishDir, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
-
-if (-not (Test-Path $zipPath)) {
-    throw "Failed to create ZIP package at '$zipPath'."
-}
-Write-Host "Successfully packaged app.zip: $((Get-Item $zipPath).Length / 1MB -as [int]) MB" -ForegroundColor Green
-
-# Publish the Custom WPF Installer Project as a Single File EXE
-Write-Host "--- Publishing Custom Fluent Installer ---" -ForegroundColor Cyan
-Push-Location $srcRoot
-try {
-    $outExe = Join-Path $distDir "optiSYS-setup.exe"
-    if (Test-Path $outExe) { Remove-Item $outExe -Force }
-
-    dotnet publish $installerProjectPath -c Release -r win-x64 --self-contained true -o $distDir
-    if ($LASTEXITCODE -ne 0) {
-        throw "dotnet publish for installer failed."
-    }
-
-    # Rename the output executable to optiSYS-setup.exe
-    $compiledInstallerExe = Join-Path $distDir "OptiSYS.Installer.exe"
-    if (Test-Path $compiledInstallerExe) {
-        Move-Item $compiledInstallerExe $outExe -Force
-    }
-    
-    # Remove extra files in dist (pdb, json configs, etc.) to keep a clean installer output directory
-    Get-ChildItem $distDir | Where-Object { $_.Name -ne "optiSYS-setup.exe" } | Remove-Item -Recurse -Force
-}
-finally {
-    Pop-Location
-}
-
+$setup = Get-ChildItem $distDir -Filter "optiSYS-*-setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 Write-Host "`n==================================================" -ForegroundColor Green
-Write-Host " SUCCESS: Animated Fluent Installer Built Successfully!" -ForegroundColor Green
-Write-Host " Installer Output: $(Join-Path $distDir 'optiSYS-setup.exe')" -ForegroundColor Green
-Write-Host " Size: $(([System.IO.FileInfo](Join-Path $distDir 'optiSYS-setup.exe')).Length / 1MB -as [int]) MB" -ForegroundColor Green
+Write-Host " SUCCESS: $($setup.Name) ($([int]($setup.Length / 1MB)) MB)" -ForegroundColor Green
+Write-Host " $($setup.FullName)" -ForegroundColor Green
 Write-Host "==================================================" -ForegroundColor Green
-
-Get-ChildItem $distDir | Select-Object Name, Length, LastWriteTime

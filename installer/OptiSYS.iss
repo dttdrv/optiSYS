@@ -30,6 +30,10 @@ UninstallDisplayName={#AppName} — System Optimizer
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
+; Streamlined flow: fixed per-user location, no directory picker, no "ready to install"
+; confirmation. The user sees Welcome -> the one deep-optimization choice -> install -> done.
+DisableDirPage=yes
+DisableReadyPage=yes
 ; Install unprivileged into %LOCALAPPDATA%. The only elevation is the optional, conditional
 ; deep-optimization step below (one UAC), so the install itself is frictionless.
 PrivilegesRequired=lowest
