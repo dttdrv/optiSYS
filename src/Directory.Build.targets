@@ -87,20 +87,20 @@
   <Target Name="CopyCompiledXamlArtifactsToPublishDir"
           AfterTargets="Publish"
           Condition="'$(UseWinUI)' == 'true' and Exists('$(TargetDir)App.xbf')">
+    <!-- The MRT/PRI no-ops above stop normal publish from carrying the app's OWN compiled XAML
+         (App/MainWindow at the root + every subfolder UserControl: Controls\, Views\, …). Copy
+         them all, preserving folder structure, so ms-appx:/// resource resolution finds them in
+         the published app. (A previous version only copied root + Views\ and missed Controls\,
+         which crashed the published build with XamlParseException on HistoryChartControl.xaml.)
+         The WinUI framework's own .xbf live under Microsoft.UI.Xaml\ and already ship via the
+         package — excluded so we never touch them. -->
     <ItemGroup>
-      <RootCompiledXamlArtifacts Include="$(TargetDir)App.xaml" />
-      <RootCompiledXamlArtifacts Include="$(TargetDir)App.xbf" />
-      <RootCompiledXamlArtifacts Include="$(TargetDir)MainWindow.xaml" />
-      <RootCompiledXamlArtifacts Include="$(TargetDir)MainWindow.xbf" />
-      <ViewCompiledXamlArtifacts Include="$(TargetDir)Views\*.xbf" />
+      <AppCompiledXamlArtifacts Include="$(TargetDir)**\*.xbf;$(TargetDir)**\*.xaml"
+                                Exclude="$(TargetDir)Microsoft.UI.Xaml\**\*" />
     </ItemGroup>
 
-    <Copy SourceFiles="@(RootCompiledXamlArtifacts)"
-          DestinationFiles="@(RootCompiledXamlArtifacts->'$(PublishDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-
-    <Copy SourceFiles="@(ViewCompiledXamlArtifacts)"
-          DestinationFiles="@(ViewCompiledXamlArtifacts->'$(PublishDir)Views\%(Filename)%(Extension)')"
+    <Copy SourceFiles="@(AppCompiledXamlArtifacts)"
+          DestinationFiles="@(AppCompiledXamlArtifacts->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
   </Target>
 

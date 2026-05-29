@@ -43,6 +43,21 @@ public partial class App : Application
             if (IsProvisionElevationLaunch(Environment.GetCommandLineArgs()))
             {
                 var created = new TaskSchedulerService().CreateOrUpdateTask();
+                if (created)
+                {
+                    // Make autostart coherent with the task: the coordinator then drops the HKCU
+                    // Run key (no double launch) and self-heals the task on each elevated logon.
+                    try
+                    {
+                        var settings = OptiSYS.Core.Models.Settings.Load();
+                        settings.UseTaskScheduler = true;
+                        settings.Save();
+                    }
+                    catch (Exception ex)
+                    {
+                        StartupLog.WriteException("provision-elevation: persist UseTaskScheduler", ex);
+                    }
+                }
                 StartupLog.Write($"OnLaunched: --provision-elevation handled, taskCreated={created}; exiting");
                 Environment.Exit(0);
                 return;
