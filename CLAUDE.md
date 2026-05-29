@@ -24,8 +24,8 @@ inventing. Restraint keeps `MainWindow.xaml.cs` from sprawling further.
 |---|---|
 | `OptiSYS.Core` | Platform logic — the testable heart. **`IOptimizationDomain` is the spine**: capture baseline → apply → revert → snapshot. `Native/WindowsNativeBridge` is the only P/Invoke layer (Zig is gone). |
 | `OptiSYS.App` | WinUI 3 **single-window** UI + runtime/tray/automation services, composed via DI in `AppHost`. |
-| `OptiSYS.Installer` | WPF installer + Inno Setup packaging (`installer/`). |
 | `OptiSYS.Tests` | xUnit + Moq + FluentAssertions. Folder layout **mirrors source 1:1**. |
+| `installer/` | Inno Setup packaging — builds the native `setup.exe`. Not a .NET project; driven by `build-installer.ps1`. |
 
 New optimizations are new **domains** implementing `IOptimizationDomain`, registered in
 `AppHost` in deterministic order — not ad-hoc logic in the UI.
@@ -65,5 +65,5 @@ dotnet run   --project src/OptiSYS.App
   branch, merged back to `master` once green.
 - Mark milestones with **git tags**. There is no `main` and **no remote** — local only.
 - **Conventional commits**: `feat(scope): …`, `fix(scope): …`, `chore: …`.
-- **Never commit build output** (`installer/publish/`, `OptiSYS.Installer/Resources/app.zip`)
+- **Never commit build output** (`installer/publish/`, `installer/dist/`)
   or `.bak` / `.custom` scratch — already in `.gitignore`.
