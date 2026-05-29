@@ -30,23 +30,22 @@ public interface IMemoryOptimizer : IDisposable
     /// </returns>
     (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0);
 
-    /// <summary>Runs the full memory optimization pass used by the memory domain.</summary>
-    /// <param name="deepClean">
-    /// When <c>true</c>, unlocks the destructive one-shot reclaim steps — a full
-    /// <c>PurgeStandbyList</c> and a system-wide <c>EmptySystemWorkingSets</c> trim, plus
-    /// <c>CombinePhysicalMemory</c>. These can briefly cause disk activity / stutter and are
-    /// NEVER reachable from any automatic path; only an explicit user "Deep clean now" action
-    /// passes <c>true</c>. When <c>false</c> (the default), no system-wide trim, no full standby
-    /// purge, and no forced page-combine occurs regardless of <paramref name="level"/>.
-    /// </param>
+    /// <summary>
+    /// Runs the full memory optimization pass (matches optiRAM's pipeline). The reclaim depth is
+    /// driven by <paramref name="level"/>: Balanced does working-set trim + accessed-bits reset +
+    /// modified-list flush + low-priority standby purge + file/registry cache flush + page-combine;
+    /// Aggressive (Max) adds system-wide working-set empty + full standby-list purge. Adaptive
+    /// escalation bails out early (reading live usage) when a lighter pass already drops below
+    /// <paramref name="targetThresholdPercent"/>, so the heaviest steps only run under sustained
+    /// pressure.
+    /// </summary>
     OptimizationResult OptimizeAll(
-        OptimizationLevel level = OptimizationLevel.Conservative,
+        OptimizationLevel level = OptimizationLevel.Balanced,
         int cacheMaxPercent = 0,
         int targetThresholdPercent = 0,
         bool isLowMemory = false,
         int accessedBitsDelayMs = 2000,
-        bool effectivenessTrackingEnabled = true,
-        bool deepClean = false);
+        bool effectivenessTrackingEnabled = true);
 
     /// <summary>
     /// Lowers the memory priority of well-known background processes (indexers / updaters /

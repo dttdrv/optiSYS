@@ -31,8 +31,10 @@ public sealed class QuietAutomationService : IQuietAutomationService
     private readonly ITimerService _timer;
     private readonly MemoryTrendPredictor _predictor;
     private readonly SemaphoreSlim _cleanupGate = new(1, 1);
+    private static readonly TimeSpan HintInterval = TimeSpan.FromSeconds(30);
     private IDisposable? _memoryWatcher;
     private DateTimeOffset? _lastCleanupAt;
+    private DateTimeOffset? _lastHintAt;
     private int _started;
     private bool _disposed;
 
@@ -92,7 +94,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
         if (!_settings.AutomationPaused)
             SetOptionalOptimizations(true);   // Wi-Fi + (admin) services tune-up are part of the AIO set
         _memoryWatcher = _timer.Start(
-            TimeSpan.FromSeconds(Math.Max(3, _settings.MemoryCheckIntervalSeconds)),
+            TimeSpan.FromSeconds(Math.Max(1, _settings.MemoryCheckIntervalSeconds)),
             () => _ = EvaluateMemoryPressureAsync());
         Publish("Safe background optimization started.");
         return Task.CompletedTask;
@@ -104,10 +106,9 @@ public sealed class QuietAutomationService : IQuietAutomationService
     }
 
     /// <summary>
-    /// Explicit, user-initiated one-shot deep clean. This is the ONLY path that passes
-    /// <c>deepClean: true</c> to the optimizer, unlocking the destructive reclaim steps
-    /// (system-wide working-set empty + full standby purge + page-combine). It is never reached
-    /// from any automatic/timer path.
+    /// Explicit, user-initiated one-shot maximum reclaim — runs the Aggressive (Max) pipeline
+    /// regardless of the selected mode (full standby purge + system-wide working-set empty +
+    /// page-combine). The automatic path uses the user's selected mode instead.
     /// </summary>
     public async Task RunDeepCleanAsync()
     {
@@ -130,8 +131,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
                 cacheMaxPercent: 0,
                 targetThresholdPercent: _settings.MemoryThresholdPercent,
                 accessedBitsDelayMs: 0,
-                effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled,
-                deepClean: true)).ConfigureAwait(false);
+                effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled)).ConfigureAwait(false);
 
             _lastCleanupAt = DateTimeOffset.UtcNow;
 
@@ -252,10 +252,13 @@ public sealed class QuietAutomationService : IQuietAutomationService
                 return;
             }
 
-            // Continuous, safe, zero-IO lever: nudge curated background processes to a lower
-            // page-eviction priority every cycle. Wrapped so a hint failure can never abort the
-            // pressure check / cleanup below.
-            HintBackgroundPrioritySafely();
+            // Background-priority hint enumerates processes, so with the fast (~2s) dynamic tick we
+            // run it on a slower ~30s cadence rather than every cycle — overhead stays negligible.
+            if (_lastHintAt is null || DateTimeOffset.UtcNow - _lastHintAt.Value >= HintInterval)
+            {
+                HintBackgroundPrioritySafely();
+                _lastHintAt = DateTimeOffset.UtcNow;
+            }
 
             var info = _memory.GetCurrentMemoryInfo();
             if (info.TotalPhysicalBytes <= 0)
@@ -281,7 +284,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
 
             // Pre-emptive path: below the reactive threshold, but the usage trend is projected to
             // breach it shortly AND real commit demand is high (not just reclaimable cache filling).
-            // Fires the same gentle Conservative trim — just early — keeping it unnoticeable.
+            // Fires the same mode-level reclaim — just early — so pressure is headed off before it bites.
             var commitRatio = info.CommitLimitBytes > 0
                 ? (double)info.CommitTotalBytes / info.CommitLimitBytes
                 : 0;
@@ -320,8 +323,11 @@ public sealed class QuietAutomationService : IQuietAutomationService
             RaiseStateChanged();
             RefreshMemoryExclusions();
 
+            // Automatic cleanup runs at the user's selected mode (Balanced or Max) — the full
+            // optiRAM-parity pipeline, with adaptive escalation bailing early when a lighter pass
+            // suffices. Gated by the threshold + cooldown so the heavy steps fire only under pressure.
             var result = await Task.Run(() => _optimizer.OptimizeAll(
-                level: OptimizationLevel.Conservative,
+                level: _settings.OptimizationLevel,
                 cacheMaxPercent: 0,
                 targetThresholdPercent: _settings.MemoryThresholdPercent,
                 accessedBitsDelayMs: 0,

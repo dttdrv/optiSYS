@@ -145,16 +145,19 @@ public sealed class Settings
         "audiodg", "NVIDIA Display Container"
     ];
 
-    // Memory optimization settings. Threshold + interval are baked-in defaults (no UI knobs):
-    // 60% acts only under genuine pressure (typical systems idle at 40-60%) while the predictive
-    // trigger catches climbs earlier; 30s keeps overhead low. Tuned with the AIO simplification.
+    // Memory optimization settings. Baked-in (no UI knobs). DYNAMIC monitoring: a ~2s tick (like
+    // optiRAM) watches continuously and reacts within seconds — but only SAMPLES memory each tick
+    // (cheap); actual reclaim is gated by the 60% threshold + the predictive trend + the cooldown,
+    // so the heavy work fires only under genuine pressure. Cooldown spaces consecutive reclaims.
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
-    public int MemoryCheckIntervalSeconds { get; set; } = 30;
+    public int MemoryCheckIntervalSeconds { get; set; } = 2;
     public int MemoryThresholdPercent { get; set; } = 60;
     public int MemoryCooldownSeconds { get; set; } = 30;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
-    public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Conservative;
+    // User-selectable memory mode: Balanced (default) or Aggressive (Max). Conservative is no
+    // longer a user choice — the automatic path runs the full optiRAM-parity pipeline at this level.
+    public OptimizationLevel OptimizationLevel { get; set; } = OptimizationLevel.Balanced;
     // NOTE: SelfWorkingSetCapMB must be >= 100 for UI apps.
     // optiRAM defaulted to 25MB which caused System.OutOfMemoryException
     // in WPF's MediaContext.CommitChannel (insufficient memory for rendering).

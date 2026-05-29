@@ -83,14 +83,14 @@ public sealed class QuietAutomationServiceTests
             It.IsAny<int>(),
             It.IsAny<bool>(),
             It.IsAny<int>(),
-            It.IsAny<bool>(),
             It.IsAny<bool>()), Times.Never);
         engine.Verify(e => e.ActivateCategory(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]
-    public async Task TimerTick_WhenMemoryAboveThreshold_RunsConservativeCleanupOnly()
+    public async Task TimerTick_WhenMemoryAboveThreshold_RunsCleanupAtSelectedMode()
     {
+        // Default mode is Balanced; the automatic path runs the full pipeline at that level.
         var settings = new Settings { MemoryThresholdPercent = 50 };
         var timer = new FakeTimerService();
         var memory = new Mock<IMemoryInfoService>();
@@ -102,13 +102,7 @@ public sealed class QuietAutomationServiceTests
             AvailablePhysicalBytes = 10,
         });
         optimizer.Setup(o => o.OptimizeAll(
-                OptimizationLevel.Conservative,
-                0,
-                50,
-                false,
-                0,
-                true,
-                false))
+                OptimizationLevel.Balanced, 0, 50, false, 0, true))
             .Returns(new OptimizationResult { Success = true, FreedBytes = 10 });
 
         var service = CreateService(settings, timer, memory, optimizer);
@@ -118,13 +112,7 @@ public sealed class QuietAutomationServiceTests
 
         await WaitForAssertionAsync(() =>
             optimizer.Verify(o => o.OptimizeAll(
-                OptimizationLevel.Conservative,
-                0,
-                50,
-                false,
-                0,
-                true,
-                false), Times.Once));
+                OptimizationLevel.Balanced, 0, 50, false, 0, true), Times.Once));
     }
 
     [Fact]
@@ -141,7 +129,7 @@ public sealed class QuietAutomationServiceTests
             .Returns(Mem(70, commitRatio: 0.70))
             .Returns(Mem(78, commitRatio: 0.70));
 
-        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Conservative, 0, 80, false, 0, true, false))
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Balanced, 0, 80, false, 0, true))
             .Returns(new OptimizationResult { Success = true, FreedBytes = 5 });
 
         var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -160,23 +148,17 @@ public sealed class QuietAutomationServiceTests
 
         await WaitForAssertionAsync(() =>
             optimizer.Verify(o => o.OptimizeAll(
-                OptimizationLevel.Conservative, 0, 80, false, 0, true, false), Times.Once));
+                OptimizationLevel.Balanced, 0, 80, false, 0, true), Times.Once));
     }
 
     [Fact]
-    public async Task RunDeepCleanAsync_RunsAggressiveOptimizeAllWithDeepCleanTrue()
+    public async Task RunDeepCleanAsync_RunsAggressiveMaxReclaim()
     {
         var settings = new Settings { MemoryThresholdPercent = 50 };
         var timer = new FakeTimerService();
         var optimizer = new Mock<IMemoryOptimizer>();
         optimizer.Setup(o => o.OptimizeAll(
-                OptimizationLevel.Aggressive,
-                0,
-                50,
-                false,
-                0,
-                true,
-                true))
+                OptimizationLevel.Aggressive, 0, 50, false, 0, true))
             .Returns(new OptimizationResult { Success = true, FreedBytes = 42 });
 
         var service = CreateService(settings, timer, optimizer: optimizer);
@@ -185,13 +167,7 @@ public sealed class QuietAutomationServiceTests
         await service.RunDeepCleanAsync();
 
         optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive,
-            0,
-            50,
-            false,
-            0,
-            true,
-            true), Times.Once);
+            OptimizationLevel.Aggressive, 0, 50, false, 0, true), Times.Once);
         Assert.Equal(42, service.TotalFreedBytes);
     }
 

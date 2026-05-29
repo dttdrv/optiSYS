@@ -321,8 +321,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         int targetThresholdPercent = 0,
         bool isLowMemory = false,
         int accessedBitsDelayMs = 2000,
-        bool effectivenessTrackingEnabled = true,
-        bool deepClean = false)
+        bool effectivenessTrackingEnabled = true)
     {
         ThrowIfDisposed();
 
@@ -343,7 +342,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
             processesTrimmed = trimmed;
             methodsUsed.Add(earlyExit ? "Working Set Trim (early exit)" : "Working Set Trim");
 
-            if (targetThresholdPercent > 0 && GetUsagePercentQuick(beforeInfo) < targetThresholdPercent)
+            if (targetThresholdPercent > 0 && GetUsagePercentLive() < targetThresholdPercent)
                 return BuildResult(sw, methodsUsed, beforeAvailable, beforeInfo, processesTrimmed, actualLevel);
 
             var effectiveLevel = level;
@@ -355,8 +354,15 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 
                 if (compressedRatio > 0.15 && effectiveLevel == OptimizationLevel.Aggressive)
                 {
+                    // OS already compressing heavily — purging would just re-fault. Cap to Balanced.
                     effectiveLevel = OptimizationLevel.Balanced;
                     methodsUsed.Add("Level capped (high compression)");
+                }
+                else if (compressedRatio < 0.05 && isLowMemory && effectiveLevel < OptimizationLevel.Balanced)
+                {
+                    // Little compression but real low-memory pressure — escalate (ported from optiRAM).
+                    effectiveLevel = OptimizationLevel.Balanced;
+                    methodsUsed.Add("Level raised (low compression + low memory)");
                 }
             }
 
@@ -376,15 +382,11 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 RunTrackedStep("File Cache Flush", FlushSystemFileCache, methodsUsed, effectivenessTrackingEnabled);
                 RunTrackedStep("Registry Cache Flush", FlushRegistryCache, methodsUsed, effectivenessTrackingEnabled);
 
-                // Page-combine is CPU-intensive (historic DPC-stall / audio-glitch path) and
-                // Windows' MMAgent runs it on its own schedule — only force it on an explicit
-                // Deep clean, never on the automatic path.
-                if (deepClean)
-                {
-                    var pagesCombined = CombinePhysicalMemory();
-                    if (pagesCombined > 0)
-                        methodsUsed.Add($"Page Combine ({pagesCombined} pages)");
-                }
+                // Page-combine (dedup identical pages) — part of the Balanced+ pipeline, matching
+                // optiRAM. Only runs under genuine pressure (the threshold + cooldown gate upstream).
+                var pagesCombined = CombinePhysicalMemory();
+                if (pagesCombined > 0)
+                    methodsUsed.Add($"Page Combine ({pagesCombined} pages)");
 
                 if (cacheMaxPercent > 0)
                 {
@@ -394,13 +396,14 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                         methodsUsed.Add($"Cache Cap {cacheMaxPercent}%");
                 }
 
-                if (targetThresholdPercent > 0 && GetUsagePercentQuick(beforeInfo) < targetThresholdPercent)
+                if (targetThresholdPercent > 0 && GetUsagePercentLive() < targetThresholdPercent)
                     return BuildResult(sw, methodsUsed, beforeAvailable, beforeInfo, processesTrimmed, actualLevel);
 
-                // System-wide working-set empty + full standby purge are destructive (soft->hard
-                // faults, pagefile write storm, disk thrash). NEVER on the automatic path — only an
-                // explicit user "Deep clean" (deepClean=true) may reach them.
-                if (effectiveLevel >= OptimizationLevel.Aggressive && deepClean)
+                // Max (Aggressive): full reclaim — system-wide working-set empty + full standby
+                // purge (matching optiRAM). Reached only under sustained pressure: the live
+                // escalation checks above already bailed out when a lighter pass sufficed, and the
+                // threshold + cooldown gate upstream means this fires when it's genuinely needed.
+                if (effectiveLevel >= OptimizationLevel.Aggressive)
                 {
                     actualLevel = OptimizationLevel.Aggressive;
                     if (EmptySystemWorkingSets()) methodsUsed.Add("System Working Set Empty");
@@ -472,10 +475,14 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         return ms.ullAvailPhys;
     }
 
-    private static int GetUsagePercentQuick(MemoryInfo info)
+    private static int GetUsagePercentLive()
     {
-        if (info.TotalPhysicalBytes <= 0) return 0;
-        return (int)((double)(info.TotalPhysicalBytes - info.AvailablePhysicalBytes) / info.TotalPhysicalBytes * 100);
+        var ms = new NativeMethods.MEMORYSTATUSEX
+        {
+            dwLength = (uint)Marshal.SizeOf<NativeMethods.MEMORYSTATUSEX>()
+        };
+        NativeMethods.GlobalMemoryStatusEx(ref ms);
+        return (int)ms.dwMemoryLoad;
     }
 
     public void Dispose()

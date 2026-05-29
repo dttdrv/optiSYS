@@ -29,9 +29,9 @@ public class SettingsTests
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
         Assert.Equal(60, settings.MemoryThresholdPercent);
-        Assert.Equal(30, settings.MemoryCheckIntervalSeconds);
+        Assert.Equal(2, settings.MemoryCheckIntervalSeconds);   // dynamic: continuous ~2s monitoring
         Assert.Equal(30, settings.MemoryCooldownSeconds);
-        Assert.Equal(OptimizationLevel.Conservative, settings.OptimizationLevel);
+        Assert.Equal(OptimizationLevel.Balanced, settings.OptimizationLevel);
         Assert.Equal(2, settings.DebouncePowerChangeSeconds);
         Assert.Equal(15, settings.MemoryCleanupDurationSeconds);
         Assert.Equal(2, settings.MemoryRepeatPasses);
