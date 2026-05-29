@@ -23,12 +23,15 @@ public sealed class TrayIconService : ITrayIconService
     public event Action? ToggleAutomationRequested;
     public event Action? ExitRequested;
 
-    private TrayIconSet? _icons;
+    private Icon? _icon;
+    private nint _iconHandle;
     private SubclassProc? _subclassProc;
     private nint _windowHandle;
     private bool _initialized;
     private TraySnapshot _snapshot = new();
     private IconTheme _iconTheme;
+    private int _renderedScore = -1;
+    private string _lastTooltip = string.Empty;
 
     public void Initialize(nint windowHandle)
     {
@@ -41,7 +44,7 @@ public sealed class TrayIconService : ITrayIconService
         {
             _windowHandle = windowHandle;
             _iconTheme = IconTheme.Detect();
-            _icons = TrayIconSet.Create(_iconTheme);
+            RenderScoreIcon(_snapshot.Score);
 
             // Subclass the window so it receives the WM_TRAYICON callbacks (left-click = open,
             // right-click = context menu). Same subclass id used by Dispose's RemoveWindowSubclass.
@@ -49,7 +52,8 @@ public sealed class TrayIconService : ITrayIconService
             SetWindowSubclass(windowHandle, _subclassProc, 1001, nint.Zero);
 
             // Add the notification-area icon and opt into modern (v4) behaviour.
-            var data = CreateNotifyIconData(_icons.For(OverallHealthState.Normal), ClampTooltip(_snapshot.Tooltip));
+            _lastTooltip = ClampTooltip(_snapshot.Tooltip);
+            var data = CreateNotifyIconData(_iconHandle, _lastTooltip);
             TryNotifyIcon(NIM_ADD, ref data, "add");
             TryNotifyIcon(NIM_SETVERSION, ref data, "setversion");
 
@@ -64,14 +68,34 @@ public sealed class TrayIconService : ITrayIconService
 
     public void Update(TraySnapshot snapshot)
     {
-        if (_icons is null || !_initialized)
+        if (!_initialized)
         {
             return;
         }
 
-        RefreshIconSetIfThemeChanged();
         _snapshot = snapshot;
-        var data = CreateNotifyIconData(_icons.For(snapshot.HealthState), ClampTooltip(snapshot.Tooltip));
+
+        // Re-detect theme so the number colour tracks taskbar light/dark changes.
+        var themeChanged = RefreshIconThemeIfChanged();
+        var iconChanged = themeChanged || snapshot.Score != _renderedScore;
+
+        // Only re-render the bitmap when the displayed number or theme actually changed.
+        if (iconChanged)
+        {
+            RenderScoreIcon(snapshot.Score);
+        }
+
+        var tooltip = ClampTooltip(snapshot.Tooltip);
+        var tooltipChanged = !string.Equals(tooltip, _lastTooltip, StringComparison.Ordinal);
+
+        // Skip the shell round-trip entirely when nothing the user sees has changed.
+        if (!iconChanged && !tooltipChanged)
+        {
+            return;
+        }
+
+        _lastTooltip = tooltip;
+        var data = CreateNotifyIconData(_iconHandle, tooltip);
         TryNotifyIcon(NIM_MODIFY, ref data, "modify");
     }
 
@@ -79,10 +103,7 @@ public sealed class TrayIconService : ITrayIconService
     {
         if (_initialized)
         {
-            var iconHandle = _icons is not null
-                ? _icons.For(OverallHealthState.Normal).Handle
-                : nint.Zero;
-            var data = CreateNotifyIconData(iconHandle, "optiSYS");
+            var data = CreateNotifyIconData(_iconHandle, "optiSYS");
             TryNotifyIcon(NIM_DELETE, ref data, "delete");
         }
 
@@ -93,8 +114,7 @@ public sealed class TrayIconService : ITrayIconService
         }
 
         _windowHandle = nint.Zero;
-        _icons?.Dispose();
-        _icons = null;
+        DisposeIcon();
         _initialized = false;
     }
 
@@ -157,14 +177,13 @@ public sealed class TrayIconService : ITrayIconService
         var menu = CreatePopupMenu();
         try
         {
-            AppendMenu(menu, MF_STRING, ID_OPEN, "Open optiSYS");
-            AppendMenu(menu, MF_STRING, ID_CLEANUP, "Run safe cleanup now");
+            AppendMenu(menu, MF_STRING, ID_CLEANUP, "Optimize now");
             AppendMenu(
                 menu,
                 MF_STRING,
                 ID_TOGGLE_AUTOMATION,
-                _snapshot.AutomationPaused ? "Resume safe optimization" : "Pause safe optimization");
-            AppendMenu(menu, MF_DISABLED, ID_MODE, "Mode: safe runtime only");
+                _snapshot.AutomationPaused ? "Auto-Optimize: Off" : "Auto-Optimize: On");
+            AppendMenu(menu, MF_STRING, ID_OPEN, "Show optiSYS");
             AppendMenu(menu, MF_SEPARATOR, 0, string.Empty);
             AppendMenu(menu, MF_STRING, ID_EXIT, "Exit");
 
@@ -202,22 +221,39 @@ public sealed class TrayIconService : ITrayIconService
         }
     }
 
-    private void RefreshIconSetIfThemeChanged()
+    private bool RefreshIconThemeIfChanged()
     {
         var detected = IconTheme.Detect();
         if (detected == _iconTheme)
         {
-            return;
+            return false;
         }
 
         _iconTheme = detected;
-        var previousIcons = _icons;
-        _icons = TrayIconSet.Create(_iconTheme);
-        previousIcons?.Dispose();
+        return true;
     }
 
-    private NOTIFYICONDATA CreateNotifyIconData(Icon icon, string tooltip) =>
-        CreateNotifyIconData(icon.Handle, tooltip);
+    /// <summary>
+    /// Renders the score number into a fresh 32x32 transparent icon and swaps it in, freeing
+    /// the previous GDI handle. The colour inverts with the taskbar theme.
+    /// </summary>
+    private void RenderScoreIcon(int score)
+    {
+        DisposeIcon();
+        _icon = ScoreIconRenderer.Render(score, _iconTheme.TextIsLight, out _iconHandle);
+        _renderedScore = score;
+    }
+
+    private void DisposeIcon()
+    {
+        _icon?.Dispose();
+        _icon = null;
+        if (_iconHandle != nint.Zero)
+        {
+            DestroyIcon(_iconHandle);
+            _iconHandle = nint.Zero;
+        }
+    }
 
     private NOTIFYICONDATA CreateNotifyIconData(nint iconHandle, string tooltip) =>
         new()
@@ -234,106 +270,62 @@ public sealed class TrayIconService : ITrayIconService
             szInfoTitle = string.Empty,
         };
 
-    private sealed class TrayIconSet : IDisposable
+    /// <summary>
+    /// Renders the optimization score as a 32x32 transparent icon with the number drawn centered
+    /// in Segoe UI Bold. Text colour inverts with the taskbar theme (dark text on a light taskbar,
+    /// white text on a dark taskbar). Returns a managed <see cref="Icon"/> clone that owns its data
+    /// (safe to Dispose); <paramref name="handle"/> is the raw HICON the caller must DestroyIcon.
+    /// </summary>
+    internal static class ScoreIconRenderer
     {
-        private readonly Dictionary<OverallHealthState, Icon> _icons;
-        private readonly List<nint> _handles;
+        // Light taskbar -> near-black text; dark taskbar -> white text.
+        internal static readonly Color LightTaskbarText = Color.FromArgb(0x1A, 0x1A, 0x1A);
+        internal static readonly Color DarkTaskbarText = Color.White;
 
-        private TrayIconSet(Dictionary<OverallHealthState, Icon> icons, List<nint> handles)
+        public static Icon Render(int score, bool taskbarIsLight, out nint handle)
         {
-            _icons = icons;
-            _handles = handles;
-        }
+            const int size = 32;
+            using var bmp = new Bitmap(size, size);
+            using var g = Graphics.FromImage(bmp);
 
-        public Icon For(OverallHealthState state) => _icons[state];
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            // AntiAliasGridFit uses greyscale AA — ClearType on a transparent bg causes colour fringing.
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            g.Clear(Color.Transparent);
 
-        public static TrayIconSet Create(IconTheme theme)
-        {
-            var colors = new Dictionary<OverallHealthState, Color>
-            {
-                [OverallHealthState.Bad] = Color.FromArgb(202, 89, 72),
-                [OverallHealthState.NotGood] = Color.FromArgb(223, 149, 72),
-                [OverallHealthState.Normal] = theme.AccentColor,
-                [OverallHealthState.Good] = theme.AccentColor,
-                [OverallHealthState.Great] = theme.AccentColor,
-            };
+            var text = FormatScore(score);
+            var textColor = taskbarIsLight ? LightTaskbarText : DarkTaskbarText;
 
-            var icons = new Dictionary<OverallHealthState, Icon>();
-            var handles = new List<nint>();
-            foreach (var (state, accent) in colors)
-            {
-                icons[state] = CreatePulseIcon(accent, theme.StrokeColor, handles);
-            }
+            // Smaller font for 3 chars ("100"/"OK") so it still fits the 32px canvas.
+            var fontSize = text.Length > 2 ? 19.0f : 23.0f;
+            using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var brush = new SolidBrush(textColor);
 
-            return new TrayIconSet(icons, handles);
-        }
+            var textSize = g.MeasureString(text, font);
+            g.DrawString(
+                text,
+                font,
+                brush,
+                (size - textSize.Width) / 2,
+                (size - textSize.Height) / 2);
 
-        public void Dispose()
-        {
-            foreach (var icon in _icons.Values)
-            {
-                icon.Dispose();
-            }
-
-            foreach (var handle in _handles)
-            {
-                if (handle != nint.Zero)
-                {
-                    DestroyIcon(handle);
-                }
-            }
-
-            _icons.Clear();
-            _handles.Clear();
-        }
-
-        private static Icon CreatePulseIcon(Color accent, Color stroke, List<nint> handles)
-        {
-            using var bitmap = new Bitmap(32, 32);
-            using var graphics = Graphics.FromImage(bitmap);
-            graphics.Clear(Color.Transparent);
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-
-            using var strokePen = new Pen(stroke, 4f)
-            {
-                StartCap = System.Drawing.Drawing2D.LineCap.Round,
-                EndCap = System.Drawing.Drawing2D.LineCap.Round,
-                LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
-            };
-            using var accentBrush = new SolidBrush(accent);
-
-            var points = new[]
-            {
-                new PointF(4, 18),
-                new PointF(10, 18),
-                new PointF(14, 10),
-                new PointF(18, 23),
-                new PointF(23, 15),
-                new PointF(28, 15),
-            };
-            graphics.DrawLines(strokePen, points);
-            graphics.FillEllipse(accentBrush, 15.5f, 20.5f, 7f, 7f);
-
-            var handle = bitmap.GetHicon();
-            handles.Add(handle);
+            // Clone creates a managed Icon that owns its data; the raw HICON is returned so the
+            // caller can DestroyIcon it once the clone is in use, preventing GDI handle leaks.
+            handle = bmp.GetHicon();
             return (Icon)Icon.FromHandle(handle).Clone();
         }
 
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool DestroyIcon(nint hIcon);
+        internal static string FormatScore(int score)
+        {
+            var clamped = Math.Clamp(score, 0, 100);
+            // "100" is 3 digits and crowds the 32px canvas; show "OK" at full health instead.
+            return clamped >= 100 ? "OK" : clamped.ToString();
+        }
     }
 
-    private readonly record struct IconTheme(Color AccentColor, Color StrokeColor)
+    private readonly record struct IconTheme(bool TextIsLight)
     {
-        public static IconTheme Detect()
-        {
-            var accent = TryGetDwmAccentColor(out var dwmAccent)
-                ? dwmAccent
-                : Color.FromArgb(76, 159, 85);
-            var stroke = SelectStrokeColor(IsWindowsLightTheme());
-            return new IconTheme(accent, stroke);
-        }
+        public static IconTheme Detect() => new(IsWindowsLightTheme());
 
         private static bool IsWindowsLightTheme()
         {
@@ -344,29 +336,6 @@ public sealed class TrayIconService : ITrayIconService
                 return key?.GetValue("SystemUsesLightTheme") is int value
                     ? value != 0
                     : key?.GetValue("AppsUseLightTheme") is int appsValue && appsValue != 0;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static bool TryGetDwmAccentColor(out Color accent)
-        {
-            accent = default;
-            try
-            {
-                if (DwmGetColorizationColor(out var colorization, out _) != 0)
-                {
-                    return false;
-                }
-
-                accent = Color.FromArgb(
-                    255,
-                    (int)((colorization >> 16) & 0xFF),
-                    (int)((colorization >> 8) & 0xFF),
-                    (int)(colorization & 0xFF));
-                return true;
             }
             catch
             {
@@ -434,7 +403,6 @@ public sealed class TrayIconService : ITrayIconService
     private const uint NIN_KEYSELECT = WM_USER + 1;
     private const int GWLP_WNDPROC = -4;
     private const uint MF_STRING = 0x00000000;
-    private const uint MF_DISABLED = 0x00000002;
     private const uint MF_SEPARATOR = 0x00000800;
     private const uint TPM_LEFTALIGN = 0x0000;
     private const uint TPM_BOTTOMALIGN = 0x0020;
@@ -444,7 +412,6 @@ public sealed class TrayIconService : ITrayIconService
     private const uint ID_OPEN = 101;
     private const uint ID_CLEANUP = 102;
     private const uint ID_TOGGLE_AUTOMATION = 103;
-    private const uint ID_MODE = 104;
     private const uint ID_EXIT = 105;
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -486,6 +453,6 @@ public sealed class TrayIconService : ITrayIconService
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(nint hWnd, uint msg, nuint wParam, nint lParam);
 
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    private static extern int DwmGetColorizationColor(out uint pcrColorization, out bool pfOpaqueBlend);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(nint hIcon);
 }

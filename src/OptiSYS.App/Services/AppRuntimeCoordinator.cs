@@ -21,6 +21,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
     private readonly ITrayIconService _tray;
     private readonly IStartupRegistrationService _startup;
     private readonly Settings _settings;
+    private readonly HealthScoreCalculator _scoreCalculator = new();
     private readonly object _startGate = new();
     private Task? _startTask;
     private bool _disposed;
@@ -92,6 +93,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         var battery = _battery.CurrentInfo;
         var batteryActive = _automation.GetActiveBatteryStatuses().Count > 0;
         var health = TrayHealthEvaluator.Evaluate(memory, battery, batteryActive, _settings.AutomationPaused);
+        var score = _scoreCalculator.Evaluate(memory, battery, _automation.TotalFreedBytes);
         var preset = _settings.BatteryPreset == BatteryPreset.Saver ? "Saver" : "Recommended";
         var memoryPart = memory is null ? "memory warming up" : $"memory {memory.UsagePercent:0}%";
         var batteryPart = battery is null
@@ -104,6 +106,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         _tray.Update(new TraySnapshot
         {
             HealthState = health,
+            Score = score,
             Tooltip = $"optiSYS - {memoryPart}, {batteryPart}, {automationPart}",
             BatteryPresetLabel = preset,
             AutomationPaused = _settings.AutomationPaused,
