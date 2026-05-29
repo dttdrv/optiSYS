@@ -16,8 +16,8 @@ public class SettingsTests
         Assert.True(settings.AutoOptimizeOnBattery);
         Assert.False(settings.AutomationPaused);
         Assert.True(settings.AutoOptimizeMemoryEnabled);
-        Assert.True(settings.EcoQosEnabled);
-        Assert.True(settings.TimerResolutionEnabled);
+        Assert.False(settings.EcoQosEnabled);   // opt-in now (throttles all non-foreground processes)
+        Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
         Assert.False(settings.UsbSuspendEnabled);
         Assert.False(settings.NetworkPowerEnabled);

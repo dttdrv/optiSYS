@@ -82,6 +82,7 @@ public sealed class QuietAutomationServiceTests
             It.IsAny<int>(),
             It.IsAny<bool>(),
             It.IsAny<int>(),
+            It.IsAny<bool>(),
             It.IsAny<bool>()), Times.Never);
         engine.Verify(e => e.ActivateCategory(It.IsAny<string>()), Times.Never);
     }
@@ -105,7 +106,8 @@ public sealed class QuietAutomationServiceTests
                 50,
                 false,
                 0,
-                true))
+                true,
+                false))
             .Returns(new OptimizationResult { Success = true, FreedBytes = 10 });
 
         var service = CreateService(settings, timer, memory, optimizer);
@@ -120,7 +122,8 @@ public sealed class QuietAutomationServiceTests
                 50,
                 false,
                 0,
-                true), Times.Once));
+                true,
+                false), Times.Once));
     }
 
     [Fact]

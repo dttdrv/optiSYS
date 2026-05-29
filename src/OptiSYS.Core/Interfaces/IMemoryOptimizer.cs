@@ -31,13 +31,31 @@ public interface IMemoryOptimizer : IDisposable
     (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0);
 
     /// <summary>Runs the full memory optimization pass used by the memory domain.</summary>
+    /// <param name="deepClean">
+    /// When <c>true</c>, unlocks the destructive one-shot reclaim steps — a full
+    /// <c>PurgeStandbyList</c> and a system-wide <c>EmptySystemWorkingSets</c> trim, plus
+    /// <c>CombinePhysicalMemory</c>. These can briefly cause disk activity / stutter and are
+    /// NEVER reachable from any automatic path; only an explicit user "Deep clean now" action
+    /// passes <c>true</c>. When <c>false</c> (the default), no system-wide trim, no full standby
+    /// purge, and no forced page-combine occurs regardless of <paramref name="level"/>.
+    /// </param>
     OptimizationResult OptimizeAll(
         OptimizationLevel level = OptimizationLevel.Conservative,
         int cacheMaxPercent = 0,
         int targetThresholdPercent = 0,
         bool isLowMemory = false,
         int accessedBitsDelayMs = 2000,
-        bool effectivenessTrackingEnabled = true);
+        bool effectivenessTrackingEnabled = true,
+        bool deepClean = false);
+
+    /// <summary>
+    /// Lowers the memory priority of well-known background processes (indexers / updaters /
+    /// sync daemons / telemetry) on a curated allowlist to <c>MEMORY_PRIORITY_LOW</c>. This is
+    /// a pure page-eviction-order hint with zero disk IO, reversible by the OS to NORMAL, and
+    /// is the only continuous memory lever that is safe by default. Critical and excluded
+    /// (protected) processes are never touched. Returns the number of processes hinted.
+    /// </summary>
+    int HintBackgroundMemoryPriority();
 
     /// <summary>Processes excluded from trimming or optimization.</summary>
     HashSet<string> ExcludedProcesses { get; set; }

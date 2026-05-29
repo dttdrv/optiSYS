@@ -69,6 +69,7 @@ public class MemoryOptimizerDomainTests
                 77,
                 false,
                 1500,
+                false,
                 false))
             .Returns(new OptimizationResult
             {
@@ -93,6 +94,7 @@ public class MemoryOptimizerDomainTests
             77,
             false,
             1500,
+            false,
             false), Times.Once);
     }
 

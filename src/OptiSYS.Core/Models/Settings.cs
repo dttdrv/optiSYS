@@ -30,6 +30,32 @@ public sealed class Settings
         "wuauserv", "DoSvc", "DPS", "WdiServiceHost"
     ];
 
+    /// <summary>
+    /// Curated allowlist of well-known background processes (indexers / updaters / sync
+    /// daemons / telemetry) whose memory priority may be hinted to LOW/VERY_LOW. This is a
+    /// pure page-eviction-order hint (zero disk IO, reversible to NORMAL) — it is NEVER
+    /// applied to "all non-foreground" processes. Anything that also appears on the
+    /// critical or protected lists is excluded at apply time (see
+    /// <c>MemoryOptimizer.HintBackgroundMemoryPriority</c>).
+    /// </summary>
+    public static IReadOnlyList<string> BackgroundMemoryPriorityAllowlist { get; } =
+    [
+        "SearchIndexer", "SearchProtocolHost", "SearchFilterHost",
+        "OneDrive", "OneDriveStandaloneUpdater",
+        "Dropbox", "DropboxUpdate",
+        "GoogleDriveFS", "googledrivesync",
+        "Backup and Sync from Google",
+        "MsMpEngCP",                       // Defender update content (not the engine)
+        "CompatTelRunner", "CompatTelemetryRunner",
+        "WaaSMedicAgent",
+        "MoUsoCoreWorker", "usocoreworker",
+        "TiWorker",                        // Windows Modules Installer worker
+        "GoogleUpdate", "GoogleCrashHandler",
+        "AdobeUpdateService", "Adobe Desktop Service", "AdobeIPCBroker",
+        "EpicGamesLauncher", "EpicWebHelper",
+        "SteamService"
+    ];
+
     private static readonly HashSet<string> AllowedServicesToThrottle =
         new(DefaultServicesToThrottle, StringComparer.OrdinalIgnoreCase);
 
@@ -52,8 +78,10 @@ public sealed class Settings
     public int DebouncePowerChangeSeconds { get; set; } = 2;
 
     // Battery domain toggles
-    public bool EcoQosEnabled { get; set; } = true;
-    public bool TimerResolutionEnabled { get; set; } = true;
+    // EcoQoS and TimerResolution throttle ALL non-foreground processes, so they are
+    // opt-in only (default OFF) per the overhaul design §3 — never enable silently.
+    public bool EcoQosEnabled { get; set; } = false;
+    public bool TimerResolutionEnabled { get; set; } = false;
     public bool BackgroundServicesEnabled { get; set; } = false;
     public bool UsbSuspendEnabled { get; set; } = false;
     public bool NetworkPowerEnabled { get; set; } = false;

@@ -140,6 +140,74 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         return result >= 0;
     }
 
+    /// <summary>
+    /// Curated allowlist of known background processes eligible for a memory-priority hint,
+    /// minus anything on the critical or excluded (protected) lists. Built once per instance.
+    /// </summary>
+    private HashSet<string> BuildBackgroundPriorityAllowlist()
+    {
+        var allow = new HashSet<string>(
+            Settings.BackgroundMemoryPriorityAllowlist, StringComparer.OrdinalIgnoreCase);
+
+        // Never touch anything the user/system protects or anything system-critical.
+        allow.ExceptWith(DefaultExclusions);
+        allow.ExceptWith(ExcludedProcesses);
+        return allow;
+    }
+
+    public int HintBackgroundMemoryPriority()
+    {
+        ThrowIfDisposed();
+
+        var allow = BuildBackgroundPriorityAllowlist();
+        if (allow.Count == 0)
+            return 0;
+
+        var selfPid = (uint)Environment.ProcessId;
+        int hinted = 0;
+
+        var nativeProcesses = _native?.GetProcessList();
+        if (nativeProcesses is { Length: > 0 })
+        {
+            foreach (var proc in nativeProcesses)
+            {
+                if (proc.ProcessId == selfPid || !allow.Contains(proc.ProcessName))
+                    continue;
+                if (LowerProcessMemoryPriority(proc.ProcessId))
+                    hinted++;
+            }
+            return hinted;
+        }
+
+        foreach (var proc in Process.GetProcesses())
+        {
+            try
+            {
+                if (proc.Id == selfPid || !allow.Contains(proc.ProcessName))
+                    continue;
+                if (LowerProcessMemoryPriority(proc.Id))
+                    hinted++;
+            }
+            catch { /* process exited or access denied — skip */ }
+            finally { proc.Dispose(); }
+        }
+
+        return hinted;
+    }
+
+    private static bool LowerProcessMemoryPriority(int pid)
+    {
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_SET_INFORMATION, false, (uint)pid);
+        if (handle == IntPtr.Zero)
+            return false;
+        try
+        {
+            return NativeMethods.SetProcessMemoryPriority(handle, NativeMethods.MEMORY_PRIORITY_LOW);
+        }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
     private bool EmptyWorkingSet(int pid)
     {
         if (_native?.EmptyWorkingSet(pid) == true)
@@ -253,7 +321,8 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         int targetThresholdPercent = 0,
         bool isLowMemory = false,
         int accessedBitsDelayMs = 2000,
-        bool effectivenessTrackingEnabled = true)
+        bool effectivenessTrackingEnabled = true,
+        bool deepClean = false)
     {
         ThrowIfDisposed();
 
@@ -307,9 +376,15 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 RunTrackedStep("File Cache Flush", FlushSystemFileCache, methodsUsed, effectivenessTrackingEnabled);
                 RunTrackedStep("Registry Cache Flush", FlushRegistryCache, methodsUsed, effectivenessTrackingEnabled);
 
-                var pagesCombined = CombinePhysicalMemory();
-                if (pagesCombined > 0)
-                    methodsUsed.Add($"Page Combine ({pagesCombined} pages)");
+                // Page-combine is CPU-intensive (historic DPC-stall / audio-glitch path) and
+                // Windows' MMAgent runs it on its own schedule — only force it on an explicit
+                // Deep clean, never on the automatic path.
+                if (deepClean)
+                {
+                    var pagesCombined = CombinePhysicalMemory();
+                    if (pagesCombined > 0)
+                        methodsUsed.Add($"Page Combine ({pagesCombined} pages)");
+                }
 
                 if (cacheMaxPercent > 0)
                 {
@@ -322,7 +397,10 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 if (targetThresholdPercent > 0 && GetUsagePercentQuick(beforeInfo) < targetThresholdPercent)
                     return BuildResult(sw, methodsUsed, beforeAvailable, beforeInfo, processesTrimmed, actualLevel);
 
-                if (effectiveLevel >= OptimizationLevel.Aggressive)
+                // System-wide working-set empty + full standby purge are destructive (soft->hard
+                // faults, pagefile write storm, disk thrash). NEVER on the automatic path — only an
+                // explicit user "Deep clean" (deepClean=true) may reach them.
+                if (effectiveLevel >= OptimizationLevel.Aggressive && deepClean)
                 {
                     actualLevel = OptimizationLevel.Aggressive;
                     if (EmptySystemWorkingSets()) methodsUsed.Add("System Working Set Empty");
