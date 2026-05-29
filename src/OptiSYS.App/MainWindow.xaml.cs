@@ -103,6 +103,14 @@ public sealed partial class MainWindow : Window
                     appWindow.SetIcon(icoPath);
                 }
 
+                // Load the in-window title-bar icon from the file (NOT ms-appx): this build strips
+                // resources.pri, so ms-appx:///Assets/... fails to resolve and the icon stays blank.
+                var pngPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.png");
+                if (System.IO.File.Exists(pngPath))
+                {
+                    TitleBarIcon.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(pngPath));
+                }
+
                 if (AppWindowTitleBar.IsCustomizationSupported())
                 {
                     var titleBar = appWindow.TitleBar;
@@ -224,8 +232,13 @@ public sealed partial class MainWindow : Window
         DashboardGrid.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
         SettingsGrid.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
-        DashboardAccentBorder.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        SettingsAccentBorder.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
+        var dashboardSelected = tag == "Dashboard";
+        // Win11 nav: fade the accent pill on the selected item, and give it a subtle persistent
+        // fill. Skip the fade during init so the first paint is instant.
+        FadeNavPill(DashboardAccentBorder, dashboardSelected);
+        FadeNavPill(SettingsAccentBorder, !dashboardSelected);
+        DashboardBtn.Background = dashboardSelected ? _navSelectedFill : _navTransparent;
+        SettingsBtn.Background = dashboardSelected ? _navTransparent : _navSelectedFill;
 
         // Persist the active page so it is restored next launch (skip during init / no-op changes).
         if (!_initializing && _settings.SelectedNavItem != tag)
@@ -233,6 +246,40 @@ public sealed partial class MainWindow : Window
             _settings.SelectedNavItem = tag;
             _settings.SaveDebounced();
         }
+    }
+
+    private static readonly Brush _navTransparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    private readonly Brush _navSelectedFill = ResolveThemeBrush("SubtleFillColorSecondaryBrush");
+
+    private static Brush ResolveThemeBrush(string key) =>
+        Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush
+            ? brush
+            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+
+    /// <summary>Win11-style selection indicator: quick opacity ease in/out (no stretch).</summary>
+    private void FadeNavPill(Border pill, bool selected)
+    {
+        var target = selected ? 1.0 : 0.0;
+        if (_initializing)
+        {
+            pill.Opacity = target;
+            return;
+        }
+
+        var anim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            To = target,
+            Duration = new Duration(TimeSpan.FromMilliseconds(167)),
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+            {
+                EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
+            },
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, pill);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "Opacity");
+        var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        sb.Children.Add(anim);
+        sb.Begin();
     }
 
     private void OnToggleProtectionClick(object sender, RoutedEventArgs e)
