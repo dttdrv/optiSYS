@@ -263,6 +263,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         "gpu-power" => _settings.GpuPowerEnabled,
         "cpu-parking" => _settings.CpuParkingEnabled,
         "disk-coalescing" => _settings.DiskCoalescingEnabled,
+        "wifi-optimizer" => _settings.WiFiOptimizerEnabled,
         "memory-optimize" => _settings.AutoOptimizeMemoryEnabled,
         _ => false
     };

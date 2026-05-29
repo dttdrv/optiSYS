@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Domains.Battery;
 using OptiSYS.Core.Domains.Memory;
+using OptiSYS.Core.Domains.Network;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Native;
 using OptiSYS.Core.Services;
 using OptiSYS.Services;
 
@@ -91,6 +93,10 @@ public static class AppHost
         sc.AddSingleton<IOptimizationDomain, GpuPowerDomain>();
         sc.AddSingleton<IOptimizationDomain, CpuParkingDomain>();
         sc.AddSingleton<IOptimizationDomain, DiskIoCoalescingDomain>();
+
+        // Wi-Fi latency optimizer (opt-in, OFF by default). Unelevated, session-scoped, reversible.
+        sc.AddSingleton<IWlanInterop, WlanInterop>();
+        sc.AddSingleton<IOptimizationDomain, WiFiOptimizerDomain>();
 
         // Engine + monitor: expose both concrete and interface aliases so startup/runtime
         // services and tests can resolve the same singleton instances.

@@ -155,6 +155,7 @@ public class ServiceRegistrationTests
             "gpu-power",
             "cpu-parking",
             "disk-coalescing",
+            "wifi-optimizer",
         ], domains);
     }
 
@@ -173,7 +174,8 @@ public class ServiceRegistrationTests
         var knownSwitchKeys = new[]
         {
             "ecoqos", "timer-resolution", "background-services", "usb-suspend",
-            "network-power", "gpu-power", "cpu-parking", "disk-coalescing", "memory-optimize",
+            "network-power", "gpu-power", "cpu-parking", "disk-coalescing", "wifi-optimizer",
+            "memory-optimize",
         };
 
         Assert.Equal(ids.Length, ids.Distinct().Count());            // no duplicate Ids

@@ -89,6 +89,13 @@ public sealed class Settings
     public bool CpuParkingEnabled { get; set; } = false;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
+    // Wi-Fi latency optimizer (opt-in, default OFF). Unelevated + session-scoped + reversible.
+    // A pure latency win: disabling the background scan removes 100ms+ spikes on the active
+    // connection; streaming mode prioritizes it. The one trade-off is slower roaming between APs.
+    public bool WiFiOptimizerEnabled { get; set; } = false;
+    public bool WiFiDisableBackgroundScan { get; set; } = true;
+    public bool WiFiStreamingMode { get; set; } = true;
+
     // Battery domain-specific settings
     public List<string> EcoQosExcludedProcesses { get; set; } =
     [
