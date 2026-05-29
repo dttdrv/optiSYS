@@ -301,7 +301,15 @@ public sealed partial class MainWindow : Window
         StatusText.Text = text.ToString();
         FooterText.Text = $"last sample {now:HH:mm:ss} // safe runtime optimization only";
 
-        // 2. Update Fluent UI dashboard telemetry
+        // 2. Reflect the (possibly auto-switched) efficiency profile in the Profile dropdown.
+        //    The auto-switch on AC/DC mutates _settings.BatteryPreset off-UI; this is the
+        //    UI-thread refresh path (StateChanged → RefreshPresentation), so it is the safe
+        //    place to resync. Only assign when the index actually differs: setting the same
+        //    SelectedIndex does not re-fire SelectionChanged, so there is no feedback loop, and
+        //    OptimizationLevel is never touched here.
+        SyncBatteryPresetSelection();
+
+        // 3. Update Fluent UI dashboard telemetry
         UpdateDashboardUI(memory, battery);
     }
 
@@ -439,6 +447,23 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
     {
         if (_initializing || _settings is null) return;
         _automation.SetBatteryPreset((BatteryPreset)BatteryPresetComboBox.SelectedIndex);
+    }
+
+    /// <summary>
+    /// Keeps the Profile dropdown in step with <see cref="Settings.BatteryPreset"/> after an
+    /// automatic AC/DC switch (driven from the runtime coordinator). Assigning an unchanged
+    /// SelectedIndex is a WinUI no-op that does not raise SelectionChanged, so this never loops
+    /// back into <see cref="OnBatteryPresetChanged"/>; even if it did, re-applying the same
+    /// preset is idempotent and leaves OptimizationLevel untouched.
+    /// </summary>
+    private void SyncBatteryPresetSelection()
+    {
+        if (_initializing || _settings is null) return;
+        var desired = (int)_settings.BatteryPreset;
+        if (BatteryPresetComboBox.SelectedIndex != desired)
+        {
+            BatteryPresetComboBox.SelectedIndex = desired;
+        }
     }
 
     private void OnStartWithWindowsToggled(object sender, RoutedEventArgs e)

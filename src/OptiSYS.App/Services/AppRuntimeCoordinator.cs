@@ -65,7 +65,21 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         _startup.Apply(_settings.StartWithWindows);
         _battery.Updated += OnBatteryUpdated;
         _automation.StateChanged += OnAutomationStateChanged;
+        _powerSourceMonitor.PowerSourceChanged += OnPowerSourceChanged;
         RefreshTraySnapshot();
+    }
+
+    /// <summary>
+    /// Auto-switches the efficiency profile on a power-source transition: on battery (DC) selects
+    /// the Saver preset, plugged in (AC) selects Recommended. Memory mode (OptimizationLevel) is
+    /// intentionally left untouched — it stays sticky/user-set. <see cref="IQuietAutomationService.SetBatteryPreset"/>
+    /// is a no-op when the preset is unchanged (so AC→AC / DC→DC re-polls cause no churn) and is
+    /// responsible for applying the safe domain settings, persisting, and raising StateChanged.
+    /// </summary>
+    private void OnPowerSourceChanged(PowerSource source)
+    {
+        var preset = source == PowerSource.Battery ? BatteryPreset.Saver : BatteryPreset.Recommended;
+        _automation.SetBatteryPreset(preset);
     }
 
     public void Dispose()
@@ -75,6 +89,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
 
         _battery.Updated -= OnBatteryUpdated;
         _automation.StateChanged -= OnAutomationStateChanged;
+        _powerSourceMonitor.PowerSourceChanged -= OnPowerSourceChanged;
         _powerSourceMonitor.Stop();
         _battery.Stop();
         _battery.Dispose();

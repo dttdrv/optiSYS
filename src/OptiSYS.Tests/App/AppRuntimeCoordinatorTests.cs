@@ -58,6 +58,54 @@ public class AppRuntimeCoordinatorTests
         tray.Verify(t => t.Update(It.IsAny<TraySnapshot>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData(PowerSource.Battery, BatteryPreset.Saver)]
+    [InlineData(PowerSource.Ac, BatteryPreset.Recommended)]
+    public async Task PowerSourceChanged_AutoSwitchesBatteryPreset_WithoutTouchingOptimizationLevel(
+        PowerSource newSource,
+        BatteryPreset expectedPreset)
+    {
+        var battery = new Mock<IBatteryInfoService>();
+        var memory = new Mock<IMemoryInfoService>();
+        var powerMonitor = new Mock<IPowerSourceMonitor>();
+        var automation = new Mock<IQuietAutomationService>();
+        var tray = new Mock<ITrayIconService>();
+        var startup = new Mock<IStartupRegistrationService>();
+        // Start opposite to the transition target so each case is a real change.
+        var settings = new Settings
+        {
+            BatteryPreset = newSource == PowerSource.Battery ? BatteryPreset.Recommended : BatteryPreset.Saver,
+            OptimizationLevel = OptimizationLevel.Aggressive,
+        };
+
+        memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.GetActiveBatteryStatuses()).Returns([]);
+
+        BatteryPreset? appliedPreset = null;
+        automation.Setup(a => a.SetBatteryPreset(It.IsAny<BatteryPreset>()))
+            .Callback<BatteryPreset>(p => appliedPreset = p);
+
+        var coordinator = new AppRuntimeCoordinator(
+            battery.Object,
+            memory.Object,
+            powerMonitor.Object,
+            automation.Object,
+            tray.Object,
+            startup.Object,
+            settings);
+
+        await coordinator.StartAsync();
+
+        powerMonitor.Raise(p => p.PowerSourceChanged += null, newSource);
+
+        // Battery preset auto-switched via the canonical apply path...
+        automation.Verify(a => a.SetBatteryPreset(expectedPreset), Times.Once);
+        Assert.Equal(expectedPreset, appliedPreset);
+        // ...and memory mode stayed sticky (never auto-changed by a power event).
+        Assert.Equal(OptimizationLevel.Aggressive, settings.OptimizationLevel);
+    }
+
     [Fact]
     public void Dispose_StopsBatteryAndPowerMonitor()
     {
