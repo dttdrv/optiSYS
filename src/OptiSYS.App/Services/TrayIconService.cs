@@ -32,8 +32,34 @@ public sealed class TrayIconService : ITrayIconService
 
     public void Initialize(nint windowHandle)
     {
-        StartupLog.Write("TrayIconService: initialization bypassed for diagnostics");
-        _initialized = true;
+        if (_initialized || windowHandle == nint.Zero)
+        {
+            return;
+        }
+
+        try
+        {
+            _windowHandle = windowHandle;
+            _iconTheme = IconTheme.Detect();
+            _icons = TrayIconSet.Create(_iconTheme);
+
+            // Subclass the window so it receives the WM_TRAYICON callbacks (left-click = open,
+            // right-click = context menu). Same subclass id used by Dispose's RemoveWindowSubclass.
+            _subclassProc = WindowSubclassProc;
+            SetWindowSubclass(windowHandle, _subclassProc, 1001, nint.Zero);
+
+            // Add the notification-area icon and opt into modern (v4) behaviour.
+            var data = CreateNotifyIconData(_icons.For(OverallHealthState.Normal), ClampTooltip(_snapshot.Tooltip));
+            TryNotifyIcon(NIM_ADD, ref data, "add");
+            TryNotifyIcon(NIM_SETVERSION, ref data, "setversion");
+
+            _initialized = true;
+            StartupLog.Write("TrayIconService: initialized");
+        }
+        catch (Exception ex)
+        {
+            StartupLog.WriteException("TrayIconService.Initialize failure", ex);
+        }
     }
 
     public void Update(TraySnapshot snapshot)
