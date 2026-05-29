@@ -25,8 +25,8 @@ public sealed class QuietAutomationServiceTests
 
         await service.StartAsync();
 
-        Assert.True(settings.EcoQosEnabled);
-        Assert.True(settings.TimerResolutionEnabled);
+        Assert.False(settings.EcoQosEnabled);       // opt-in now — never force-enabled
+        Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
         Assert.False(settings.UsbSuspendEnabled);
         Assert.False(settings.NetworkPowerEnabled);
@@ -127,6 +127,62 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task RunDeepCleanAsync_RunsAggressiveOptimizeAllWithDeepCleanTrue()
+    {
+        var settings = new Settings { MemoryThresholdPercent = 50 };
+        var timer = new FakeTimerService();
+        var optimizer = new Mock<IMemoryOptimizer>();
+        optimizer.Setup(o => o.OptimizeAll(
+                OptimizationLevel.Aggressive,
+                0,
+                50,
+                false,
+                0,
+                true,
+                true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 42 });
+
+        var service = CreateService(settings, timer, optimizer: optimizer);
+        await service.StartAsync();
+
+        await service.RunDeepCleanAsync();
+
+        optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive,
+            0,
+            50,
+            false,
+            0,
+            true,
+            true), Times.Once);
+        Assert.Equal(42, service.TotalFreedBytes);
+    }
+
+    [Fact]
+    public async Task TimerTick_HintsBackgroundMemoryPriorityEveryCycle()
+    {
+        var settings = new Settings { MemoryThresholdPercent = 80 };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        // Below threshold so no cleanup runs — proves the hint fires independently of cleanup.
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
+        {
+            TotalPhysicalBytes = 100,
+            AvailablePhysicalBytes = 50,
+        });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        timer.Tick();
+
+        await WaitForAssertionAsync(() =>
+            optimizer.Verify(o => o.HintBackgroundMemoryPriority(), Times.Once));
+    }
+
+    [Fact]
     public async Task ApplyBatteryPreset_ActivatesOnlyEngineCategoryAfterSafeSettings()
     {
         var settings = new Settings();
@@ -141,8 +197,8 @@ public sealed class QuietAutomationServiceTests
         service.ApplyBatteryPreset();
 
         engine.Verify(e => e.ActivateCategory("Battery"), Times.Once);
-        Assert.True(settings.EcoQosEnabled);
-        Assert.True(settings.TimerResolutionEnabled);
+        Assert.False(settings.EcoQosEnabled);       // opt-in now — never force-enabled
+        Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
         Assert.False(settings.CpuParkingEnabled);
     }

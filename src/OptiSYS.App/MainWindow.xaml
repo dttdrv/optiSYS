@@ -421,6 +421,23 @@
 
                         <TextBlock Text="System Tools &amp; Maintenance" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" />
 
+                        <!-- Deep Clean Card -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xEA99;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Deep clean (free up memory)" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Text="Aggressively reclaims standby cache and working sets. Can briefly cause disk activity or a short stutter — use before a memory-heavy task." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button x:Name="DeepCleanButton" Content="Deep clean" Grid.Column="2" Click="OnDeepCleanClick" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
                         <!-- Reset Configuration Card -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
                             <Grid ColumnSpacing="16">

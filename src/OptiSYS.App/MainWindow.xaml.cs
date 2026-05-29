@@ -430,6 +430,18 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         ManualTrimButton.IsEnabled = true;
     }
 
+    private async void OnDeepCleanClick(object sender, RoutedEventArgs e)
+    {
+        DeepCleanButton.IsEnabled = false;
+        DeepCleanButton.Content = "Cleaning...";
+
+        await _automation.RunDeepCleanAsync();
+
+        RefreshPresentation(forceMemoryPoll: true);
+        DeepCleanButton.Content = "Deep clean";
+        DeepCleanButton.IsEnabled = true;
+    }
+
     private void OnSettingsChanged(object sender, RoutedEventArgs e)
     {
         if (_initializing || _settings is null) return;

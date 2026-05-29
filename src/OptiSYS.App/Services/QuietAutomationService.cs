@@ -14,6 +14,7 @@ public interface IQuietAutomationService : IDisposable
 
     Task StartAsync();
     Task RunMemoryCleanupAsync();
+    Task RunDeepCleanAsync();
     void SetBatteryPreset(BatteryPreset preset);
     void ApplyBatteryPreset();
     void SetAutomationPaused(bool paused);
@@ -77,6 +78,62 @@ public sealed class QuietAutomationService : IQuietAutomationService
     public async Task RunMemoryCleanupAsync()
     {
         await RunCleanupCoreAsync(triggeredByThreshold: false).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Explicit, user-initiated one-shot deep clean. This is the ONLY path that passes
+    /// <c>deepClean: true</c> to the optimizer, unlocking the destructive reclaim steps
+    /// (system-wide working-set empty + full standby purge + page-combine). It is never reached
+    /// from any automatic/timer path.
+    /// </summary>
+    public async Task RunDeepCleanAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (!await _cleanupGate.WaitAsync(0).ConfigureAwait(false))
+        {
+            Publish("Safe cleanup is already running.");
+            return;
+        }
+
+        try
+        {
+            IsCleanupRunning = true;
+            RaiseStateChanged();
+            RefreshMemoryExclusions();
+
+            var result = await Task.Run(() => _optimizer.OptimizeAll(
+                level: OptimizationLevel.Aggressive,
+                cacheMaxPercent: 0,
+                targetThresholdPercent: _settings.MemoryThresholdPercent,
+                accessedBitsDelayMs: 0,
+                effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled,
+                deepClean: true)).ConfigureAwait(false);
+
+            _lastCleanupAt = DateTimeOffset.UtcNow;
+
+            if (!result.Success)
+            {
+                Publish($"Deep clean skipped: {result.Message}");
+                return;
+            }
+
+            if (result.FreedBytes > 0)
+            {
+                TotalFreedBytes += result.FreedBytes;
+            }
+
+            var freedDisplay = result.FreedBytes > 0
+                ? OptimizationResult.FormatBytesStatic(result.FreedBytes)
+                : "a lighter working set";
+            Publish($"Deep clean finished; recovered {freedDisplay}.");
+        }
+        finally
+        {
+            IsCleanupRunning = false;
+            _cleanupGate.Release();
+            RaiseStateChanged();
+        }
     }
 
     public void SetBatteryPreset(BatteryPreset preset)
@@ -146,6 +203,11 @@ public sealed class QuietAutomationService : IQuietAutomationService
             {
                 return;
             }
+
+            // Continuous, safe, zero-IO lever: nudge curated background processes to a lower
+            // page-eviction priority every cycle. Wrapped so a hint failure can never abort the
+            // pressure check / cleanup below.
+            HintBackgroundPrioritySafely();
 
             if (_lastCleanupAt is not null &&
                 DateTimeOffset.UtcNow - _lastCleanupAt.Value < TimeSpan.FromSeconds(_settings.MemoryCooldownSeconds))
@@ -237,14 +299,27 @@ public sealed class QuietAutomationService : IQuietAutomationService
 
     private void ApplySafeDomainSettings()
     {
-        _settings.EcoQosEnabled = true;
-        _settings.TimerResolutionEnabled = true;
+        // EcoQoS + Timer Resolution are NOT force-enabled: they throttle ALL non-foreground
+        // processes, so they are opt-in only (respect the user's setting; default off). This method
+        // only keeps the heavier opt-in domains disabled until the user explicitly enables them.
         _settings.BackgroundServicesEnabled = false;
         _settings.UsbSuspendEnabled = false;
         _settings.NetworkPowerEnabled = false;
         _settings.GpuPowerEnabled = false;
         _settings.CpuParkingEnabled = false;
         _settings.DiskCoalescingEnabled = false;
+    }
+
+    private void HintBackgroundPrioritySafely()
+    {
+        try
+        {
+            _optimizer.HintBackgroundMemoryPriority();
+        }
+        catch (Exception ex)
+        {
+            Publish($"Background memory hint skipped: {ex.Message}");
+        }
     }
 
     private void RefreshMemoryExclusions()
