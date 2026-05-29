@@ -1,6 +1,7 @@
 using Moq;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Services;
 using OptiSYS.Services;
 using Xunit;
 
@@ -127,6 +128,42 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task TimerTick_PredictivelyTrimsBelowThreshold_OnRisingTrendUnderCommitPressure()
+    {
+        var settings = new Settings { MemoryThresholdPercent = 80, MemoryCooldownSeconds = 15 };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        // Usage rises 60→70→78 — all BELOW the 80 reactive threshold — under high commit (0.70).
+        memory.SetupSequence(m => m.GetCurrentMemoryInfo())
+            .Returns(Mem(60, commitRatio: 0.70))
+            .Returns(Mem(70, commitRatio: 0.70))
+            .Returns(Mem(78, commitRatio: 0.70));
+
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Conservative, 0, 80, false, 0, true, false))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 5 });
+
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var predictor = new MemoryTrendPredictor(utcNow: () => now);
+
+        var service = new QuietAutomationService(
+            settings, Mock.Of<IBatteryInfoService>(), memory.Object, optimizer.Object,
+            Mock.Of<IOptimizationEngine>(), timer, predictor);
+        await service.StartAsync();
+
+        timer.Tick();                 // 60 @ t0  — <3 samples, no fire
+        now = now.AddSeconds(10);
+        timer.Tick();                 // 70 @ t10 — 2 samples, no fire
+        now = now.AddSeconds(10);
+        timer.Tick();                 // 78 @ t20 — slope ≈0.9%/s, projected ≈91.5 ≥ 80 → pre-emptive trim
+
+        await WaitForAssertionAsync(() =>
+            optimizer.Verify(o => o.OptimizeAll(
+                OptimizationLevel.Conservative, 0, 80, false, 0, true, false), Times.Once));
+    }
+
+    [Fact]
     public async Task RunDeepCleanAsync_RunsAggressiveOptimizeAllWithDeepCleanTrue()
     {
         var settings = new Settings { MemoryThresholdPercent = 50 };
@@ -222,6 +259,14 @@ public sealed class QuietAutomationServiceTests
             engine.Object,
             timer);
     }
+
+    private static MemoryInfo Mem(double usagePercent, double commitRatio) => new()
+    {
+        TotalPhysicalBytes = 100,
+        AvailablePhysicalBytes = (long)(100 - usagePercent),
+        CommitTotalBytes = (long)(commitRatio * 100),
+        CommitLimitBytes = 100,
+    };
 
     private static async Task WaitForAssertionAsync(Action assertion)
     {

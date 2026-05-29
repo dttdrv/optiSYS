@@ -1,5 +1,6 @@
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Services;
 
 namespace OptiSYS.Services;
 
@@ -28,6 +29,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
     private readonly IMemoryOptimizer _optimizer;
     private readonly IOptimizationEngine _engine;
     private readonly ITimerService _timer;
+    private readonly MemoryTrendPredictor _predictor;
     private readonly SemaphoreSlim _cleanupGate = new(1, 1);
     private IDisposable? _memoryWatcher;
     private DateTimeOffset? _lastCleanupAt;
@@ -48,12 +50,27 @@ public sealed class QuietAutomationService : IQuietAutomationService
         IMemoryOptimizer optimizer,
         IOptimizationEngine engine,
         ITimerService timer)
+        : this(settings, battery, memory, optimizer, engine, timer, predictor: null)
+    {
+    }
+
+    // Test seam: injects a clock-controlled predictor. Internal so MS.DI never sees it and
+    // always picks the public ctor above (which builds a default predictor).
+    internal QuietAutomationService(
+        Settings settings,
+        IBatteryInfoService battery,
+        IMemoryInfoService memory,
+        IMemoryOptimizer optimizer,
+        IOptimizationEngine engine,
+        ITimerService timer,
+        MemoryTrendPredictor? predictor)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _memory = memory ?? throw new ArgumentNullException(nameof(memory));
         _optimizer = optimizer ?? throw new ArgumentNullException(nameof(optimizer));
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _timer = timer ?? throw new ArgumentNullException(nameof(timer));
+        _predictor = predictor ?? new MemoryTrendPredictor();
 
         ArgumentNullException.ThrowIfNull(battery);
     }
@@ -209,12 +226,6 @@ public sealed class QuietAutomationService : IQuietAutomationService
             // pressure check / cleanup below.
             HintBackgroundPrioritySafely();
 
-            if (_lastCleanupAt is not null &&
-                DateTimeOffset.UtcNow - _lastCleanupAt.Value < TimeSpan.FromSeconds(_settings.MemoryCooldownSeconds))
-            {
-                return;
-            }
-
             var info = _memory.GetCurrentMemoryInfo();
             if (info.TotalPhysicalBytes <= 0)
             {
@@ -222,13 +233,36 @@ public sealed class QuietAutomationService : IQuietAutomationService
                 return;
             }
 
-            if (info.UsagePercent < _settings.MemoryThresholdPercent)
+            // Feed the trend window every cycle (even during cooldown) so the slope stays accurate.
+            _predictor.Observe(info.UsagePercent);
+
+            if (_lastCleanupAt is not null &&
+                DateTimeOffset.UtcNow - _lastCleanupAt.Value < TimeSpan.FromSeconds(_settings.MemoryCooldownSeconds))
             {
-                Publish($"Memory sampled at {info.UsagePercent:0}% usage; no cleanup needed.");
                 return;
             }
 
-            await RunCleanupCoreAsync(triggeredByThreshold: true).ConfigureAwait(false);
+            if (info.UsagePercent >= _settings.MemoryThresholdPercent)
+            {
+                await RunCleanupCoreAsync(triggeredByThreshold: true).ConfigureAwait(false);
+                return;
+            }
+
+            // Pre-emptive path: below the reactive threshold, but the usage trend is projected to
+            // breach it shortly AND real commit demand is high (not just reclaimable cache filling).
+            // Fires the same gentle Conservative trim — just early — keeping it unnoticeable.
+            var commitRatio = info.CommitLimitBytes > 0
+                ? (double)info.CommitTotalBytes / info.CommitLimitBytes
+                : 0;
+
+            if (_predictor.ShouldPreemptivelyTrim(info.UsagePercent, commitRatio, _settings.MemoryThresholdPercent))
+            {
+                Publish($"Memory trending toward pressure ({info.UsagePercent:0}% used, {commitRatio * 100:0}% committed); trimming early.");
+                await RunCleanupCoreAsync(triggeredByThreshold: true).ConfigureAwait(false);
+                return;
+            }
+
+            Publish($"Memory sampled at {info.UsagePercent:0}% usage; no cleanup needed.");
         }
         catch (Exception ex)
         {

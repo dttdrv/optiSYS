@@ -67,6 +67,12 @@ public sealed class OptimizationResult
     public TimeSpan Duration { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
 
+    /// <summary>The level actually executed (may be capped below the requested level under high compression).</summary>
+    public OptimizationLevel ActualLevelUsed { get; init; } = OptimizationLevel.Conservative;
+
+    /// <summary>Human-readable list of the steps that ran (and any skipped as ineffective) — for the activity log.</summary>
+    public IReadOnlyList<string> MethodsUsed { get; init; } = [];
+
     public string FreedDisplay => FormatBytesStatic(FreedBytes);
 
     public static string FormatBytesStatic(long bytes) => bytes switch

@@ -457,6 +457,8 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
             FreedBytes = freed,
             ProcessesTrimmed = processesTrimmed,
             Duration = sw.Elapsed,
+            ActualLevelUsed = actualLevel,
+            MethodsUsed = methodsUsed.ToArray(),
         };
     }
 
