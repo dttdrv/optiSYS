@@ -14,7 +14,7 @@ namespace OptiSYS.Controls;
 /// </summary>
 public sealed partial class HistoryChartControl : UserControl
 {
-    private const int MaxSamples = 40;
+    private const int MaxSamples = 50;
     private readonly List<double> _samples = new();
 
     public HistoryChartControl()

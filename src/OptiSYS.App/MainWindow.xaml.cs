@@ -75,7 +75,7 @@ public sealed partial class MainWindow : Window
         SwitchToPage(restoreTag);
 
         _refreshTimer = DispatcherQueue.CreateTimer();
-        _refreshTimer.Interval = TimeSpan.FromSeconds(5);
+        _refreshTimer.Interval = TimeSpan.FromSeconds(1);   // fast live telemetry
         _refreshTimer.Tick += (_, _) => RefreshPresentation();
         _refreshTimer.Start();
 
@@ -338,6 +338,7 @@ public sealed partial class MainWindow : Window
             MemoryProgressBar.Value = memory.UsagePercent;
             MemoryCachedText.Text = $"{memory.StandbyGB:F1} GB";
             MemoryProcessesText.Text = $"{memory.ProcessCount:N0}";
+            MemoryClearedText.Text = OptiSYS.Core.Models.OptimizationResult.FormatBytesStatic(_automation.TotalFreedBytes);
 
             MemoryHistoryChart.AddSample(memory.UsagePercent);
         }
@@ -492,37 +493,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.StartWithWindows = StartWithWindowsToggle.IsOn;
         _startup.Apply(_settings.StartWithWindows);
         _settings.SaveDebounced();
-    }
-
-    private void OnResetSettingsClick(object sender, RoutedEventArgs e)
-    {
-        _settings.AutoOptimizeMemoryEnabled = true;
-        _settings.MemoryThresholdPercent = 50;
-        _settings.MemoryCooldownSeconds = 15;
-        _settings.OptimizationLevel = OptimizationLevel.Conservative;
-        _settings.EffectivenessTrackingEnabled = true;
-        _settings.SelfWorkingSetCapMB = 100;
-        _settings.AutoOptimizeOnBattery = true;
-        _settings.BatteryPreset = BatteryPreset.Recommended;
-        _settings.MinimizeToTray = true;
-        _settings.StartWithWindows = true;
-        _settings.ThemeMode = "System";
-        _settings.UseWindowsAccentColor = true;
-        _settings.BackdropType = "Acrylic";
-
-        _settings.TimerResolutionExcludedProcesses = new List<string>(Settings.CriticalProcessExclusions) { "audiodg", "NVIDIA Display Container" };
-
-        _settings.Save();
-        _startup.Apply(true);
-
-        _initializing = true;
-        InitializeControlValues();
-        _theme.ApplyThemeMode();
-        _theme.ApplyBackdrop();
-        _theme.ApplyAccentColor();
-        _initializing = false;
-
-        RefreshPresentation(forceMemoryPoll: true);
     }
 
     // Windows lifecycle & tray
