@@ -47,7 +47,6 @@ public class MemoryOptimizerDomainTests
             MemoryThresholdPercent = 77,
             AccessedBitsDelayMs = 1500,
             EffectivenessTrackingEnabled = false,
-            MemoryExcludedProcesses = ["alpha", "beta"],
         };
 
         var memoryInfo = new Mock<IMemoryInfoService>(MockBehavior.Strict);
@@ -59,10 +58,6 @@ public class MemoryOptimizerDomainTests
         });
 
         var optimizer = new Mock<IMemoryOptimizer>(MockBehavior.Strict);
-        HashSet<string>? excluded = null;
-        optimizer.SetupProperty(o => o.ExcludedProcesses);
-        optimizer.SetupSet(o => o.ExcludedProcesses = It.IsAny<HashSet<string>>())
-            .Callback<HashSet<string>>(value => excluded = value);
         optimizer.Setup(o => o.OptimizeAll(
                 OptimizationLevel.Aggressive,
                 12,
@@ -84,9 +79,7 @@ public class MemoryOptimizerDomainTests
         Assert.True(result.Success);
         Assert.Equal(MemoryOptimizerDomainId, result.DomainId);
         Assert.Equal(4, result.ItemsOptimized);
-        Assert.NotNull(excluded);
-        Assert.Contains("alpha", excluded!, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("beta", excluded!, StringComparer.OrdinalIgnoreCase);
+        // No user-exclusion list is applied any more (matches optiRAM).
         optimizer.Verify(o => o.OptimizeAll(
             OptimizationLevel.Aggressive,
             12,

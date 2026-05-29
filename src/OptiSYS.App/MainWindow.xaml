@@ -78,20 +78,6 @@
                         </Grid>
                     </Button>
 
-                    <!-- Protected Apps -->
-                    <Button x:Name="ProtectedAppsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="ProtectedApps" AutomationProperties.Name="Protected Applications">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="ProtectedAppsAccentBorder" Width="4" Height="18" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="2" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-6,0,8,0" Visibility="Collapsed" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="12" Margin="6,0,0,0">
-                                <FontIcon Glyph="&#xE73E;" FontSize="16" />
-                                <TextBlock Text="Protected Applications" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Grid>
-                    </Button>
 
                     <!-- Settings -->
                     <Button x:Name="SettingsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Settings" AutomationProperties.Name="Settings">
@@ -191,7 +177,6 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="Mode" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                         <ComboBox x:Name="OptimizationLevelComboBox" Grid.Column="1" MinWidth="140" VerticalAlignment="Center" SelectionChanged="OnSettingsChanged">
-                                            <ComboBoxItem Content="Normal" />
                                             <ComboBoxItem Content="Balanced" />
                                             <ComboBoxItem Content="Max" />
                                         </ComboBox>
@@ -278,50 +263,6 @@
                     </StackPanel>
                 </ScrollViewer>
 
-
-                <!-- ==================== PROTECTED APPLICATIONS TAB ==================== -->
-                <ScrollViewer x:Name="ProtectedAppsGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="16" MaxWidth="760" HorizontalAlignment="Left" Margin="0,0,0,16">
-                        <TextBlock Text="Protected Applications" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
-                        <TextBlock Text="These critical applications are fully excluded from all resource trimming, EcoQoS scheduling, and background thread restrictions. Protect your development tools, browsers, or active workspaces here." Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-
-                        <Grid ColumnSpacing="8" Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="ProtectedAppInput" PlaceholderText="Process name (e.g., Code)" KeyDown="OnProtectedAppInputKeyDown" />
-                            <Button Content="Add" Grid.Column="1" Click="OnAddProtectedAppClick" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Browse..." Grid.Column="2" Click="OnBrowseProtectedAppClick" />
-                        </Grid>
-
-                        <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
-                            <ListView x:Name="ProtectedAppsListView" MinHeight="200" MaxHeight="520" SelectionMode="None">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Margin="0,0,0,4" Padding="12,8">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <FontIcon Glyph="&#xE73E;" FontSize="14" Foreground="{ThemeResource SystemAccentColorBrush}" Margin="0,0,8,0" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1" Text="{Binding}" VerticalAlignment="Center" Style="{StaticResource BodyTextBlockStyle}" FontWeight="SemiBold" />
-                                                <Button Grid.Column="2" Content="&#xE74D;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Click="OnRemoveProtectedAppClick" CommandParameter="{Binding}" AutomationProperties.Name="{Binding}" ToolTipService.ToolTip="Remove" Padding="8,4" VerticalAlignment="Center">
-                                                    <Button.Resources>
-                                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SystemFillColorCriticalBackground}" />
-                                                    </Button.Resources>
-                                                </Button>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
 
                 <!-- ==================== SETTINGS TAB ==================== -->
                 <ScrollViewer x:Name="SettingsGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
@@ -425,8 +366,8 @@
                             <Grid>
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="optiSYS Optimizer Suite" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock x:Name="AppVersionText" Text="Version 0.0.3 // Active System Protection" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <TextBlock Text="Developed by eptesicus" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock x:Name="AppVersionText" Text="Version 0.2.1 // Active System Protection" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <HyperlinkButton Content="Developed by Deyan Todorov" NavigateUri="https://dttdrv.xyz" Padding="0" Margin="0,2,0,0" />
                                 </StackPanel>
                                 <FontIcon Glyph="&#xE964;" FontSize="40" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0.1" />
                             </Grid>

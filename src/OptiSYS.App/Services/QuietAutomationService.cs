@@ -395,11 +395,11 @@ public sealed class QuietAutomationService : IQuietAutomationService
 
     private void RefreshMemoryExclusions()
     {
+        // Match optiRAM: exclude only critical SYSTEM processes. The foreground app + self are
+        // skipped inside TrimProcessWorkingSets, and trimming a background app just moves its pages
+        // to standby (faulted back lazily) — so no user-managed "protected apps" list is needed.
         _optimizer.ExcludedProcesses = new HashSet<string>(
-            Settings.CriticalProcessExclusions
-                .Concat(_settings.MemoryExcludedProcesses)
-                .Concat(_settings.ProtectedApplications),
-            StringComparer.OrdinalIgnoreCase);
+            Settings.CriticalProcessExclusions, StringComparer.OrdinalIgnoreCase);
     }
 
     private void RaiseStateChanged() => StateChanged?.Invoke();

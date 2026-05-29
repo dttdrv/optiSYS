@@ -37,8 +37,10 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
-    public async Task StartAsync_ProtectsConfiguredWorkApplicationsFromMemoryCleanup()
+    public async Task StartAsync_ExcludesOnlyCriticalSystemProcesses_NotAUserList()
     {
+        // optiRAM parity: no user-managed exclusion list — only critical system processes are
+        // excluded (foreground + self are skipped inside the trim itself).
         var settings = new Settings
         {
             MemoryExcludedProcesses = ["custom-daemon"],
@@ -52,9 +54,9 @@ public sealed class QuietAutomationServiceTests
 
         await service.StartAsync();
 
-        Assert.Contains("custom-daemon", optimizer.Object.ExcludedProcesses);
-        Assert.Contains("Code", optimizer.Object.ExcludedProcesses);
-        Assert.Contains("WindowsTerminal", optimizer.Object.ExcludedProcesses);
+        Assert.Contains("explorer", optimizer.Object.ExcludedProcesses);              // critical system process
+        Assert.DoesNotContain("custom-daemon", optimizer.Object.ExcludedProcesses);   // user list ignored
+        Assert.DoesNotContain("Code", optimizer.Object.ExcludedProcesses);
     }
 
     [Fact]

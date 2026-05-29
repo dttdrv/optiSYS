@@ -67,11 +67,8 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
 
         try
         {
-            _optimizer.ExcludedProcesses = new HashSet<string>(
-                _settings.MemoryExcludedProcesses
-                    .Concat(_settings.ProtectedApplications),
-                StringComparer.OrdinalIgnoreCase);
-
+            // No user-managed exclusion list (matches optiRAM). The optimizer already excludes
+            // critical system processes by default; foreground + self are skipped during the trim.
             var result = _optimizer.OptimizeAll(
                 level: _settings.OptimizationLevel,
                 cacheMaxPercent: _settings.CacheMaxPercent,

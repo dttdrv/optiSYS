@@ -29,9 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly IStartupRegistrationService _startup;
     private readonly DispatcherQueueTimer _refreshTimer;
     private readonly ThemeManager _theme;
-    
-    private readonly ObservableCollection<string> _protectedApps = new();
-    
+
     private bool _allowExit;
     private bool _initializing = true;
     private bool _suppressAutoToggle;
@@ -63,19 +61,14 @@ public sealed partial class MainWindow : Window
             appWindow.Closing += OnAppWindowClosing;
         }
 
-        // Setup Exclusions and Lists Data Binding
-        ProtectedAppsListView.ItemsSource = _protectedApps;
-
-        LoadExclusionsFromSettings();
         InitializeControlValues();
         
         _initializing = false;
 
-        // Restore the last-viewed page (safe with the sidebar — only toggles Visibility/borders).
-        // Only Dashboard / ProtectedApps / Settings remain; map any legacy value to Dashboard.
+        // Restore the last-viewed page. Only Dashboard / Settings remain; any legacy value
+        // (e.g. the removed "ProtectedApps") falls through to Dashboard.
         var restoreTag = _settings.SelectedNavItem switch
         {
-            "ProtectedApps" => "ProtectedApps",
             "Settings" => "Settings",
             _ => "Dashboard"
         };
@@ -229,11 +222,9 @@ public sealed partial class MainWindow : Window
     private void SwitchToPage(string tag)
     {
         DashboardGrid.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        ProtectedAppsGrid.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
         SettingsGrid.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
         DashboardAccentBorder.Visibility = tag == "Dashboard" ? Visibility.Visible : Visibility.Collapsed;
-        ProtectedAppsAccentBorder.Visibility = tag == "ProtectedApps" ? Visibility.Visible : Visibility.Collapsed;
         SettingsAccentBorder.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
         // Persist the active page so it is restored next launch (skip during init / no-op changes).
@@ -259,20 +250,12 @@ public sealed partial class MainWindow : Window
         RefreshPresentation();
     }
 
-    private void LoadExclusionsFromSettings()
-    {
-        _protectedApps.Clear();
-        foreach (var app in _settings.ProtectedApplications)
-        {
-            _protectedApps.Add(app);
-        }
-    }
-
     private void InitializeControlValues()
     {
         // Master AIO switch: ON when automation is running (not paused).
         AutomaticOptimizationToggle.IsOn = !_settings.AutomationPaused;
-        OptimizationLevelComboBox.SelectedIndex = (int)_settings.OptimizationLevel;
+        // Two modes: index 0 = Balanced, index 1 = Max (Aggressive).
+        OptimizationLevelComboBox.SelectedIndex = _settings.OptimizationLevel == OptimizationLevel.Aggressive ? 1 : 0;
         BatteryPresetComboBox.SelectedIndex = (int)_settings.BatteryPreset;
 
         StartWithWindowsToggle.IsOn = _settings.StartWithWindows;
@@ -472,7 +455,9 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
     {
         if (_initializing || _settings is null) return;
 
-        _settings.OptimizationLevel = (OptimizationLevel)OptimizationLevelComboBox.SelectedIndex;
+        _settings.OptimizationLevel = OptimizationLevelComboBox.SelectedIndex == 1
+            ? OptimizationLevel.Aggressive
+            : OptimizationLevel.Balanced;
         _settings.MinimizeToTray = MinimizeToTrayToggle.IsOn;
 
         _settings.SaveDebounced();
@@ -525,21 +510,12 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.UseWindowsAccentColor = true;
         _settings.BackdropType = "Acrylic";
 
-        _settings.MemoryExcludedProcesses = new List<string>(Settings.CriticalProcessExclusions);
         _settings.TimerResolutionExcludedProcesses = new List<string>(Settings.CriticalProcessExclusions) { "audiodg", "NVIDIA Display Container" };
-        _settings.ProtectedApplications = new List<string>
-        {
-            "Code", "Cursor", "devenv", "rider64", "idea64", "clion64", "pycharm64", "webstorm64",
-            "datagrip64", "dotnet", "msbuild", "node", "python", "pwsh", "powershell", "cmd", "wt",
-            "chrome", "msedge", "firefox", "brave", "vivaldi", "obs64", "Teams", "ms-teams",
-            "Zoom", "Discord", "slack"
-        };
 
         _settings.Save();
         _startup.Apply(true);
 
         _initializing = true;
-        LoadExclusionsFromSettings();
         InitializeControlValues();
         _theme.ApplyThemeMode();
         _theme.ApplyBackdrop();
@@ -547,79 +523,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _initializing = false;
 
         RefreshPresentation(forceMemoryPoll: true);
-    }
-
-    // Shared add/remove for the three exclusion lists (memory, timer, protected apps).
-    private void AddExclusion(string processName, IList<string> settingsList, ObservableCollection<string> uiList)
-    {
-        processName = processName.Trim();
-        if (string.IsNullOrWhiteSpace(processName)) return;
-        if (settingsList.Contains(processName, StringComparer.OrdinalIgnoreCase)) return;
-
-        settingsList.Add(processName);
-        uiList.Add(processName);
-        _settings.SaveDebounced();
-    }
-
-    private void RemoveExclusion(string item, IList<string> settingsList, ObservableCollection<string> uiList)
-    {
-        if (settingsList.Remove(item))
-        {
-            uiList.Remove(item);
-            _settings.SaveDebounced();
-        }
-    }
-
-    private void AddProtectedApp(string processName) =>
-        AddExclusion(processName, _settings.ProtectedApplications, _protectedApps);
-
-    private void OnAddProtectedAppClick(object sender, RoutedEventArgs e)
-    {
-        AddProtectedApp(ProtectedAppInput.Text);
-        ProtectedAppInput.Text = string.Empty;
-    }
-
-    private void OnProtectedAppInputKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
-    {
-        if (e.Key == Windows.System.VirtualKey.Enter)
-        {
-            AddProtectedApp(ProtectedAppInput.Text);
-            ProtectedAppInput.Text = string.Empty;
-            e.Handled = true;
-        }
-    }
-
-    private async void OnBrowseProtectedAppClick(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var picker = new Windows.Storage.Pickers.FileOpenPicker();
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-            
-            picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.List;
-            picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder;
-            picker.FileTypeFilter.Add(".exe");
-
-            var file = await picker.PickSingleFileAsync();
-            if (file != null)
-            {
-                var processName = System.IO.Path.GetFileNameWithoutExtension(file.Name);
-                AddProtectedApp(processName);
-            }
-        }
-        catch
-        {
-            // Fail silently or fallback
-        }
-    }
-
-    private void OnRemoveProtectedAppClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button button && button.CommandParameter is string item)
-        {
-            RemoveExclusion(item, _settings.ProtectedApplications, _protectedApps);
-        }
     }
 
     // Windows lifecycle & tray
