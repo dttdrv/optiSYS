@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Services;
 using OptiSYS;
 using OptiSYS.Models;
 using OptiSYS.Services;
@@ -22,6 +23,7 @@ public class AppRuntimeCoordinatorTests
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
         var settings = new Settings();
         var warmUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -37,7 +39,8 @@ public class AppRuntimeCoordinatorTests
             tray.Object,
             startup.Object,
             taskScheduler.Object,
-            settings);
+            settings,
+            adaptiveEcoQos.Object);
 
         var startTask = coordinator.StartAsync();
 
@@ -57,6 +60,7 @@ public class AppRuntimeCoordinatorTests
         powerMonitor.Verify(p => p.Start(), Times.Once);
         memory.Verify(m => m.WarmUpAsync(), Times.Once);
         automation.Verify(a => a.StartAsync(), Times.Once);
+        adaptiveEcoQos.Verify(c => c.Start(), Times.Once);
         startup.Verify(s => s.Apply(settings.StartWithWindows), Times.Once);
         tray.Verify(t => t.Update(It.IsAny<TraySnapshot>()), Times.Once);
     }
@@ -75,6 +79,7 @@ public class AppRuntimeCoordinatorTests
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
         // Start opposite to the transition target so each case is a real change.
         var settings = new Settings
         {
@@ -98,7 +103,8 @@ public class AppRuntimeCoordinatorTests
             tray.Object,
             startup.Object,
             taskScheduler.Object,
-            settings);
+            settings,
+            adaptiveEcoQos.Object);
 
         await coordinator.StartAsync();
 
@@ -121,6 +127,7 @@ public class AppRuntimeCoordinatorTests
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
         var settings = new Settings();
 
         var coordinator = new AppRuntimeCoordinator(
@@ -131,12 +138,14 @@ public class AppRuntimeCoordinatorTests
             tray.Object,
             startup.Object,
             taskScheduler.Object,
-            settings);
+            settings,
+            adaptiveEcoQos.Object);
 
         coordinator.Dispose();
 
         battery.Verify(b => b.Stop(), Times.Once);
         powerMonitor.Verify(p => p.Stop(), Times.Once);
+        adaptiveEcoQos.Verify(c => c.Dispose(), Times.Once);
         automation.Verify(a => a.Dispose(), Times.Once);
     }
 
@@ -246,6 +255,7 @@ public class AppRuntimeCoordinatorTests
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
         var task = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
 
         memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
         automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
@@ -259,7 +269,8 @@ public class AppRuntimeCoordinatorTests
             tray.Object,
             startup.Object,
             task.Object,
-            settings);
+            settings,
+            adaptiveEcoQos.Object);
         return (coordinator, startup, task);
     }
 
@@ -279,6 +290,7 @@ public class AppRuntimeCoordinatorTests
         var tray = new Mock<ITrayIconService>();
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
         var settings = new Settings();
 
         memory.Setup(m => m.WarmUpAsync()).Returns(async () =>
@@ -294,7 +306,8 @@ public class AppRuntimeCoordinatorTests
                 tray.Object,
                 startup.Object,
                 taskScheduler.Object,
-                settings);
+                settings,
+                adaptiveEcoQos.Object);
 
             await coordinator.StartAsync();
 

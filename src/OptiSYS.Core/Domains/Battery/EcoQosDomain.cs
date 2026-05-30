@@ -28,6 +28,7 @@ public sealed class EcoQosDomain : IOptimizationDomain
     private readonly INativeBridge? _native;
     private bool _isActive;
     private readonly HashSet<uint> _throttledPids = [];
+    private readonly object _gate = new();
 
     public string Id => "ecoqos";
     public string DisplayName => "Process Power Throttling";
@@ -50,38 +51,60 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
     public ApplyResult Apply(DomainSnapshot baseline)
     {
+        // First application: reconcile from an empty tracked set. The baseline carries no PID
+        // list — revert is dynamic (the live tracked set is authoritative), mirroring how
+        // MemoryOptimizerDomain leans on the OS to undo its effect rather than a snapshot.
+        baseline.Set("captured", true);
+        return Reconcile();
+    }
+
+    /// <summary>
+    /// Idempotent reconcile toward the desired state: every non-foreground, non-excluded,
+    /// non-shell, non-self background process is in efficiency mode; the foreground process is
+    /// always released. Safe to call repeatedly — the adaptive controller invokes it on a cadence
+    /// while on battery so focus changes and newly-spawned processes are tracked continuously.
+    /// </summary>
+    public ApplyResult Reconcile()
+    {
         var sw = Stopwatch.StartNew();
-        int throttled = 0, failed = 0, skipped = 0;
+
         var nativeForegroundPid = _native?.GetForegroundProcessId() ?? 0;
         var foregroundPid = nativeForegroundPid > 0
             ? (uint)nativeForegroundPid
             : NativeMethods.GetForegroundProcessId();
-        var selfPid = Environment.ProcessId;
+        var selfPid = (uint)Environment.ProcessId;
         var exclusions = new HashSet<string>(
             _settings.EcoQosExcludedProcesses.Concat(_settings.ProtectedApplications),
             StringComparer.OrdinalIgnoreCase);
 
-        _throttledPids.Clear();
-
-        foreach (var proc in Process.GetProcesses())
+        var desired = new HashSet<uint>();
+        foreach (var (pid, name) in EnumerateProcesses())
         {
-            try
+            if (pid == selfPid || pid == foregroundPid || pid <= 4)
+                continue;
+            if (IsShellProcess(name) || exclusions.Contains(name))
+                continue;
+            desired.Add(pid);
+        }
+
+        int throttled = 0, released = 0, failed = 0, active;
+        lock (_gate)
+        {
+            // Release whatever we previously throttled that is no longer desired: the app that
+            // just took focus, a now-excluded match, or a process that has exited.
+            foreach (var pid in _throttledPids.Where(p => !desired.Contains(p)).ToList())
             {
-                var pid = (uint)proc.Id;
-                if (pid == selfPid || pid == foregroundPid || pid <= 4)
-                {
-                    skipped++;
-                    continue;
-                }
+                try { SetEcoQos((int)pid, enable: false); } catch { }
+                _throttledPids.Remove(pid);
+                released++;
+            }
 
-                var name = proc.ProcessName;
-                if (IsShellProcess(name) || exclusions.Contains(name))
-                {
-                    skipped++;
+            // Throttle newly-desired processes (background apps, newly spawned, newly backgrounded).
+            foreach (var pid in desired)
+            {
+                if (_throttledPids.Contains(pid))
                     continue;
-                }
-
-                if (SetEcoQos(proc.Id, enable: true))
+                if (SetEcoQos((int)pid, enable: true))
                 {
                     _throttledPids.Add(pid);
                     throttled++;
@@ -91,37 +114,32 @@ public sealed class EcoQosDomain : IOptimizationDomain
                     failed++;
                 }
             }
-            catch { skipped++; }
-            finally { proc.Dispose(); }
+
+            active = _throttledPids.Count;
+            _isActive = active > 0;
         }
 
-        _isActive = throttled > 0;
         sw.Stop();
-
-        baseline.Set("throttledPids", _throttledPids.ToList());
-
         return ApplyResult.Ok(Id,
-            $"Throttled {throttled} processes (skipped {skipped}, failed {failed})",
-            optimized: throttled, failed: failed, skipped: skipped, duration: sw.Elapsed);
+            $"{active} background processes in efficiency mode",
+            optimized: throttled, failed: failed, skipped: released, duration: sw.Elapsed);
     }
 
     public void Revert(DomainSnapshot baseline)
     {
-        var pidsToRevert = _throttledPids.Count > 0
-            ? _throttledPids
-            : new HashSet<uint>(baseline.Get<List<uint>>("throttledPids") ?? []);
-
-        foreach (var pid in pidsToRevert)
+        // Dynamic revert: un-throttle the live tracked set (which includes anything a later
+        // reconcile added). No persisted PID list — after a crash a fresh instance has nothing
+        // to replay, and any leftover hint is invisible and self-clears when the process exits.
+        lock (_gate)
         {
-            try
+            foreach (var pid in _throttledPids)
             {
-                SetEcoQos((int)pid, enable: false);
+                try { SetEcoQos((int)pid, enable: false); } catch { }
             }
-            catch { }
-        }
 
-        _throttledPids.Clear();
-        _isActive = false;
+            _throttledPids.Clear();
+            _isActive = false;
+        }
     }
 
     public DomainStatus GetStatus() => new()
@@ -139,6 +157,25 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
     internal static bool IsShellProcess(string processName) =>
         ShellProcessExclusions.Contains(processName);
+
+    // Enumeration goes through the native bridge (mockable, so the reconcile is unit-testable),
+    // falling back to Process.GetProcesses() when no bridge is supplied — the same pattern
+    // MemoryOptimizer uses.
+    private List<(uint pid, string name)> EnumerateProcesses()
+    {
+        var native = _native?.GetProcessList();
+        if (native is { Length: > 0 })
+            return native.Select(p => ((uint)p.ProcessId, p.ProcessName)).ToList();
+
+        var list = new List<(uint, string)>();
+        foreach (var proc in Process.GetProcesses())
+        {
+            try { list.Add(((uint)proc.Id, proc.ProcessName)); }
+            catch { }
+            finally { proc.Dispose(); }
+        }
+        return list;
+    }
 
     private bool SetEcoQos(int pid, bool enable)
     {

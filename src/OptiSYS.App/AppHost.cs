@@ -80,7 +80,11 @@ public static class AppHost
 
         // Register domains explicitly so the unified engine consumes a deterministic
         // DI-managed order rather than constructing its own private set.
-        sc.AddSingleton<IOptimizationDomain, EcoQosDomain>();
+        // EcoQoS is also maintained by the adaptive controller between power transitions, so it is
+        // registered as a shared concrete instance and the domain is aliased to it — the engine and
+        // the controller must drive the SAME instance (one tracked-PID set, one revert).
+        sc.AddSingleton<EcoQosDomain>();
+        sc.AddSingleton<IOptimizationDomain>(p => p.GetRequiredService<EcoQosDomain>());
         sc.AddSingleton<IOptimizationDomain, TimerResolutionDomain>();
         sc.AddSingleton<IOptimizationDomain, MemoryOptimizerDomain>();
 
@@ -109,6 +113,12 @@ public static class AppHost
         sc.AddSingleton<IOptimizationEngine>(p => p.GetRequiredService<UnifiedOptimizationEngine>());
         sc.AddSingleton<PowerSourceMonitor>();
         sc.AddSingleton<OptiSYS.Core.Interfaces.IPowerSourceMonitor>(p => p.GetRequiredService<PowerSourceMonitor>());
+
+        // Adaptive EcoQoS controller: maintains the (engine-initiated) EcoQoS state on battery,
+        // following the foreground and catching newly-spawned processes. Shares the EcoQosDomain
+        // singleton above; started/stopped by the runtime coordinator.
+        sc.AddSingleton<AdaptiveEcoQosController>();
+        sc.AddSingleton<IAdaptiveEcoQosController>(p => p.GetRequiredService<AdaptiveEcoQosController>());
 
         // ── App-layer seams ───────────────────────────────────────────────────
         sc.AddSingleton<AppRuntimeCoordinator>();

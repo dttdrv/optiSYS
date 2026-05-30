@@ -1,5 +1,6 @@
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Services;
 using OptiSYS.Models;
 using OptiSYS.Services.Elevation;
 
@@ -18,6 +19,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
     private readonly IBatteryInfoService _battery;
     private readonly IMemoryInfoService _memory;
     private readonly OptiSYS.Core.Interfaces.IPowerSourceMonitor _powerSourceMonitor;
+    private readonly IAdaptiveEcoQosController _adaptiveEcoQos;
     private readonly IQuietAutomationService _automation;
     private readonly ITrayIconService _tray;
     private readonly IStartupRegistrationService _startup;
@@ -36,11 +38,13 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         ITrayIconService tray,
         IStartupRegistrationService startup,
         ITaskSchedulerService taskScheduler,
-        Settings settings)
+        Settings settings,
+        IAdaptiveEcoQosController adaptiveEcoQos)
     {
         _battery = battery ?? throw new ArgumentNullException(nameof(battery));
         _memory = memory ?? throw new ArgumentNullException(nameof(memory));
         _powerSourceMonitor = powerSourceMonitor ?? throw new ArgumentNullException(nameof(powerSourceMonitor));
+        _adaptiveEcoQos = adaptiveEcoQos ?? throw new ArgumentNullException(nameof(adaptiveEcoQos));
         _automation = automation ?? throw new ArgumentNullException(nameof(automation));
         _tray = tray ?? throw new ArgumentNullException(nameof(tray));
         _startup = startup ?? throw new ArgumentNullException(nameof(startup));
@@ -62,6 +66,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
     {
         _battery.Start();
         _powerSourceMonitor.Start();
+        _adaptiveEcoQos.Start();
         // Startup begins on the WinUI thread. We keep that context through warm-up so the
         // first automation timer can bind to the UI dispatcher safely.
         await _memory.WarmUpAsync();
@@ -131,6 +136,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         _automation.StateChanged -= OnAutomationStateChanged;
         _powerSourceMonitor.PowerSourceChanged -= OnPowerSourceChanged;
         _powerSourceMonitor.Stop();
+        _adaptiveEcoQos.Dispose();
         _battery.Stop();
         _battery.Dispose();
         _memory.Dispose();
