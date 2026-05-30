@@ -156,19 +156,18 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         var health = TrayHealthEvaluator.Evaluate(memory, battery, batteryActive, _settings.AutomationPaused);
         var score = _scoreCalculator.Evaluate(memory, battery, _automation.TotalFreedBytes);
         var preset = _settings.BatteryPreset == BatteryPreset.Saver ? "Saver" : "Recommended";
-        var memoryPart = memory is null ? "memory warming up" : $"memory {memory.UsagePercent:0}%";
-        var batteryPart = battery is null
-            ? "battery warming up"
-            : battery.IsOnBattery
-                ? $"battery {battery.ChargePercent:0}%"
-                : "plugged in";
-        var automationPart = _settings.AutomationPaused ? "safe optimization paused" : "safe optimization";
+
+        // Tooltip shows only the efficiency level (Good/Normal/Bad) — battery/memory are surfaced by
+        // the OS already. Same health state that colours the dot.
+        var tooltip = _settings.AutomationPaused
+            ? "optiSYS — Paused"
+            : $"optiSYS — Efficiency: {TrayHealthEvaluator.EfficiencyLabel(health)}";
 
         _tray.Update(new TraySnapshot
         {
             HealthState = health,
             Score = score,
-            Tooltip = $"optiSYS - {memoryPart}, {batteryPart}, {automationPart}",
+            Tooltip = tooltip,
             BatteryPresetLabel = preset,
             AutomationPaused = _settings.AutomationPaused,
         });

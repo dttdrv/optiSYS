@@ -186,28 +186,6 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
-    public async Task RunDeepCleanAsync_RunsAggressiveMaxReclaim()
-    {
-        var settings = new Settings { MemoryThresholdPercent = 50 };
-        var timer = new FakeTimerService();
-        var optimizer = new Mock<IMemoryOptimizer>();
-        optimizer.Setup(o => o.OptimizeAll(
-                OptimizationLevel.Aggressive, 0, 0, false, 0, true))
-            .Returns(new OptimizationResult { Success = true, FreedBytes = 42 });
-
-        var service = CreateService(settings, timer, optimizer: optimizer);
-        await service.StartAsync();
-
-        await service.RunDeepCleanAsync();
-
-        // Explicit, user-initiated Deep Clean runs the FULL pipeline unconditionally (threshold 0),
-        // not gated by the automatic 60% threshold — so the button actually deep-cleans on demand.
-        optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive, 0, 0, false, 0, true), Times.Once);
-        Assert.Equal(42, service.TotalFreedBytes);
-    }
-
-    [Fact]
     public async Task TimerTick_HintsBackgroundMemoryPriorityEveryCycle()
     {
         var settings = new Settings { MemoryThresholdPercent = 80 };

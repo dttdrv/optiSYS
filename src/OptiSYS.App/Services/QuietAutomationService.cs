@@ -15,7 +15,6 @@ public interface IQuietAutomationService : IDisposable
 
     Task StartAsync();
     Task RunMemoryCleanupAsync();
-    Task RunDeepCleanAsync();
     void SetBatteryPreset(BatteryPreset preset);
     void ApplyBatteryPreset();
     void SetAutomationPaused(bool paused);
@@ -103,60 +102,6 @@ public sealed class QuietAutomationService : IQuietAutomationService
     public async Task RunMemoryCleanupAsync()
     {
         await RunCleanupCoreAsync(triggeredByThreshold: false).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Explicit, user-initiated one-shot maximum reclaim — runs the Aggressive (Max) pipeline
-    /// regardless of the selected mode (full standby purge + system-wide working-set empty +
-    /// page-combine). The automatic path uses the user's selected mode instead.
-    /// </summary>
-    public async Task RunDeepCleanAsync()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (!await _cleanupGate.WaitAsync(0).ConfigureAwait(false))
-        {
-            Publish("Safe cleanup is already running.");
-            return;
-        }
-
-        try
-        {
-            IsCleanupRunning = true;
-            RaiseStateChanged();
-            RefreshMemoryExclusions();
-
-            var result = await Task.Run(() => _optimizer.OptimizeAll(
-                level: OptimizationLevel.Aggressive,
-                cacheMaxPercent: 0,
-                targetThresholdPercent: 0,   // explicit Deep Clean: full pipeline unconditionally (no threshold gate)
-                accessedBitsDelayMs: 0,
-                effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled)).ConfigureAwait(false);
-
-            _lastCleanupAt = DateTimeOffset.UtcNow;
-
-            if (!result.Success)
-            {
-                Publish($"Deep clean skipped: {result.Message}");
-                return;
-            }
-
-            if (result.FreedBytes > 0)
-            {
-                TotalFreedBytes += result.FreedBytes;
-            }
-
-            var freedDisplay = result.FreedBytes > 0
-                ? OptimizationResult.FormatBytesStatic(result.FreedBytes)
-                : "a lighter working set";
-            Publish($"Deep clean finished; recovered {freedDisplay}.");
-        }
-        finally
-        {
-            IsCleanupRunning = false;
-            _cleanupGate.Release();
-            RaiseStateChanged();
-        }
     }
 
     public void SetBatteryPreset(BatteryPreset preset)

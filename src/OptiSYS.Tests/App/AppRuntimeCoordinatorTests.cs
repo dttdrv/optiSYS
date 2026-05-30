@@ -345,8 +345,6 @@ public class AppRuntimeCoordinatorTests
 
         public Task RunMemoryCleanupAsync() => Task.CompletedTask;
 
-        public Task RunDeepCleanAsync() => Task.CompletedTask;
-
         public void SetBatteryPreset(OptiSYS.Core.Models.BatteryPreset preset)
         {
         }

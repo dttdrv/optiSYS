@@ -8,11 +8,6 @@
 
     <Border Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="4">
         <Canvas x:Name="ChartCanvas" Height="100" HorizontalAlignment="Stretch" Background="Transparent" SizeChanged="OnCanvasSizeChanged">
-            <!-- Subtle grid helper lines; X2 is stretched to the canvas width at redraw. -->
-            <Line x:Name="GridLine1" X1="0" Y1="25" X2="0" Y2="25" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" StrokeDashArray="3,3" />
-            <Line x:Name="GridLine2" X1="0" Y1="50" X2="0" Y2="50" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" StrokeDashArray="3,3" />
-            <Line x:Name="GridLine3" X1="0" Y1="75" X2="0" Y2="75" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" StrokeDashArray="3,3" />
-
             <!-- Gradient filled area underneath the line -->
             <Polygon x:Name="AreaPolygon" StrokeThickness="0" Opacity="0.15">
                 <Polygon.Fill>

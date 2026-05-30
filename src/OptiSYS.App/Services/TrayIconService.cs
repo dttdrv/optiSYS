@@ -29,8 +29,7 @@ public sealed class TrayIconService : ITrayIconService
     private nint _windowHandle;
     private bool _initialized;
     private TraySnapshot _snapshot = new();
-    private IconTheme _iconTheme;
-    private int _renderedScore = -1;
+    private TrayDot? _renderedDot;
     private string _lastTooltip = string.Empty;
 
     public void Initialize(nint windowHandle)
@@ -43,8 +42,7 @@ public sealed class TrayIconService : ITrayIconService
         try
         {
             _windowHandle = windowHandle;
-            _iconTheme = IconTheme.Detect();
-            RenderScoreIcon(_snapshot.Score);
+            RenderDotIcon(TrayHealthEvaluator.DotFor(_snapshot.HealthState));
 
             // Subclass the window so it receives the WM_TRAYICON callbacks (left-click = open,
             // right-click = context menu). Same subclass id used by Dispose's RemoveWindowSubclass.
@@ -75,14 +73,12 @@ public sealed class TrayIconService : ITrayIconService
 
         _snapshot = snapshot;
 
-        // Re-detect theme so the number colour tracks taskbar light/dark changes.
-        var themeChanged = RefreshIconThemeIfChanged();
-        var iconChanged = themeChanged || snapshot.Score != _renderedScore;
-
-        // Only re-render the bitmap when the displayed number or theme actually changed.
+        // The dot colour is theme-independent; re-render only when the health state's dot changes.
+        var dot = TrayHealthEvaluator.DotFor(snapshot.HealthState);
+        var iconChanged = _renderedDot != dot;
         if (iconChanged)
         {
-            RenderScoreIcon(snapshot.Score);
+            RenderDotIcon(dot);
         }
 
         var tooltip = ClampTooltip(snapshot.Tooltip);
@@ -221,27 +217,15 @@ public sealed class TrayIconService : ITrayIconService
         }
     }
 
-    private bool RefreshIconThemeIfChanged()
-    {
-        var detected = IconTheme.Detect();
-        if (detected == _iconTheme)
-        {
-            return false;
-        }
-
-        _iconTheme = detected;
-        return true;
-    }
-
     /// <summary>
-    /// Renders the score number into a fresh 32x32 transparent icon and swaps it in, freeing
-    /// the previous GDI handle. The colour inverts with the taskbar theme.
+    /// Renders the health dot into a fresh 32x32 transparent icon and swaps it in, freeing the
+    /// previous GDI handle.
     /// </summary>
-    private void RenderScoreIcon(int score)
+    private void RenderDotIcon(TrayDot dot)
     {
         DisposeIcon();
-        _icon = ScoreIconRenderer.Render(score, _iconTheme.TextIsLight, out _iconHandle);
-        _renderedScore = score;
+        _icon = DotIconRenderer.Render(dot, out _iconHandle);
+        _renderedDot = dot;
     }
 
     private void DisposeIcon()
@@ -271,76 +255,40 @@ public sealed class TrayIconService : ITrayIconService
         };
 
     /// <summary>
-    /// Renders the optimization score as a 32x32 transparent icon with the number drawn centered
-    /// in Segoe UI Bold. Text colour inverts with the taskbar theme (dark text on a light taskbar,
-    /// white text on a dark taskbar). Returns a managed <see cref="Icon"/> clone that owns its data
-    /// (safe to Dispose); <paramref name="handle"/> is the raw HICON the caller must DestroyIcon.
+    /// Renders the 3-state health dot as a 32x32 transparent icon (filled circle). Returns a managed
+    /// <see cref="Icon"/> clone that owns its data (safe to Dispose); <paramref name="handle"/> is
+    /// the raw HICON the caller must DestroyIcon.
     /// </summary>
-    internal static class ScoreIconRenderer
+    internal static class DotIconRenderer
     {
-        // Light taskbar -> near-black text; dark taskbar -> white text.
-        internal static readonly Color LightTaskbarText = Color.FromArgb(0x1A, 0x1A, 0x1A);
-        internal static readonly Color DarkTaskbarText = Color.White;
+        private static readonly Color Green = Color.FromArgb(0x2E, 0xB8, 0x4C);
+        private static readonly Color Yellow = Color.FromArgb(0xE0, 0xA8, 0x16);
+        private static readonly Color Red = Color.FromArgb(0xE0, 0x43, 0x43);
 
-        public static Icon Render(int score, bool taskbarIsLight, out nint handle)
+        public static Icon Render(TrayDot dot, out nint handle)
         {
             const int size = 32;
             using var bmp = new Bitmap(size, size);
             using var g = Graphics.FromImage(bmp);
 
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            // AntiAliasGridFit uses greyscale AA — ClearType on a transparent bg causes colour fringing.
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
             g.Clear(Color.Transparent);
 
-            var text = FormatScore(score);
-            var textColor = taskbarIsLight ? LightTaskbarText : DarkTaskbarText;
+            var color = dot switch
+            {
+                TrayDot.Green => Green,
+                TrayDot.Yellow => Yellow,
+                _ => Red,
+            };
+            using var brush = new SolidBrush(color);
 
-            // Smaller font for 3 chars ("100"/"OK") so it still fits the 32px canvas.
-            var fontSize = text.Length > 2 ? 19.0f : 23.0f;
-            using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var brush = new SolidBrush(textColor);
-
-            var textSize = g.MeasureString(text, font);
-            g.DrawString(
-                text,
-                font,
-                brush,
-                (size - textSize.Width) / 2,
-                (size - textSize.Height) / 2);
+            const int pad = 6; // ~20px dot centred in the 32px canvas
+            g.FillEllipse(brush, pad, pad, size - 2 * pad, size - 2 * pad);
 
             // Clone creates a managed Icon that owns its data; the raw HICON is returned so the
             // caller can DestroyIcon it once the clone is in use, preventing GDI handle leaks.
             handle = bmp.GetHicon();
             return (Icon)Icon.FromHandle(handle).Clone();
-        }
-
-        internal static string FormatScore(int score)
-        {
-            // Always the numeric score (0–100). "100" is 3 digits but the renderer already
-            // drops to a smaller font for 3-char strings, so it fits the 32px canvas.
-            return Math.Clamp(score, 0, 100).ToString();
-        }
-    }
-
-    private readonly record struct IconTheme(bool TextIsLight)
-    {
-        public static IconTheme Detect() => new(IsWindowsLightTheme());
-
-        private static bool IsWindowsLightTheme()
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                return key?.GetValue("SystemUsesLightTheme") is int value
-                    ? value != 0
-                    : key?.GetValue("AppsUseLightTheme") is int appsValue && appsValue != 0;
-            }
-            catch
-            {
-                return false;
-            }
         }
     }
 

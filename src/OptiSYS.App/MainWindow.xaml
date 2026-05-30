@@ -53,7 +53,7 @@
         <!-- Main Workspace Layout -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="212" /> <!-- Sidebar -->
+                <ColumnDefinition Width="180" /> <!-- Sidebar (-15%) -->
                 <ColumnDefinition Width="*" />   <!-- Content Area -->
             </Grid.ColumnDefinitions>
 
@@ -96,6 +96,18 @@
                         </Grid>
                     </Button>
                 </StackPanel>
+
+                <!-- About (bottom-left): version + author + repo, minimal. -->
+                <StackPanel Grid.Row="1" Margin="12,0,12,14" Spacing="1">
+                    <TextBlock Text="optiSYS" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" />
+                    <TextBlock x:Name="AppVersionText" Text="Version 0.3.2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Margin="0,2,0,0">
+                        <Hyperlink NavigateUri="https://dttdrv.xyz" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="None">Deyan Todorov</Hyperlink>
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}">
+                        <Hyperlink NavigateUri="https://github.com/dttdrv/optiSYS" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="None">GitHub</Hyperlink>
+                    </TextBlock>
+                </StackPanel>
             </Grid>
 
             <!-- Main Content Area — inset panel with a rounded top-left corner, so the acrylic
@@ -104,7 +116,7 @@
             <Grid Padding="28,24,28,24">
                 
                 <!-- ==================== DASHBOARD TAB ==================== -->
-                <ScrollViewer x:Name="DashboardGrid" Visibility="Visible" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="DashboardGrid" Visibility="Visible" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
                     <StackPanel Spacing="16" Margin="0,0,0,16">
                         <!-- Dashboard header row with manual-optimize + pause actions -->
                         <Grid Margin="0,0,0,4">
@@ -250,6 +262,17 @@
                             </Border>
                         </Grid>
 
+                        <!-- Memory-heavy apps (processes over 1 GB) — hidden when none qualify. -->
+                        <Border x:Name="HeavyAppsCard" Visibility="Collapsed" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="20">
+                            <StackPanel Spacing="12">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <FontIcon Glyph="&#xE964;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Memory-heavy apps" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel x:Name="HeavyAppsList" Spacing="6" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- Memory Usage Trend Chart Card -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                             <StackPanel Spacing="12">
@@ -263,7 +286,7 @@
 
 
                 <!-- ==================== SETTINGS TAB ==================== -->
-                <ScrollViewer x:Name="SettingsGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="SettingsGrid" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
                     <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left" Margin="0,0,0,16">
                         <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" Margin="0,0,0,4" />
 
@@ -283,7 +306,7 @@
                                     <TextBlock Text="Automatic optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Keeps your PC fast and efficient in the background — frees memory under pressure and reduces Wi-Fi latency. Fully automatic and reversible; nothing to configure." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" />
+                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
                             </Grid>
                         </Border>
 
@@ -302,7 +325,7 @@
                                     <TextBlock Text="Start optiSYS with Windows" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Automatically launch in the background when logging into Windows." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="StartWithWindowsToggle" Grid.Column="2" IsOn="True" Toggled="OnStartWithWindowsToggled" VerticalAlignment="Center" />
+                                <ToggleSwitch x:Name="StartWithWindowsToggle" Grid.Column="2" IsOn="True" Toggled="OnStartWithWindowsToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
                             </Grid>
                         </Border>
 
@@ -319,43 +342,10 @@
                                     <TextBlock Text="Minimize to System Tray" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Closing the app window keeps it running in the taskbar tray." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" />
+                                <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
                             </Grid>
                         </Border>
 
-                        <TextBlock Text="System Tools &amp; Maintenance" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,8,0,0" />
-
-                        <!-- Deep Clean Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xEA99;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Deep clean (free up memory)" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Text="Aggressively reclaims standby cache and working sets. Can briefly cause disk activity or a short stutter — use before a memory-heavy task." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <Button x:Name="DeepCleanButton" Content="Deep clean" Grid.Column="2" Click="OnDeepCleanClick" VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-
-
-                        <!-- About optiSYS Card -->
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
-                            <Grid>
-                                <StackPanel Spacing="4">
-                                    <TextBlock Text="optiSYS Optimizer Suite" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock x:Name="AppVersionText" Text="Version 0.3.2 // Active System Protection" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="0,2,0,0">
-                                        <Run Text="Developed by " /><Hyperlink NavigateUri="https://dttdrv.xyz" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="Single">Deyan Todorov</Hyperlink>
-                                    </TextBlock>
-                                </StackPanel>
-                                <FontIcon Glyph="&#xE964;" FontSize="40" Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" Opacity="0.1" />
-                            </Grid>
-                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

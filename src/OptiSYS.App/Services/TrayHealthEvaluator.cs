@@ -3,8 +3,27 @@ using OptiSYS.Models;
 
 namespace OptiSYS.Services;
 
+/// <summary>Three-state tray indicator color, collapsed from the 5-level OverallHealthState.</summary>
+public enum TrayDot { Green, Yellow, Red }
+
 public static class TrayHealthEvaluator
 {
+    /// <summary>Green = Great/Good, Yellow = Normal, Red = NotGood/Bad (and paused, which evaluates to NotGood).</summary>
+    public static TrayDot DotFor(OverallHealthState state) => state switch
+    {
+        OverallHealthState.Great or OverallHealthState.Good => TrayDot.Green,
+        OverallHealthState.Normal => TrayDot.Yellow,
+        _ => TrayDot.Red,
+    };
+
+    /// <summary>Tooltip efficiency word matching the dot color.</summary>
+    public static string EfficiencyLabel(OverallHealthState state) => DotFor(state) switch
+    {
+        TrayDot.Green => "Good",
+        TrayDot.Yellow => "Normal",
+        _ => "Bad",
+    };
+
     public static OverallHealthState Evaluate(
         MemoryInfo? memoryInfo,
         BatteryInfo? batteryInfo,

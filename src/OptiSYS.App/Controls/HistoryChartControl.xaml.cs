@@ -50,11 +50,6 @@ public sealed partial class HistoryChartControl : UserControl
             return;
         }
 
-        // Stretch the helper grid lines to the actual width (no hardcoded length).
-        GridLine1.X2 = width;
-        GridLine2.X2 = width;
-        GridLine3.X2 = width;
-
         if (_samples.Count == 0)
         {
             return;
