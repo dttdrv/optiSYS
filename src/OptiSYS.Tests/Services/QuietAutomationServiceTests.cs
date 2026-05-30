@@ -32,7 +32,7 @@ public sealed class QuietAutomationServiceTests
         Assert.False(settings.UsbSuspendEnabled);
         Assert.False(settings.NetworkPowerEnabled);
         Assert.False(settings.GpuPowerEnabled);
-        Assert.False(settings.CpuParkingEnabled);
+        Assert.True(settings.CpuParkingEnabled);    // now an enabled battery optimization (DC min state -> 0%)
         Assert.False(settings.DiskCoalescingEnabled);
     }
 
@@ -215,7 +215,7 @@ public sealed class QuietAutomationServiceTests
         Assert.False(settings.EcoQosEnabled);       // opt-in now — never force-enabled
         Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
-        Assert.False(settings.CpuParkingEnabled);
+        Assert.True(settings.CpuParkingEnabled);    // force-enabled AIO battery optimization
     }
 
     [Fact]

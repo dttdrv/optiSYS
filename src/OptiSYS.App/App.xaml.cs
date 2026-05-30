@@ -85,6 +85,11 @@ public partial class App : Application
             MainWindow.Closed += (_, _) =>
             {
                 StartupLog.Write("MainWindow: Closed event");
+                // Restore any active optimizations on clean exit so we leave the system pristine —
+                // notably the persistent cpu-parking DC plan write (EcoQoS/memory self-clear, but a
+                // power-plan value does not). Crash exits are covered by TryCrashRecovery next launch.
+                try { AppHost.Services.GetRequiredService<IOptimizationEngine>().RevertAll(); }
+                catch (Exception ex) { StartupLog.WriteException("MainWindow.Closed: RevertAll", ex); }
                 _runtimeCoordinator?.Dispose();
             };
             var backgroundLaunch = IsBackgroundLaunch(args.Arguments, Environment.GetCommandLineArgs());

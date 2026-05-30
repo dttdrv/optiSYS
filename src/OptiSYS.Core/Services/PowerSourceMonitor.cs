@@ -74,6 +74,7 @@ public sealed class PowerSourceMonitor : IPowerSourceMonitor
             {
                 _engine.RevertDomain("timer-resolution");
                 _engine.RevertDomain("ecoqos");
+                _engine.RevertDomain("cpu-parking");   // restore the DC min processor state on AC
             }
         }
     }

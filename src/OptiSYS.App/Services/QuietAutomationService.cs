@@ -373,11 +373,13 @@ public sealed class QuietAutomationService : IQuietAutomationService
         // EcoQoS + Timer Resolution are NOT force-enabled: they throttle ALL non-foreground
         // processes, so they are opt-in only (respect the user's setting; default off). This method
         // only keeps the heavier opt-in domains disabled until the user explicitly enables them.
+        // CPU parking is the exception: an invisible, reversible plan internal (DC min processor
+        // state -> 0 on battery), so it is force-enabled as part of the AIO set.
         _settings.BackgroundServicesEnabled = false;
         _settings.UsbSuspendEnabled = false;
         _settings.NetworkPowerEnabled = false;
         _settings.GpuPowerEnabled = false;
-        _settings.CpuParkingEnabled = false;
+        _settings.CpuParkingEnabled = true;
         _settings.DiskCoalescingEnabled = false;
     }
 

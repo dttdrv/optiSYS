@@ -75,6 +75,7 @@ public class PowerSourceMonitorTests
 
         engine.Verify(e => e.RevertDomain("timer-resolution"), Times.Once);
         engine.Verify(e => e.RevertDomain("ecoqos"), Times.Once);
+        engine.Verify(e => e.RevertDomain("cpu-parking"), Times.Once);   // persistent plan write -> restore on AC
         engine.Verify(e => e.RevertAll(), Times.Never);
         engine.Verify(e => e.ActivateCategory(It.IsAny<string>()), Times.Never);
     }

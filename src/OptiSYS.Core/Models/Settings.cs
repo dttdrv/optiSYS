@@ -112,7 +112,10 @@ public sealed class Settings
     public bool UsbSuspendEnabled { get; set; } = false;
     public bool NetworkPowerEnabled { get; set; } = false;
     public bool GpuPowerEnabled { get; set; } = false;
-    public bool CpuParkingEnabled { get; set; } = false;
+    // CPU core parking + DC minimum processor state. ON by default: an invisible, reversible
+    // power-plan internal (no user-visible setting changes), applied only on battery and restored
+    // on AC/exit/crash. See CpuParkingMinProcessorDC (the DC min target).
+    public bool CpuParkingEnabled { get; set; } = true;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
     // Wi-Fi latency optimizer — part of the all-in-one automatic optimization (ON by default).
@@ -136,7 +139,7 @@ public sealed class Settings
 
     public List<string> ServicesToThrottle { get; set; } = [.. DefaultServicesToThrottle];
 
-    public int CpuParkingMinProcessorDC { get; set; } = 5;
+    public int CpuParkingMinProcessorDC { get; set; } = 0;
     public int DiskIdleTimeoutSeconds { get; set; } = 30;
 
     public List<string> TimerResolutionExcludedProcesses { get; set; } =
