@@ -152,7 +152,7 @@ public sealed class QuietAutomationServiceTests
     [Fact]
     public async Task TimerTick_PredictivelyTrimsBelowThreshold_OnRisingTrendUnderCommitPressure()
     {
-        var settings = new Settings { MemoryThresholdPercent = 80, MemoryCooldownSeconds = 15 };
+        var settings = new Settings { MemoryThresholdPercent = 80, MemoryCriticalThresholdPercent = 95, MemoryCooldownSeconds = 15 };
         var timer = new FakeTimerService();
         var memory = new Mock<IMemoryInfoService>();
         var optimizer = new Mock<IMemoryOptimizer>();

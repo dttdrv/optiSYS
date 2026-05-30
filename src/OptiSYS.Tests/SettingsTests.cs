@@ -28,8 +28,8 @@ public class SettingsTests
         Assert.True(settings.ServicesManualEnabled);    // AIO set; admin-gated, no-op unless elevated
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
-        Assert.Equal(60, settings.MemoryThresholdPercent);
-        Assert.Equal(2, settings.MemoryCheckIntervalSeconds);   // dynamic: continuous ~2s monitoring
+        Assert.Equal(75, settings.MemoryThresholdPercent);
+        Assert.Equal(5, settings.MemoryCheckIntervalSeconds);   // 5s reclaim cadence (matches RAMSpeed)
         Assert.Equal(30, settings.MemoryCooldownSeconds);
         Assert.Equal(OptimizationLevel.Balanced, settings.OptimizationLevel);
         Assert.Equal(2, settings.DebouncePowerChangeSeconds);

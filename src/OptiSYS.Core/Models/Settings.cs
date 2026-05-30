@@ -153,12 +153,12 @@ public sealed class Settings
     // (cheap); actual reclaim is gated by the 60% threshold + the predictive trend + the cooldown,
     // so the heavy work fires only under genuine pressure. Cooldown spaces consecutive reclaims.
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
-    public int MemoryCheckIntervalSeconds { get; set; } = 2;
-    public int MemoryThresholdPercent { get; set; } = 60;
+    public int MemoryCheckIntervalSeconds { get; set; } = 5;
+    public int MemoryThresholdPercent { get; set; } = 75;
     // OOM prevention: at/above this usage %, automatic cleanup escalates to a full (Aggressive)
     // reclaim immediately and bypasses the cooldown, so a fast allocation burst (e.g. many large
     // processes) can't blow through the free-RAM buffer between spaced-out cleanups.
-    public int MemoryCriticalThresholdPercent { get; set; } = 85;
+    public int MemoryCriticalThresholdPercent { get; set; } = 75;
     public int MemoryCooldownSeconds { get; set; } = 30;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
