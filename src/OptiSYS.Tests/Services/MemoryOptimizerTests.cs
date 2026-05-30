@@ -32,7 +32,7 @@ public class MemoryOptimizerTests
                 PriorityClass = ProcessPriorityClass.Normal,
             },
         ]);
-        native.Setup(n => n.EmptyWorkingSet(42)).Returns(true);
+        native.Setup(n => n.TrimProcessWorkingSet(42)).Returns(50L * 1024 * 1024);   // 50 MB actually freed
 
         using var optimizer = new MemoryOptimizer(memoryInfo.Object, native.Object)
         {
@@ -44,7 +44,8 @@ public class MemoryOptimizerTests
         Assert.Equal(1, result.trimmed);
         Assert.Equal(0, result.failed);
         Assert.Equal(1, result.skipped);
-        native.Verify(n => n.EmptyWorkingSet(42), Times.Once);
-        native.Verify(n => n.EmptyWorkingSet(43), Times.Never);
+        Assert.Equal(50L * 1024 * 1024, result.freedBytes);   // honest "Freed": real reclaimed bytes, not a vanity delta
+        native.Verify(n => n.TrimProcessWorkingSet(42), Times.Once);
+        native.Verify(n => n.TrimProcessWorkingSet(43), Times.Never);
     }
 }

@@ -155,6 +155,10 @@ public sealed class Settings
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
     public int MemoryCheckIntervalSeconds { get; set; } = 2;
     public int MemoryThresholdPercent { get; set; } = 60;
+    // OOM prevention: at/above this usage %, automatic cleanup escalates to a full (Aggressive)
+    // reclaim immediately and bypasses the cooldown, so a fast allocation burst (e.g. many large
+    // processes) can't blow through the free-RAM buffer between spaced-out cleanups.
+    public int MemoryCriticalThresholdPercent { get; set; } = 85;
     public int MemoryCooldownSeconds { get; set; } = 30;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
@@ -293,6 +297,7 @@ public sealed class Settings
         // Memory
         MemoryCheckIntervalSeconds = Math.Clamp(MemoryCheckIntervalSeconds, 1, 60);
         MemoryThresholdPercent = Math.Clamp(MemoryThresholdPercent, 10, 95);
+        MemoryCriticalThresholdPercent = Math.Clamp(MemoryCriticalThresholdPercent, 70, 99);
         MemoryCooldownSeconds = Math.Clamp(MemoryCooldownSeconds, 5, 300);
         MemoryCleanupDurationSeconds = Math.Clamp(MemoryCleanupDurationSeconds, 5, 60);
         MemoryRepeatPasses = Math.Clamp(MemoryRepeatPasses, 1, 5);

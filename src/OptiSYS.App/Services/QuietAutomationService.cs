@@ -129,7 +129,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
             var result = await Task.Run(() => _optimizer.OptimizeAll(
                 level: OptimizationLevel.Aggressive,
                 cacheMaxPercent: 0,
-                targetThresholdPercent: _settings.MemoryThresholdPercent,
+                targetThresholdPercent: 0,   // explicit Deep Clean: full pipeline unconditionally (no threshold gate)
                 accessedBitsDelayMs: 0,
                 effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled)).ConfigureAwait(false);
 
@@ -270,6 +270,16 @@ public sealed class QuietAutomationService : IQuietAutomationService
             // Feed the trend window every cycle (even during cooldown) so the slope stays accurate.
             _predictor.Observe(info.UsagePercent);
 
+            // OOM prevention: at/above the critical mark, reclaim hard immediately at the full
+            // (Aggressive) level and bypass the cooldown — a fast allocation burst (e.g. many large
+            // processes) must not blow through the free-RAM buffer between spaced-out cleanups.
+            if (info.UsagePercent >= _settings.MemoryCriticalThresholdPercent)
+            {
+                Publish($"Critical memory pressure ({info.UsagePercent:0}%); full reclaim.");
+                await RunCleanupCoreAsync(triggeredByThreshold: true, forceLevel: OptimizationLevel.Aggressive).ConfigureAwait(false);
+                return;
+            }
+
             if (_lastCleanupAt is not null &&
                 DateTimeOffset.UtcNow - _lastCleanupAt.Value < TimeSpan.FromSeconds(_settings.MemoryCooldownSeconds))
             {
@@ -304,7 +314,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
         }
     }
 
-    private async Task RunCleanupCoreAsync(bool triggeredByThreshold)
+    private async Task RunCleanupCoreAsync(bool triggeredByThreshold, OptimizationLevel? forceLevel = null)
     {
         if (_settings.AutomationPaused && triggeredByThreshold)
         {
@@ -327,7 +337,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
             // optiRAM-parity pipeline, with adaptive escalation bailing early when a lighter pass
             // suffices. Gated by the threshold + cooldown so the heavy steps fire only under pressure.
             var result = await Task.Run(() => _optimizer.OptimizeAll(
-                level: _settings.OptimizationLevel,
+                level: forceLevel ?? _settings.OptimizationLevel,
                 cacheMaxPercent: 0,
                 targetThresholdPercent: _settings.MemoryThresholdPercent,
                 accessedBitsDelayMs: 0,

@@ -101,7 +101,7 @@ public sealed class QuietAutomationServiceTests
         memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
         {
             TotalPhysicalBytes = 100,
-            AvailablePhysicalBytes = 10,
+            AvailablePhysicalBytes = 30,   // 70% usage: above threshold, below the 85% critical mark
         });
         optimizer.Setup(o => o.OptimizeAll(
                 OptimizationLevel.Balanced, 0, 50, false, 0, true))
@@ -115,6 +115,38 @@ public sealed class QuietAutomationServiceTests
         await WaitForAssertionAsync(() =>
             optimizer.Verify(o => o.OptimizeAll(
                 OptimizationLevel.Balanced, 0, 50, false, 0, true), Times.Once));
+    }
+
+    [Fact]
+    public async Task TimerTick_WhenMemoryCritical_EscalatesToAggressive_BypassingCooldown()
+    {
+        // OOM prevention: at/above the critical mark, reclaim hard immediately at the full
+        // (Aggressive) level, and AGAIN on the next tick even within the cooldown window — so a
+        // fast allocation burst can't blow through the free-RAM buffer between spaced-out cleanups.
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 60,
+            MemoryCriticalThresholdPercent = 85,
+            MemoryCooldownSeconds = 300,   // long cooldown: proves the critical path bypasses it
+        };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(Mem(90, commitRatio: 0.5));   // 90% >= 85% critical
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Aggressive, 0, 60, false, 0, true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 10 });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        timer.Tick();
+        await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Once));
+
+        timer.Tick();   // still critical, still inside the 300s cooldown
+        await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Exactly(2)));
     }
 
     [Fact]
@@ -160,7 +192,7 @@ public sealed class QuietAutomationServiceTests
         var timer = new FakeTimerService();
         var optimizer = new Mock<IMemoryOptimizer>();
         optimizer.Setup(o => o.OptimizeAll(
-                OptimizationLevel.Aggressive, 0, 50, false, 0, true))
+                OptimizationLevel.Aggressive, 0, 0, false, 0, true))
             .Returns(new OptimizationResult { Success = true, FreedBytes = 42 });
 
         var service = CreateService(settings, timer, optimizer: optimizer);
@@ -168,8 +200,10 @@ public sealed class QuietAutomationServiceTests
 
         await service.RunDeepCleanAsync();
 
+        // Explicit, user-initiated Deep Clean runs the FULL pipeline unconditionally (threshold 0),
+        // not gated by the automatic 60% threshold — so the button actually deep-cleans on demand.
         optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive, 0, 50, false, 0, true), Times.Once);
+            OptimizationLevel.Aggressive, 0, 0, false, 0, true), Times.Once);
         Assert.Equal(42, service.TotalFreedBytes);
     }
 

@@ -173,7 +173,7 @@
 
                                         <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                             <FontIcon Glyph="&#xEA99;" FontSize="12" Foreground="{ThemeResource SystemAccentColorBrush}" />
-                                            <TextBlock Text="Cleared this session" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <TextBlock Text="Freed this session" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <TextBlock x:Name="MemoryClearedText" Grid.Row="2" Grid.Column="1" Text="0 MB" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
                                     </Grid>

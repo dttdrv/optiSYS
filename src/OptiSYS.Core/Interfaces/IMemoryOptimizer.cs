@@ -27,8 +27,10 @@ public interface IMemoryOptimizer : IDisposable
     /// <c>failed</c>: how many candidates returned error on OpenProcess/EmptyWorkingSet.
     /// <c>skipped</c>: candidates rejected (excluded, foreground, below minimum WS).
     /// <c>earlyExit</c>: true if the target was hit before exhausting the queue.
+    /// <c>freedBytes</c>: total working-set bytes actually reclaimed (before-after), for an honest
+    /// "Freed" figure rather than a noisy system-wide available-memory delta.
     /// </returns>
-    (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0);
+    (int trimmed, int failed, int skipped, bool earlyExit, long freedBytes) TrimProcessWorkingSets(long targetAvailableBytes = 0);
 
     /// <summary>
     /// Runs the full memory optimization pass (matches optiRAM's pipeline). The reclaim depth is

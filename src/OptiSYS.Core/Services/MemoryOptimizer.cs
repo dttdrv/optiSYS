@@ -33,7 +33,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     // which upcasts cleanly to IMemoryInfoService for the primary ctor.
     public MemoryOptimizer() : this(new MemoryInfoService()) { }
 
-    public (int trimmed, int failed, int skipped, bool earlyExit) TrimProcessWorkingSets(long targetAvailableBytes = 0)
+    public (int trimmed, int failed, int skipped, bool earlyExit, long freedBytes) TrimProcessWorkingSets(long targetAvailableBytes = 0)
     {
         ThrowIfDisposed();
 
@@ -105,16 +105,23 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         processInfos.Sort((a, b) => b.workingSet.CompareTo(a.workingSet));
 
         int trimmed = 0, failed = 0;
+        long freedBytes = 0;
         bool earlyExit = false;
 
         foreach (var (pid, _) in processInfos)
         {
             try
             {
-                if (EmptyWorkingSet(pid))
+                var freed = TrimOne(pid);
+                if (freed > 0)
+                {
                     trimmed++;
+                    freedBytes += freed;
+                }
                 else
+                {
                     failed++;
+                }
 
                 if (targetAvailableBytes > 0 && trimmed > 0 && trimmed % 8 == 0)
                 {
@@ -128,7 +135,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
             catch { failed++; }
         }
 
-        return (trimmed, failed, skipped, earlyExit);
+        return (trimmed, failed, skipped, earlyExit, freedBytes);
     }
 
     public bool PurgeStandbyList()
@@ -208,19 +215,23 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         finally { NativeMethods.CloseHandle(handle); }
     }
 
-    private bool EmptyWorkingSet(int pid)
+    // Trim one process's working set and return the bytes actually freed (before-after), so the
+    // caller can report a real, attributable "Freed" figure instead of a noisy system-wide delta.
+    // >0 = trimmed; 0 = failed/no-op. Routes through the bridge (which measures before/after);
+    // falls back to a bool empty (reported as 1 byte) only when no bridge is present.
+    private long TrimOne(int pid)
     {
-        if (_native?.EmptyWorkingSet(pid) == true)
-            return true;
+        if (_native is not null)
+            return _native.TrimProcessWorkingSet(pid);
 
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_QUOTA,
             false, (uint)pid);
 
         if (handle == IntPtr.Zero)
-            return false;
+            return 0;
 
-        try { return NativeMethods.EmptyWorkingSet(handle); }
+        try { return NativeMethods.EmptyWorkingSet(handle) ? 1 : 0; }
         finally { NativeMethods.CloseHandle(handle); }
     }
 
@@ -328,7 +339,6 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         var sw = Stopwatch.StartNew();
         var methodsUsed = new List<string>();
         var beforeInfo = _memoryInfo.GetCurrentMemoryInfo();
-        var beforeAvailable = (double)beforeInfo.AvailablePhysicalBytes;
         var actualLevel = OptimizationLevel.Conservative;
         int processesTrimmed = 0;
 
@@ -338,12 +348,12 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
             if (targetThresholdPercent > 0 && beforeInfo.TotalPhysicalBytes > 0)
                 trimTarget = (long)((double)beforeInfo.TotalPhysicalBytes * (1.0 - targetThresholdPercent / 100.0));
 
-            var (trimmed, _, _, earlyExit) = TrimProcessWorkingSets(trimTarget);
+            var (trimmed, _, _, earlyExit, trimmedBytes) = TrimProcessWorkingSets(trimTarget);
             processesTrimmed = trimmed;
             methodsUsed.Add(earlyExit ? "Working Set Trim (early exit)" : "Working Set Trim");
 
             if (targetThresholdPercent > 0 && GetUsagePercentLive() < targetThresholdPercent)
-                return BuildResult(sw, methodsUsed, beforeAvailable, beforeInfo, processesTrimmed, actualLevel);
+                return BuildResult(sw, methodsUsed, trimmedBytes, processesTrimmed, actualLevel);
 
             var effectiveLevel = level;
             if (targetThresholdPercent > 0)
@@ -397,7 +407,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 }
 
                 if (targetThresholdPercent > 0 && GetUsagePercentLive() < targetThresholdPercent)
-                    return BuildResult(sw, methodsUsed, beforeAvailable, beforeInfo, processesTrimmed, actualLevel);
+                    return BuildResult(sw, methodsUsed, trimmedBytes, processesTrimmed, actualLevel);
 
                 // Max (Aggressive): full reclaim — system-wide working-set empty + full standby
                 // purge (matching optiRAM). Reached only under sustained pressure: the live
@@ -411,7 +421,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 }
             }
 
-            return BuildResult(sw, methodsUsed, beforeAvailable, beforeInfo, processesTrimmed, actualLevel);
+            return BuildResult(sw, methodsUsed, trimmedBytes, processesTrimmed, actualLevel);
         }
         catch (Exception ex)
         {
@@ -446,18 +456,14 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     }
 
     private OptimizationResult BuildResult(Stopwatch sw, List<string> methodsUsed,
-        double beforeAvailable, MemoryInfo beforeInfo, int processesTrimmed, OptimizationLevel actualLevel)
+        long freedBytes, int processesTrimmed, OptimizationLevel actualLevel)
     {
         sw.Stop();
-        var afterInfo = _memoryInfo.GetCurrentMemoryInfo();
-        var afterAvailable = (double)afterInfo.AvailablePhysicalBytes;
-        var freed = Math.Max(0, (long)(afterAvailable - beforeAvailable));
-
         return new OptimizationResult
         {
             Success = true,
-            Message = $"Freed {OptimizationResult.FormatBytesStatic(freed)} in {sw.ElapsedMilliseconds}ms",
-            FreedBytes = freed,
+            Message = $"Freed {OptimizationResult.FormatBytesStatic(freedBytes)} in {sw.ElapsedMilliseconds}ms",
+            FreedBytes = freedBytes,
             ProcessesTrimmed = processesTrimmed,
             Duration = sw.Elapsed,
             ActualLevelUsed = actualLevel,
