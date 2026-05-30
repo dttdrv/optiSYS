@@ -100,7 +100,7 @@
                 <!-- About (bottom-left): version + author + repo, minimal. -->
                 <StackPanel Grid.Row="1" Margin="12,0,12,14" Spacing="1">
                     <TextBlock Text="optiSYS" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" />
-                    <TextBlock x:Name="AppVersionText" Text="Version 0.3.2" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock x:Name="AppVersionText" Text="Version 0.3.5" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Margin="0,2,0,0">
                         <Hyperlink NavigateUri="https://dttdrv.xyz" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="None">Deyan Todorov</Hyperlink>
                     </TextBlock>

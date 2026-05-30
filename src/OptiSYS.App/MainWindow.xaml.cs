@@ -45,7 +45,7 @@ public sealed partial class MainWindow : Window
         _startup = AppHost.Services.GetRequiredService<IStartupRegistrationService>();
 
         InitializeComponent();
-        AppVersionText.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.3.2"}";
+        AppVersionText.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.3.5"}";
 
         _theme = new ThemeManager(this, ShellRoot, GetAppWindow, _settings);
 

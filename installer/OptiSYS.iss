@@ -8,7 +8,7 @@
 #define AppPublisher "Deyan Todorov"
 #define AppExeName "OptiSYS.exe"
 #ifndef AppVersion
-  #define AppVersion "0.3.2"
+  #define AppVersion "0.3.5"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\installer\publish\release-win-x64"
