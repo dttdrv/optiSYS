@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Dev-only workbench: a console sandbox to measure system state and prototype new
+       OptiSYS features before they are promoted into OptiSYS.App. Not shipped. No WinUI,
+       no UI polish — text/JSON output is the whole "UI". -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>OptiSYS.Lab</RootNamespace>
+    <AssemblyName>OptiSYS.Lab</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OptiSYS.Core\OptiSYS.Core.csproj" />
+  </ItemGroup>
+
+</Project>

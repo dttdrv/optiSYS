@@ -33,6 +33,7 @@
          ProjectReference only pulls in compiled symbols, it does not re-activate
          the WinUI SDK's MRT/PRI target pipeline on this project. -->
     <ProjectReference Include="..\OptiSYS.App\OptiSYS.App.csproj" />
+    <ProjectReference Include="..\OptiSYS.Lab\OptiSYS.Lab.csproj" />
   </ItemGroup>
 
 </Project>
