@@ -112,10 +112,12 @@ public sealed class Settings
     public bool UsbSuspendEnabled { get; set; } = false;
     public bool NetworkPowerEnabled { get; set; } = false;
     public bool GpuPowerEnabled { get; set; } = false;
-    // CPU core parking + DC minimum processor state. ON by default: an invisible, reversible
-    // power-plan internal (no user-visible setting changes), applied only on battery and restored
-    // on AC/exit/crash. See CpuParkingMinProcessorDC (the DC min target).
-    public bool CpuParkingEnabled { get; set; } = true;
+    // CPU core parking + DC minimum processor state. OPT-IN (default OFF): it writes the active
+    // power scheme's DC "Minimum Processor State" — a user-facing, user-configurable Advanced Power
+    // Option — so it must not auto-apply or be force-enabled. The choice persists across restarts
+    // (this flag is saved), is applied only on battery, and is restored on AC/exit/crash.
+    // See CpuParkingMinProcessorDC (the DC min target).
+    public bool CpuParkingEnabled { get; set; } = false;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
     // Wi-Fi latency optimizer — strictly OPT-IN (default OFF). Unelevated + session-scoped +

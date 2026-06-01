@@ -32,7 +32,7 @@ public sealed class QuietAutomationServiceTests
         Assert.False(settings.UsbSuspendEnabled);
         Assert.False(settings.NetworkPowerEnabled);
         Assert.False(settings.GpuPowerEnabled);
-        Assert.True(settings.CpuParkingEnabled);    // now an enabled battery optimization (DC min state -> 0%)
+        Assert.True(settings.CpuParkingEnabled);    // opt-in: startup PRESERVES the user's enabled choice, never forces it
         Assert.False(settings.DiskCoalescingEnabled);
     }
 
@@ -227,7 +227,21 @@ public sealed class QuietAutomationServiceTests
         Assert.False(settings.EcoQosEnabled);       // opt-in now — never force-enabled
         Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
-        Assert.True(settings.CpuParkingEnabled);    // force-enabled AIO battery optimization
+        Assert.False(settings.CpuParkingEnabled);   // opt-in now — never force-enabled (default off here)
+    }
+
+    [Fact]
+    public async Task StartAsync_DoesNotForceEnableCpuParking_RespectsRememberedOptIn()
+    {
+        // CPU parking is opt-in now (it mutates the user-facing "Minimum Processor State" power
+        // setting) and the choice must persist across restarts — so startup must NOT force it on.
+        var settings = new Settings { CpuParkingEnabled = false };
+        var timer = new FakeTimerService();
+        var service = CreateService(settings, timer);
+
+        await service.StartAsync();
+
+        Assert.False(settings.CpuParkingEnabled);
     }
 
     [Fact]

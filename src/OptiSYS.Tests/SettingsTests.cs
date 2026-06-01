@@ -22,7 +22,7 @@ public class SettingsTests
         Assert.False(settings.UsbSuspendEnabled);
         Assert.False(settings.NetworkPowerEnabled);
         Assert.False(settings.GpuPowerEnabled);
-        Assert.True(settings.CpuParkingEnabled);    // enabled battery optimization: DC min processor state -> 0%
+        Assert.False(settings.CpuParkingEnabled);   // opt-in now (mutates user-facing Minimum Processor State)
         Assert.False(settings.DiskCoalescingEnabled);
         Assert.False(settings.WiFiOptimizerEnabled);    // opt-in now (adapter-dependent; can add latency)
         Assert.True(settings.ServicesManualEnabled);    // AIO set; admin-gated, no-op unless elevated
