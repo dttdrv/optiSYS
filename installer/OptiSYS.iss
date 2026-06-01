@@ -1,5 +1,11 @@
 ; optiSYS Setup — Inno Setup 6 (https://jrsoftware.org/isinfo.php)
 ;
+; Chrome-style minimal installer: run -> UAC (admin) -> installs immediately in a small window
+; showing only the app icon + a progress bar. On completion the same window shows a
+; "Pin to desktop" checkbox and a centered "Launch optiSYS" button. No welcome page, no feature
+; questions, no directory/component selection. All on-brand feature setup happens in the app's
+; WinUI first run, not here.
+;
 ; Build the payload, then compile:
 ;   dotnet publish src\OptiSYS.App -c Release -r win-x64 --self-contained true -o installer\publish\release-win-x64
 ;   iscc installer\OptiSYS.iss        (run from the project root)
@@ -8,7 +14,7 @@
 #define AppPublisher "Deyan Todorov"
 #define AppExeName "OptiSYS.exe"
 #ifndef AppVersion
-  #define AppVersion "0.3.5"
+  #define AppVersion "0.4.0"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\installer\publish\release-win-x64"
@@ -29,25 +35,25 @@ UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName} — System Optimizer
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+; Chrome-style: no pages at all. Jump straight to installing; we drive a custom minimal finish.
+DisableWelcomePage=yes
 DisableProgramGroupPage=yes
-; Streamlined flow: fixed per-user location, no directory picker, no "ready to install"
-; confirmation. The user sees Welcome -> the one deep-optimization choice -> install -> done.
 DisableDirPage=yes
 DisableReadyPage=yes
-; Install unprivileged into %LOCALAPPDATA%. The only elevation is the optional, conditional
-; deep-optimization step below (one UAC), so the install itself is frictionless.
-PrivilegesRequired=lowest
+DisableFinishedPage=yes
+; Admin up front (single UAC at launch). optiSYS is meant to run elevated, so the installer
+; provisions the silent elevated logon task itself after copy — no in-installer questions.
+PrivilegesRequired=admin
 CloseApplications=yes
 CloseApplicationsFilter={#AppExeName}
 RestartApplications=no
-; Solid LZMA2 keeps the distributed setup.exe small even though the self-contained WinUI
-; payload is large on disk.
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 MinVersion=10.0.17763
 SetupIconFile={#AssetDir}\SetupIcon.ico
-WizardImageFile={#AssetDir}\wizard-main.png
+; Inno 6 loads PNG natively into WizardSmallBitmapImage; we reparent that to show the app icon
+; in the compact window body (see [Code]).
 WizardSmallImageFile={#AssetDir}\wizard-small.png
 OutputDir={#OutputDir}
 OutputBaseFilename=optiSYS-{#AppVersion}-setup
@@ -55,33 +61,28 @@ OutputBaseFilename=optiSYS-{#AppVersion}-setup
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
-[Tasks]
-; Default-ON: enables the admin-only tier (background service tune-up). Ticking it triggers a
-; single UAC after copy, which provisions the silent elevated logon task — no prompts thereafter.
-Name: "deepoptimize"; Description: "Enable deep system optimization (recommended — asks for administrator once)"; GroupDescription: "Optimization:"
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
-
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
+; The app icon shown in the installer window (extracted from the published assets at runtime).
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
-
-[Run]
-Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+; Desktop shortcut is created on demand from the custom finish checkbox (see [Code]); no Task here.
 
 [UninstallRun]
 Filename: "taskkill"; Parameters: "/F /IM {#AppExeName}"; Flags: runhidden waituntilterminated; RunOnceId: "TerminateApp"
 Filename: "schtasks.exe"; Parameters: "/Delete /TN ""{#AppName}"" /F"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveTask"
 
 [UninstallDelete]
-; Roaming settings + Local logs/snapshots. ({userappdata}=Roaming, {localappdata}=Local; the
-; install dir {localappdata}\Programs\optiSYS is removed automatically as {app} — distinct path.)
 Type: filesandordirs; Name: "{userappdata}\optiSYS"
 Type: filesandordirs; Name: "{localappdata}\optiSYS"
 
 [Code]
+var
+  TitleLabel: TNewStaticText;
+  PinCheckBox: TNewCheckBox;
+  LaunchButton: TNewButton;
+
 function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
@@ -91,19 +92,98 @@ begin
   Result := True;
 end;
 
+procedure LaunchButtonClick(Sender: TObject);
+var
+  ResultCode: Integer;
+begin
+  // Create the desktop shortcut if requested, then launch and close the installer.
+  if PinCheckBox.Checked then
+    CreateShellLink(
+      ExpandConstant('{autodesktop}\{#AppName}.lnk'),
+      '', ExpandConstant('{app}\{#AppExeName}'), '',
+      ExpandConstant('{app}'), '', 0, SW_SHOWNORMAL);
+
+  ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+  WizardForm.Close;
+end;
+
+procedure InitializeWizard();
+begin
+  // Shrink the wizard to a compact, chrome-light window: hide the standard header, bevels and
+  // navigation buttons so only our icon + progress (and later the finish controls) are visible.
+  WizardForm.Caption := '{#AppName} Setup';
+  WizardForm.ClientWidth := ScaleX(380);
+  WizardForm.ClientHeight := ScaleY(220);
+  WizardForm.Position := poScreenCenter;
+
+  WizardForm.MainPanel.Visible := False;
+  WizardForm.Bevel.Visible := False;
+  WizardForm.BackButton.Visible := False;
+  WizardForm.NextButton.Visible := False;
+  WizardForm.CancelButton.Visible := False;
+  WizardForm.OuterNotebook.Visible := False;
+
+  // App icon: reuse Inno's natively-loaded small bitmap (from WizardSmallImageFile), reparented
+  // and centered near the top of the compact window.
+  WizardForm.WizardSmallBitmapImage.Parent := WizardForm;
+  WizardForm.WizardSmallBitmapImage.Left := (WizardForm.ClientWidth - WizardForm.WizardSmallBitmapImage.Width) div 2;
+  WizardForm.WizardSmallBitmapImage.Top := ScaleY(24);
+  WizardForm.WizardSmallBitmapImage.Visible := True;
+
+  TitleLabel := TNewStaticText.Create(WizardForm);
+  TitleLabel.Parent := WizardForm;
+  TitleLabel.Caption := 'Installing {#AppName}…';
+  TitleLabel.Font.Size := 11;
+  TitleLabel.AutoSize := True;
+  TitleLabel.Top := ScaleY(86);
+  TitleLabel.Left := (WizardForm.ClientWidth - TitleLabel.Width) div 2;
+
+  // Reparent the progress bar onto the form, centered.
+  WizardForm.ProgressGauge.Parent := WizardForm;
+  WizardForm.ProgressGauge.Width := ScaleX(300);
+  WizardForm.ProgressGauge.Left := (WizardForm.ClientWidth - WizardForm.ProgressGauge.Width) div 2;
+  WizardForm.ProgressGauge.Top := ScaleY(120);
+  WizardForm.ProgressGauge.Visible := True;
+
+  // Finish controls — hidden until install completes.
+  PinCheckBox := TNewCheckBox.Create(WizardForm);
+  PinCheckBox.Parent := WizardForm;
+  PinCheckBox.Caption := 'Pin to desktop';
+  PinCheckBox.Width := ScaleX(160);
+  PinCheckBox.Top := ScaleY(118);
+  PinCheckBox.Left := (WizardForm.ClientWidth - PinCheckBox.Width) div 2;
+  PinCheckBox.Visible := False;
+
+  LaunchButton := TNewButton.Create(WizardForm);
+  LaunchButton.Parent := WizardForm;
+  LaunchButton.Caption := 'Launch {#AppName}';
+  LaunchButton.Width := ScaleX(150);
+  LaunchButton.Height := ScaleY(30);
+  LaunchButton.Top := ScaleY(150);
+  LaunchButton.Left := (WizardForm.ClientWidth - LaunchButton.Width) div 2;
+  LaunchButton.Visible := False;
+  LaunchButton.OnClick := @LaunchButtonClick;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
   begin
-    if WizardIsTaskSelected('deepoptimize') then
-    begin
-      // Elevate ONLY this step (the one-time UAC). The app's --provision-elevation branch
-      // registers the HighestAvailable logon task and flips UseTaskScheduler on, then exits
-      // without a window. From the next logon the app launches elevated silently.
-      ShellExec('runas', ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
-        SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    end;
+    // Provision the silent elevated logon task (we already hold admin). The app's
+    // --provision-elevation branch registers the HighestAvailable logon task, flips
+    // UseTaskScheduler on, and exits without a window.
+    Exec(ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
+      SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+
+  if CurStep = ssDone then
+  begin
+    // Swap progress for the finish controls in the same window.
+    if TitleLabel <> nil then TitleLabel.Caption := '{#AppName} is ready.';
+    if WizardForm.ProgressGauge <> nil then WizardForm.ProgressGauge.Visible := False;
+    if PinCheckBox <> nil then PinCheckBox.Visible := True;
+    if LaunchButton <> nil then LaunchButton.Visible := True;
   end;
 end;
