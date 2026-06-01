@@ -246,18 +246,6 @@
                                         <TextBlock x:Name="BatteryRemainingText" Grid.Row="1" Grid.Column="1" Text="N/A" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </Grid>
 
-                                    <!-- Battery care profile -->
-                                    <Grid ColumnSpacing="8" VerticalAlignment="Center">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Profile" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                        <ComboBox x:Name="BatteryPresetComboBox" Grid.Column="1" MinWidth="140" VerticalAlignment="Center" SelectionChanged="OnBatteryPresetChanged">
-                                            <ComboBoxItem Content="Recommended" />
-                                            <ComboBoxItem Content="Saver" />
-                                        </ComboBox>
-                                    </Grid>
                                 </StackPanel>
                             </Border>
                         </Grid>
@@ -350,6 +338,78 @@
                 </ScrollViewer>
             </Grid>
         </Border>
+        </Grid>
+
+        <!-- ==================== FIRST-RUN ONBOARDING OVERLAY ====================
+             Full-window layer shown on first launch (HasCompletedOnboarding=false). Uses the same
+             Visibility-toggle pattern as the Dashboard/Settings tabs (no ContentDialog/NavigationView)
+             to stay clear of the unconfirmed Microsoft.UI.Xaml fail-fast class. Stepped: one feature
+             per panel, driven from code-behind over OnboardingState. -->
+        <Grid x:Name="OnboardingOverlay" Grid.Row="0" Grid.RowSpan="2" Visibility="Collapsed"
+              Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
+            <Border MaxWidth="460" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="12" Padding="32,28">
+                <StackPanel Spacing="20" MinWidth="360">
+                    <!-- Icon + step content -->
+                    <Image x:Name="OnboardingIcon" Width="40" Height="40" HorizontalAlignment="Center" />
+
+                    <!-- Welcome -->
+                    <StackPanel x:Name="StepWelcome" Spacing="8" Visibility="Visible">
+                        <TextBlock Text="Welcome to optiSYS" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
+                        <TextBlock Text="optiSYS keeps your PC fast and efficient — automatically, and fully reversibly. Let's pick what it should help with." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <!-- Wi-Fi -->
+                    <StackPanel x:Name="StepWiFi" Spacing="12" Visibility="Collapsed">
+                        <TextBlock Text="Wi-Fi" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                        <TextBlock Text="Keeps your connection responsive by stopping background Wi-Fi scans while you're online. Fully reversible — no permanent system changes." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ToggleSwitch x:Name="OnboardWiFiToggle" IsOn="True" HorizontalAlignment="Center" OnContent="On" OffContent="Off" />
+                    </StackPanel>
+
+                    <!-- Battery -->
+                    <StackPanel x:Name="StepBattery" Spacing="12" Visibility="Collapsed">
+                        <TextBlock Text="Battery" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                        <TextBlock Text="Saves power when you're on battery and steps back the moment you plug in — automatically. Nothing to manage." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ToggleSwitch x:Name="OnboardBatteryToggle" IsOn="True" HorizontalAlignment="Center" OnContent="On" OffContent="Off" />
+                    </StackPanel>
+
+                    <!-- Memory -->
+                    <StackPanel x:Name="StepMemory" Spacing="12" Visibility="Collapsed">
+                        <TextBlock Text="Memory" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                        <TextBlock Text="Frees up memory when your PC is under pressure. 'Max' reclaims more, more often." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ToggleSwitch x:Name="OnboardMemoryToggle" IsOn="True" HorizontalAlignment="Center" OnContent="On" OffContent="Off" />
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                            <TextBlock Text="Level" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ComboBox x:Name="OnboardMemoryLevel" MinWidth="140" SelectedIndex="0">
+                                <ComboBoxItem Content="Balanced" />
+                                <ComboBoxItem Content="Max" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Done -->
+                    <StackPanel x:Name="StepDone" Spacing="8" Visibility="Collapsed">
+                        <TextBlock Text="You're all set" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
+                        <TextBlock Text="optiSYS will work quietly in the background. You can change anything later in Settings." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <!-- Step dots -->
+                    <StackPanel x:Name="OnboardingDots" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" />
+
+                    <!-- Navigation -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="OnboardBackButton" Grid.Column="0" Content="Back" Click="OnOnboardingBack" MinWidth="88" />
+                        <Button x:Name="OnboardNextButton" Grid.Column="2" Style="{StaticResource AccentButtonStyle}" Content="Next" Click="OnOnboardingNext" MinWidth="88" />
+                    </Grid>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

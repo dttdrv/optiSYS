@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private bool _initializing = true;
     private bool _suppressAutoToggle;
     private DateTimeOffset _lastHeavyAppsAt;
+    private OptiSYS.Core.Services.OnboardingState? _onboarding;
 
     public MainWindow()
     {
@@ -45,7 +46,7 @@ public sealed partial class MainWindow : Window
         _startup = AppHost.Services.GetRequiredService<IStartupRegistrationService>();
 
         InitializeComponent();
-        AppVersionText.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.3.5"}";
+        AppVersionText.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.4.0"}";
 
         _theme = new ThemeManager(this, ShellRoot, GetAppWindow, _settings);
 
@@ -83,6 +84,111 @@ public sealed partial class MainWindow : Window
         Closed += OnClosed;
 
         RefreshPresentation(forceMemoryPoll: true);
+
+        MaybeStartOnboarding();
+    }
+
+    // ── First-run onboarding ────────────────────────────────────────────
+    // Stepped, in-shell overlay shown once (HasCompletedOnboarding). Uses the same Visibility
+    // pattern as the page tabs — no ContentDialog/NavigationView — per the crash-risk gate.
+
+    private void MaybeStartOnboarding()
+    {
+        if (_settings.HasCompletedOnboarding) return;
+
+        _onboarding = new OptiSYS.Core.Services.OnboardingState();
+        OnboardingIcon.Source = TitleBarIcon.Source; // reuse the already-loaded app icon
+        BuildOnboardingDots();
+        RenderOnboardingStep();
+        OnboardingOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void BuildOnboardingDots()
+    {
+        OnboardingDots.Children.Clear();
+        // 5 steps: Welcome, WiFi, Battery, Memory, Done.
+        for (int i = 0; i < 5; i++)
+        {
+            OnboardingDots.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse
+            {
+                Width = 7,
+                Height = 7,
+                Fill = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorDisabledBrush"],
+            });
+        }
+    }
+
+    private void RenderOnboardingStep()
+    {
+        if (_onboarding is null) return;
+        var step = _onboarding.Current;
+
+        StepWelcome.Visibility = step == OptiSYS.Core.Services.OnboardingStep.Welcome ? Visibility.Visible : Visibility.Collapsed;
+        StepWiFi.Visibility = step == OptiSYS.Core.Services.OnboardingStep.WiFi ? Visibility.Visible : Visibility.Collapsed;
+        StepBattery.Visibility = step == OptiSYS.Core.Services.OnboardingStep.Battery ? Visibility.Visible : Visibility.Collapsed;
+        StepMemory.Visibility = step == OptiSYS.Core.Services.OnboardingStep.Memory ? Visibility.Visible : Visibility.Collapsed;
+        StepDone.Visibility = step == OptiSYS.Core.Services.OnboardingStep.Done ? Visibility.Visible : Visibility.Collapsed;
+
+        OnboardBackButton.Visibility = _onboarding.IsFirstStep ? Visibility.Collapsed : Visibility.Visible;
+        OnboardNextButton.Content = _onboarding.IsLastStep ? "Get started" : "Next";
+
+        // Highlight the active step dot.
+        var accent = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["SystemAccentColorBrush"];
+        var dim = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorDisabledBrush"];
+        int active = (int)step;
+        for (int i = 0; i < OnboardingDots.Children.Count; i++)
+            if (OnboardingDots.Children[i] is Microsoft.UI.Xaml.Shapes.Ellipse dot)
+                dot.Fill = i == active ? accent : dim;
+    }
+
+    private void OnOnboardingBack(object sender, RoutedEventArgs e)
+    {
+        if (_onboarding is null) return;
+        CaptureOnboardingChoices();
+        _onboarding.Back();
+        RenderOnboardingStep();
+    }
+
+    private void OnOnboardingNext(object sender, RoutedEventArgs e)
+    {
+        if (_onboarding is null) return;
+        CaptureOnboardingChoices();
+
+        if (_onboarding.IsLastStep)
+        {
+            FinishOnboarding();
+            return;
+        }
+
+        _onboarding.Next();
+        RenderOnboardingStep();
+    }
+
+    /// <summary>Pull the current panel's toggle/level values into the state before navigating.</summary>
+    private void CaptureOnboardingChoices()
+    {
+        if (_onboarding is null) return;
+        _onboarding.WiFiEnabled = OnboardWiFiToggle.IsOn;
+        _onboarding.BatteryEnabled = OnboardBatteryToggle.IsOn;
+        _onboarding.MemoryEnabled = OnboardMemoryToggle.IsOn;
+        _onboarding.MemoryLevel = OnboardMemoryLevel.SelectedIndex == 1
+            ? OptimizationLevel.Aggressive
+            : OptimizationLevel.Balanced;
+    }
+
+    private void FinishOnboarding()
+    {
+        if (_onboarding is null) return;
+        _onboarding.ApplyTo(_settings);
+        _settings.Save();
+        OnboardingOverlay.Visibility = Visibility.Collapsed;
+        _onboarding = null;
+
+        // Re-sync the dashboard controls to the freshly-chosen settings, then (re)start automation
+        // so the chosen features take effect this session.
+        _suppressAutoToggle = true;
+        try { InitializeControlValues(); }
+        finally { _suppressAutoToggle = false; }
     }
 
     internal void LaunchInBackground() => DispatcherQueue.TryEnqueue(HideToTray);
@@ -342,7 +448,6 @@ public sealed partial class MainWindow : Window
         AutomaticOptimizationToggle.IsOn = !_settings.AutomationPaused;
         // Two modes: index 0 = Balanced, index 1 = Max (Aggressive).
         OptimizationLevelComboBox.SelectedIndex = _settings.OptimizationLevel == OptimizationLevel.Aggressive ? 1 : 0;
-        BatteryPresetComboBox.SelectedIndex = (int)_settings.BatteryPreset;
 
         StartWithWindowsToggle.IsOn = _settings.StartWithWindows;
         MinimizeToTrayToggle.IsOn = _settings.MinimizeToTray;
@@ -386,15 +491,10 @@ public sealed partial class MainWindow : Window
         StatusText.Text = text.ToString();
         FooterText.Text = $"last sample {now:HH:mm:ss} // safe runtime optimization only";
 
-        // 2. Reflect the (possibly auto-switched) efficiency profile in the Profile dropdown.
-        //    The auto-switch on AC/DC mutates _settings.BatteryPreset off-UI; this is the
-        //    UI-thread refresh path (StateChanged → RefreshPresentation), so it is the safe
-        //    place to resync. Only assign when the index actually differs: setting the same
-        //    SelectedIndex does not re-fire SelectionChanged, so there is no feedback loop, and
-        //    OptimizationLevel is never touched here.
-        SyncBatteryPresetSelection();
+        // Battery efficiency profile is fully automatic now (recommended on AC ↔ saver on battery,
+        // driven by AppRuntimeCoordinator); there is no in-app Profile control to resync.
 
-        // 3. Update Fluent UI dashboard telemetry
+        // Update Fluent UI dashboard telemetry
         UpdateDashboardUI(memory, battery);
         UpdateHeavyApps();
     }
@@ -593,29 +693,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _settings.MinimizeToTray = MinimizeToTrayToggle.IsOn;
 
         _settings.SaveDebounced();
-    }
-
-    private void OnBatteryPresetChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_initializing || _settings is null) return;
-        _automation.SetBatteryPreset((BatteryPreset)BatteryPresetComboBox.SelectedIndex);
-    }
-
-    /// <summary>
-    /// Keeps the Profile dropdown in step with <see cref="Settings.BatteryPreset"/> after an
-    /// automatic AC/DC switch (driven from the runtime coordinator). Assigning an unchanged
-    /// SelectedIndex is a WinUI no-op that does not raise SelectionChanged, so this never loops
-    /// back into <see cref="OnBatteryPresetChanged"/>; even if it did, re-applying the same
-    /// preset is idempotent and leaves OptimizationLevel untouched.
-    /// </summary>
-    private void SyncBatteryPresetSelection()
-    {
-        if (_initializing || _settings is null) return;
-        var desired = (int)_settings.BatteryPreset;
-        if (BatteryPresetComboBox.SelectedIndex != desired)
-        {
-            BatteryPresetComboBox.SelectedIndex = desired;
-        }
     }
 
     private void OnStartWithWindowsToggled(object sender, RoutedEventArgs e)
