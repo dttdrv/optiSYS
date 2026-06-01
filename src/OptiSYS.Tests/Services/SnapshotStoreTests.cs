@@ -74,6 +74,33 @@ public class SnapshotStoreTests
         Assert.False(store.HasSnapshots);
     }
 
+    [Fact]
+    public void Load_CorruptMainFile_RecoversFromBackup()
+    {
+        // Finding 2: a torn main file must not strand a modified system. A prior good .bak is the fallback.
+        var path = NewSnapshotPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        WriteSnapshots(path + ".bak", [new DomainSnapshot { DomainId = "cpu-parking" }]);
+        File.WriteAllText(path, "{ truncated json"); // simulates a crash mid-write
+
+        var store = new SnapshotStore(path);
+
+        var snapshot = Assert.Single(store.GetAll());
+        Assert.Equal("cpu-parking", snapshot.DomainId);
+    }
+
+    [Fact]
+    public void Save_WritesBackupOfPreviousGoodFile()
+    {
+        // Each Save should preserve the last-good content as .bak before overwriting.
+        var path = NewSnapshotPath();
+        var store = new SnapshotStore(path);
+        store.Store(new DomainSnapshot { DomainId = "first" });
+        store.Store(new DomainSnapshot { DomainId = "second" });   // overwrites; .bak should hold "first"-era state
+
+        Assert.True(File.Exists(path + ".bak"));
+    }
+
     private static string NewSnapshotPath()
     {
         var dir = Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"));

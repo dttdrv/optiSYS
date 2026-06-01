@@ -89,21 +89,31 @@ public sealed class SnapshotStore
         }
     }
 
+    private string BackupFile => _snapshotFile + ".bak";
+
     private void Load()
+    {
+        // Try the main file; if it is missing or torn (crash mid-write), fall back to the last-good
+        // .bak so a modified system is never stranded with no recovery snapshot (Finding 2).
+        if (TryLoadFrom(_snapshotFile)) return;
+        TryLoadFrom(BackupFile);
+    }
+
+    private bool TryLoadFrom(string file)
     {
         try
         {
-            if (!File.Exists(_snapshotFile)) return;
-            var json = File.ReadAllText(_snapshotFile);
+            if (!File.Exists(file)) return false;
+            var json = File.ReadAllText(file);
             var loaded = JsonSerializer.Deserialize<List<DomainSnapshot>>(json, JsonOptions);
-            if (loaded == null)
-                return;
+            if (loaded == null) return false;
 
             _snapshots.AddRange(NormalizeSnapshots(loaded));
+            return true;   // parsed successfully (even if it normalized to zero entries)
         }
         catch
         {
-            // Corrupted snapshots file — start fresh
+            return false;  // corrupt — let the caller try the backup
         }
     }
 
@@ -114,11 +124,21 @@ public sealed class SnapshotStore
             var dir = Path.GetDirectoryName(_snapshotFile)!;
             Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(_snapshots, JsonOptions);
-            File.WriteAllText(_snapshotFile, json);
+
+            // Atomic write: serialize to a temp file, then replace. A crash can leave the temp file
+            // or the intact previous file, but never a half-written _snapshotFile. Preserve the prior
+            // good file as .bak so Load can fall back if the replace is interrupted.
+            var tmp = _snapshotFile + ".tmp";
+            File.WriteAllText(tmp, json);
+
+            if (File.Exists(_snapshotFile))
+                File.Replace(tmp, _snapshotFile, BackupFile);
+            else
+                File.Move(tmp, _snapshotFile);
         }
         catch
         {
-            // Snapshot persistence failure is non-critical
+            // Snapshot persistence failure is non-critical; a stale .bak still aids recovery.
         }
     }
 

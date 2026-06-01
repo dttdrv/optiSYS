@@ -63,12 +63,75 @@ public class CpuParkingDomainTests
         Assert.False(domain.IsActive);
     }
 
+    [Fact]
+    public void Revert_MissingMaxKeyInSnapshot_DoesNotWriteZero()
+    {
+        // Finding 4: a truncated/legacy snapshot missing maxProcessorState must NOT cause Revert
+        // to write 0% (which would pin the CPU floor). Missing key → leave that value untouched.
+        var power = new FakePowerScheme(Scheme);
+        power.SetDc(Min, 5);
+        power.SetDc(Max, 100);
+
+        // Hand-built baseline with min present but max/parking absent (simulates truncation).
+        var baseline = new DomainSnapshot { DomainId = "cpu-parking" };
+        baseline.Set("schemeValid", true);
+        baseline.Set("schemeGuid", Scheme.ToString());
+        baseline.Set("minProcessorState", 5u);
+        // intentionally NO maxProcessorState / coreParkingThreshold
+
+        var domain = new CpuParkingDomain(new Settings(), power);
+        domain.Revert(baseline);
+
+        Assert.Equal(100u, power.GetDc(Max));         // untouched, NOT clobbered to 0
+        Assert.DoesNotContain(Max, power.WrittenSettings);  // never written at all
+    }
+
+    [Fact]
+    public void Revert_WhenAWriteFails_SignalsFailure()
+    {
+        // Findings 1+6: a failed restore write must be observable so callers can retain the
+        // snapshot instead of deleting it (and losing the only copy of the originals).
+        var power = new FakePowerScheme(Scheme);
+        power.SetDc(Min, 5);
+        power.SetDc(Max, 100);
+        power.SetDc(Park, 50);
+        power.FailWritesFor.Add(Max);   // restoring max fails
+
+        var domain = new CpuParkingDomain(
+            new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 }, power);
+        var baseline = domain.CaptureBaseline();
+        domain.Apply(baseline);
+
+        var reverted = domain.TryRevert(baseline);
+
+        Assert.False(reverted);          // failure surfaced
+    }
+
+    [Fact]
+    public void Revert_AllWritesSucceed_SignalsSuccess()
+    {
+        var power = new FakePowerScheme(Scheme);
+        power.SetDc(Min, 5);
+        power.SetDc(Max, 100);
+        power.SetDc(Park, 50);
+        var domain = new CpuParkingDomain(
+            new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 }, power);
+        var baseline = domain.CaptureBaseline();
+        domain.Apply(baseline);
+
+        Assert.True(domain.TryRevert(baseline));
+        Assert.Equal(100u, power.GetDc(Max));
+    }
+
     private sealed class FakePowerScheme : IPowerSchemeController
     {
         private readonly Guid _scheme;
         private readonly Dictionary<Guid, uint> _dc = [];
 
         public FakePowerScheme(Guid scheme) => _scheme = scheme;
+
+        public HashSet<Guid> FailWritesFor { get; } = [];
+        public HashSet<Guid> WrittenSettings { get; } = [];
 
         public void SetDc(Guid setting, uint value) => _dc[setting] = value;
         public uint GetDc(Guid setting) => _dc[setting];
@@ -80,6 +143,9 @@ public class CpuParkingDomainTests
 
         public bool WriteDcValue(Guid scheme, Guid subgroup, Guid setting, uint value)
         {
+            if (FailWritesFor.Contains(setting))
+                return false;
+            WrittenSettings.Add(setting);
             _dc[setting] = value;
             return true;
         }

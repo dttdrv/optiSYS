@@ -160,10 +160,16 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
                 try
                 {
                     Emit($"Reverting {domain.DisplayName}...");
-                    domain.Revert(snapshot);
-                    _snapshotStore.Remove(domain.Id);
-                    reverted++;
-                    Emit($"{domain.DisplayName} reverted successfully");
+                    if (RevertAndRemoveIfClean(domain, snapshot))
+                    {
+                        reverted++;
+                        Emit($"{domain.DisplayName} reverted successfully");
+                    }
+                    else
+                    {
+                        failed++;
+                        Emit($"{domain.DisplayName} revert incomplete — snapshot retained for retry");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -199,14 +205,42 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
 
         try
         {
-            domain.Revert(snapshot);
-            _snapshotStore.Remove(domain.Id);
-            return new EngineResult { Success = true, Message = $"{domain.DisplayName} reverted" };
+            if (RevertAndRemoveIfClean(domain, snapshot))
+                return new EngineResult { Success = true, Message = $"{domain.DisplayName} reverted" };
+            return new EngineResult { Success = false, Message = $"{domain.DisplayName} revert incomplete — snapshot retained" };
         }
         catch (Exception ex)
         {
             return new EngineResult { Success = false, Message = ex.Message };
         }
+    }
+
+    /// <summary>
+    /// Revert a domain and remove its snapshot ONLY if the revert is known-clean. For domains that
+    /// implement <see cref="IVerifiableRevert"/>, a failed restore retains the snapshot so the only
+    /// copy of the user's original values survives for a later retry / next-launch recovery.
+    /// Domains without that capability keep the prior behavior (revert + remove).
+    /// </summary>
+    private bool RevertAndRemoveIfClean(IOptimizationDomain domain, DomainSnapshot snapshot)
+    {
+        if (domain is IVerifiableRevert verifiable)
+        {
+            if (!verifiable.TryRevert(snapshot))
+                return false;               // keep the snapshot
+        }
+        else
+        {
+            domain.Revert(snapshot);
+        }
+        _snapshotStore.Remove(domain.Id);
+        return true;
+    }
+
+    /// <summary>Revert a non-verifiable domain (void contract); treated as clean unless it throws.</summary>
+    private static bool RevertVoid(IOptimizationDomain domain, DomainSnapshot snapshot)
+    {
+        domain.Revert(snapshot);
+        return true;
     }
 
     /// <summary>Attempt crash recovery.</summary>
@@ -228,15 +262,27 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
 
             try
             {
-                domain.Revert(snapshot);
-                Emit($"Recovered {domain.DisplayName}");
+                // Only drop the snapshot if the revert is known-clean. A verifiable domain whose
+                // restore writes failed keeps its snapshot so the next launch can retry — never
+                // discard the only copy of the user's originals on a failed recovery.
+                bool clean = domain is IVerifiableRevert verifiable
+                    ? verifiable.TryRevert(snapshot)
+                    : RevertVoid(domain, snapshot);
+
+                if (clean)
+                {
+                    toRemove.Add(snapshot.DomainId);
+                    Emit($"Recovered {domain.DisplayName}");
+                }
+                else
+                {
+                    Emit($"Recovery incomplete for {domain.DisplayName} — snapshot retained for retry");
+                }
             }
             catch (Exception ex)
             {
                 Emit($"Recovery failed for {domain.DisplayName}: {ex.Message}");
             }
-
-            toRemove.Add(snapshot.DomainId);
         }
 
         if (toRemove.Count > 0)

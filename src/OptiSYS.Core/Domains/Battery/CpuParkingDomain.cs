@@ -11,7 +11,7 @@ namespace OptiSYS.Core.Domains.Battery;
 /// and increases core parking aggressiveness, allowing Windows
 /// to park more cores when idle without affecting active workloads.
 /// </summary>
-public sealed class CpuParkingDomain : IOptimizationDomain
+public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
 {
     private readonly Settings _settings;
     private readonly IPowerSchemeController _power;
@@ -110,33 +110,41 @@ public sealed class CpuParkingDomain : IOptimizationDomain
             applied, failed, duration: sw.Elapsed);
     }
 
-    public void Revert(DomainSnapshot baseline)
+    public void Revert(DomainSnapshot baseline) => TryRevert(baseline);
+
+    /// <summary>
+    /// Restore the captured DC processor values. Returns false if the scheme is unreadable or any
+    /// restore write fails — callers (engine / crash recovery) must then RETAIN the snapshot so the
+    /// only copy of the user's originals is not lost. Each value is restored only if its key was
+    /// actually captured: a missing key (legacy/truncated snapshot) is skipped, never written as 0
+    /// (which would pin the CPU to its floor).
+    /// </summary>
+    public bool TryRevert(DomainSnapshot baseline)
     {
         var schemeStr = baseline.Get<string>("schemeGuid");
         if (string.IsNullOrEmpty(schemeStr) || !Guid.TryParse(schemeStr, out var scheme))
         {
             _isActive = false;
-            return;
+            return false;
         }
 
-        var origMin = baseline.Get<uint>("minProcessorState");
-        var origMax = baseline.Get<uint>("maxProcessorState");
-        var origParking = baseline.Get<uint>("coreParkingThreshold");
-
-        _power.WriteDcValue(scheme,
-            NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
-            NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM, origMin);
-
-        _power.WriteDcValue(scheme,
-            NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
-            NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM, origMax);
-
-        _power.WriteDcValue(scheme,
-            NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
-            NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD, origParking);
+        bool ok = true;
+        ok &= RestoreIfPresent(baseline, "minProcessorState", scheme, NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM);
+        ok &= RestoreIfPresent(baseline, "maxProcessorState", scheme, NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM);
+        ok &= RestoreIfPresent(baseline, "coreParkingThreshold", scheme, NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD);
 
         _power.SetActiveScheme(scheme);
         _isActive = false;
+        return ok;
+    }
+
+    /// <summary>Restore one DC value only if the snapshot actually carried it. Returns false on write failure.</summary>
+    private bool RestoreIfPresent(DomainSnapshot baseline, string key, Guid scheme, Guid setting)
+    {
+        if (!baseline.Has(key))
+            return true; // nothing captured for this key → leave the live value untouched
+        var value = baseline.Get<uint>(key);
+        return _power.WriteDcValue(scheme, NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP, setting, value);
     }
 
     public DomainStatus GetStatus()

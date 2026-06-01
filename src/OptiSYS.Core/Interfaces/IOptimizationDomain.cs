@@ -21,6 +21,18 @@ public interface IOptimizationDomain : IDisposable
 }
 
 /// <summary>
+/// Optional capability for domains whose revert can partially fail (e.g. writing power-scheme
+/// values). When a domain implements this, the engine removes its crash-recovery snapshot ONLY
+/// when the revert reports success — so a failed restore retains the snapshot for a later retry
+/// instead of discarding the only copy of the user's original values.
+/// </summary>
+public interface IVerifiableRevert
+{
+    /// <summary>Revert and report whether every restore operation succeeded.</summary>
+    bool TryRevert(DomainSnapshot baseline);
+}
+
+/// <summary>
 /// Captures pre-optimization state for crash recovery.
 /// Uses JsonElement for flexible type storage across domains.
 /// </summary>
