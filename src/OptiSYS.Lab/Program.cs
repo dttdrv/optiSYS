@@ -7,13 +7,16 @@ using OptiSYS.Lab.Probes;
 //   OptiSYS.Lab all [--json]    run every probe
 //   OptiSYS.Lab <name> [--json] run one probe (e.g. system, wlan)
 
+bool json = args.Any(a => a.Equals("--json", StringComparison.OrdinalIgnoreCase));
+bool load = args.Any(a => a.Equals("--load", StringComparison.OrdinalIgnoreCase));
+
 var probes = new List<ILabProbe>
 {
     new SystemSnapshotProbe(),
     new WlanProbe(),
+    new CpuPerfProbe(load),
 };
 
-bool json = args.Any(a => a.Equals("--json", StringComparison.OrdinalIgnoreCase));
 var positional = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
 string target = positional.Length > 0 ? positional[0] : "";
 
