@@ -14,6 +14,7 @@ namespace OptiSYS.Core.Domains.Battery;
 public sealed class CpuParkingDomain : IOptimizationDomain
 {
     private readonly Settings _settings;
+    private readonly IPowerSchemeController _power;
     private bool _isActive;
     private Guid _activeScheme;
 
@@ -23,12 +24,16 @@ public sealed class CpuParkingDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
-    public CpuParkingDomain(Settings settings) { _settings = settings; }
+    public CpuParkingDomain(Settings settings, IPowerSchemeController? power = null)
+    {
+        _settings = settings;
+        _power = power ?? new PowerSchemeController();
+    }
 
     public DomainSnapshot CaptureBaseline()
     {
         var snapshot = new DomainSnapshot { DomainId = Id };
-        _activeScheme = NativeMethods.GetActiveScheme();
+        _activeScheme = _power.GetActiveScheme();
 
         if (_activeScheme == Guid.Empty)
         {
@@ -39,15 +44,15 @@ public sealed class CpuParkingDomain : IOptimizationDomain
         snapshot.Set("schemeValid", true);
         snapshot.Set("schemeGuid", _activeScheme.ToString());
 
-        var minProc = NativeMethods.ReadDCValue(_activeScheme,
+        var minProc = _power.ReadDcValue(_activeScheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM);
 
-        var maxProc = NativeMethods.ReadDCValue(_activeScheme,
+        var maxProc = _power.ReadDcValue(_activeScheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM);
 
-        var coreParking = NativeMethods.ReadDCValue(_activeScheme,
+        var coreParking = _power.ReadDcValue(_activeScheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD);
 
@@ -71,7 +76,7 @@ public sealed class CpuParkingDomain : IOptimizationDomain
 
         int applied = 0, failed = 0;
 
-        if (NativeMethods.WriteDCValue(scheme,
+        if (_power.WriteDcValue(scheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM,
             (uint)_settings.CpuParkingMinProcessorDC))
@@ -79,7 +84,15 @@ public sealed class CpuParkingDomain : IOptimizationDomain
         else
             failed++;
 
-        if (NativeMethods.WriteDCValue(scheme,
+        if (_power.WriteDcValue(scheme,
+            NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
+            NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM,
+            (uint)_settings.CpuParkingMaxProcessorDC))
+            applied++;
+        else
+            failed++;
+
+        if (_power.WriteDcValue(scheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD,
             100u))
@@ -87,13 +100,13 @@ public sealed class CpuParkingDomain : IOptimizationDomain
         else
             failed++;
 
-        NativeMethods.PowerSetActiveScheme(IntPtr.Zero, scheme);
+        _power.SetActiveScheme(scheme);
 
         _isActive = applied > 0;
         sw.Stop();
 
         return ApplyResult.Ok(Id,
-            $"CPU optimized: min state {_settings.CpuParkingMinProcessorDC}%, max parking",
+            $"CPU optimized: min state {_settings.CpuParkingMinProcessorDC}%, max state {_settings.CpuParkingMaxProcessorDC}%, max parking",
             applied, failed, duration: sw.Elapsed);
     }
 
@@ -107,25 +120,30 @@ public sealed class CpuParkingDomain : IOptimizationDomain
         }
 
         var origMin = baseline.Get<uint>("minProcessorState");
+        var origMax = baseline.Get<uint>("maxProcessorState");
         var origParking = baseline.Get<uint>("coreParkingThreshold");
 
-        NativeMethods.WriteDCValue(scheme,
+        _power.WriteDcValue(scheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM, origMin);
 
-        NativeMethods.WriteDCValue(scheme,
+        _power.WriteDcValue(scheme,
+            NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
+            NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM, origMax);
+
+        _power.WriteDcValue(scheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD, origParking);
 
-        NativeMethods.PowerSetActiveScheme(IntPtr.Zero, scheme);
+        _power.SetActiveScheme(scheme);
         _isActive = false;
     }
 
     public DomainStatus GetStatus()
     {
-        var scheme = NativeMethods.GetActiveScheme();
+        var scheme = _power.GetActiveScheme();
         var minProc = scheme != Guid.Empty
-            ? NativeMethods.ReadDCValue(scheme,
+            ? _power.ReadDcValue(scheme,
                 NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
                 NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM)
             : null;
@@ -138,7 +156,7 @@ public sealed class CpuParkingDomain : IOptimizationDomain
             IsSupported = IsSupported,
             IsActive = _isActive,
             Summary = _isActive
-                ? $"Min state: {_settings.CpuParkingMinProcessorDC}%, parking: aggressive"
+                ? $"Min state: {_settings.CpuParkingMinProcessorDC}%, max: {_settings.CpuParkingMaxProcessorDC}%, parking: aggressive"
                 : minProc.HasValue ? $"Min state: {minProc}%" : "Inactive",
         };
     }

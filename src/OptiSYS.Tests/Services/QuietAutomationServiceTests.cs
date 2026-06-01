@@ -224,10 +224,10 @@ public sealed class QuietAutomationServiceTests
         service.ApplyBatteryPreset();
 
         engine.Verify(e => e.ActivateCategory("Battery"), Times.Once);
-        Assert.False(settings.EcoQosEnabled);       // opt-in now — never force-enabled
+        Assert.False(settings.EcoQosEnabled);       // opt-in — never force-enabled
         Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
-        Assert.False(settings.CpuParkingEnabled);   // opt-in now — never force-enabled (default off here)
+        Assert.True(settings.CpuParkingEnabled);    // left at its default (auto-on-battery); ApplySafeDomainSettings neither forces nor disables it
     }
 
     [Fact]

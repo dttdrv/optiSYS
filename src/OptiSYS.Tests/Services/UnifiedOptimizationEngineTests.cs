@@ -52,24 +52,38 @@ public class UnifiedOptimizationEngineTests
     }
 
     [Fact]
-    public void ActivateDomain_WiFiOptimizer_IsGatedOffByDefault_NeverApplies()
+    public void ActivateDomain_WiFiOptimizer_AppliesByDefault()
     {
-        // The Wi-Fi optimizer ships opt-in (default OFF): activating it with default settings
-        // must be a clean no-op — no baseline captured, no Apply — so it never auto-runs at startup.
+        // The Wi-Fi optimizer is ON by default now (background scan must always be off while
+        // connected), so activating it with default settings applies and stores a baseline.
         // Isolated temp-file store so HasSnapshots doesn't observe the shared on-disk file.
         var snapshotStore = new SnapshotStore(
             Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json"));
         using var wifi = new RecordingDomain("wifi-optimizer", "Network");
 
-        using var engine = new UnifiedOptimizationEngine(
-            new Settings(),
-            snapshotStore,
-            [wifi]);
+        using var engine = new UnifiedOptimizationEngine(new Settings(), snapshotStore, [wifi]);
 
         var result = engine.ActivateDomain("wifi-optimizer");
 
-        Assert.False(wifi.IsActive);                // never applied
-        Assert.False(snapshotStore.HasSnapshots);   // no baseline stored
+        Assert.True(wifi.IsActive);                // applied
+        Assert.True(snapshotStore.HasSnapshots);   // baseline stored
+    }
+
+    [Fact]
+    public void ActivateDomain_WiFiOptimizer_GatedOff_WhenSettingDisabled()
+    {
+        // The enable-gate still works both ways: an explicit opt-out is a clean no-op.
+        var snapshotStore = new SnapshotStore(
+            Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json"));
+        using var wifi = new RecordingDomain("wifi-optimizer", "Network");
+
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings { WiFiOptimizerEnabled = false }, snapshotStore, [wifi]);
+
+        var result = engine.ActivateDomain("wifi-optimizer");
+
+        Assert.False(wifi.IsActive);
+        Assert.False(snapshotStore.HasSnapshots);
         Assert.Contains("not applicable", result.Message);
     }
 

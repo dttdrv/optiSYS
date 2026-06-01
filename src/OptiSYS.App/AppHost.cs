@@ -65,6 +65,9 @@ public static class AppHost
 
         sc.AddSingleton<SnapshotStore>();
 
+        // Power-scheme seam used by CpuParkingDomain to capture/write/restore DC processor values.
+        sc.AddSingleton<IPowerSchemeController, PowerSchemeController>();
+
         // Battery/memory info + optimizer:  register concrete as singleton, then
         // alias interface to the same instance via factory. This keeps consumers
         // that ask for the concrete type (e.g. UnifiedOptimizationEngine internals)

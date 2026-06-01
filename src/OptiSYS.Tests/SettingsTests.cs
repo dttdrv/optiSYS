@@ -22,9 +22,13 @@ public class SettingsTests
         Assert.False(settings.UsbSuspendEnabled);
         Assert.False(settings.NetworkPowerEnabled);
         Assert.False(settings.GpuPowerEnabled);
-        Assert.False(settings.CpuParkingEnabled);   // opt-in now (mutates user-facing Minimum Processor State)
+        Assert.True(settings.CpuParkingEnabled);    // auto-on-battery (owner-approved battery rule relaxation): min 0% + max 85% + parking
+        Assert.Equal(0, settings.CpuParkingMinProcessorDC);
+        Assert.Equal(85, settings.CpuParkingMaxProcessorDC);  // ~15% max-state reduction on battery
         Assert.False(settings.DiskCoalescingEnabled);
-        Assert.False(settings.WiFiOptimizerEnabled);    // opt-in now (adapter-dependent; can add latency)
+        Assert.True(settings.WiFiOptimizerEnabled);     // background-scan-disable must always be on while connected
+        Assert.True(settings.WiFiDisableBackgroundScan);
+        Assert.False(settings.WiFiStreamingMode);       // harmful half stays OFF
         Assert.True(settings.ServicesManualEnabled);    // AIO set; admin-gated, no-op unless elevated
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);

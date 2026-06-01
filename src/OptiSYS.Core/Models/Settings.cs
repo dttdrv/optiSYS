@@ -112,20 +112,20 @@ public sealed class Settings
     public bool UsbSuspendEnabled { get; set; } = false;
     public bool NetworkPowerEnabled { get; set; } = false;
     public bool GpuPowerEnabled { get; set; } = false;
-    // CPU core parking + DC minimum processor state. OPT-IN (default OFF): it writes the active
-    // power scheme's DC "Minimum Processor State" — a user-facing, user-configurable Advanced Power
-    // Option — so it must not auto-apply or be force-enabled. The choice persists across restarts
-    // (this flag is saved), is applied only on battery, and is restored on AC/exit/crash.
-    // See CpuParkingMinProcessorDC (the DC min target).
-    public bool CpuParkingEnabled { get; set; } = false;
+    // CPU core parking + DC minimum/maximum processor state. ON by default and auto-applied on
+    // battery: per the owner's explicit battery-category relaxation of the no-mutation rule, on DC
+    // it lowers the DC "Minimum Processor State" to CpuParkingMinProcessorDC (0%), caps the DC
+    // "Maximum Processor State" to CpuParkingMaxProcessorDC (~15% reduction → 85%), and parks cores
+    // aggressively. All are exact-captured and restored on AC/exit/crash. See the 2026-06-01 spec.
+    public bool CpuParkingEnabled { get; set; } = true;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
-    // Wi-Fi latency optimizer — strictly OPT-IN (default OFF). Unelevated + session-scoped +
-    // reversible. Disabling the background scan can remove latency spikes on the active connection,
-    // but the effect is adapter-dependent and media-streaming mode has been observed to ADD latency
-    // on some adapters, so it does not auto-apply: the user must explicitly enable it. When enabled
-    // it activates/reverts with the master "Automatic optimization" switch; a no-op without Wi-Fi.
-    public bool WiFiOptimizerEnabled { get; set; } = false;
+    // Wi-Fi latency optimizer — ON by default. The background scan must ALWAYS be off while
+    // connected (periodic in-connection scanning causes latency spikes), so the optimizer activates
+    // at startup and holds the session-scoped opcode. Media-streaming mode stays OFF: it is
+    // adapter-dependent and was observed to ADD latency on some WiFiCx adapters. Unelevated,
+    // session-scoped, fully reversible (handle close reverts); a no-op without a Wi-Fi adapter.
+    public bool WiFiOptimizerEnabled { get; set; } = true;
     public bool WiFiDisableBackgroundScan { get; set; } = true;
     public bool WiFiStreamingMode { get; set; } = false;
 
@@ -143,6 +143,9 @@ public sealed class Settings
     public List<string> ServicesToThrottle { get; set; } = [.. DefaultServicesToThrottle];
 
     public int CpuParkingMinProcessorDC { get; set; } = 0;
+    // DC maximum processor state cap (the "~15% power reduction"): 85% trims the turbo/frequency
+    // ceiling on battery. Captured and restored on AC/exit. Clamped 50–100 in Validate().
+    public int CpuParkingMaxProcessorDC { get; set; } = 85;
     public int DiskIdleTimeoutSeconds { get; set; } = 30;
 
     public List<string> TimerResolutionExcludedProcesses { get; set; } =
@@ -295,6 +298,7 @@ public sealed class Settings
         // Battery
         DebouncePowerChangeSeconds = Math.Clamp(DebouncePowerChangeSeconds, 1, 10);
         CpuParkingMinProcessorDC = Math.Clamp(CpuParkingMinProcessorDC, 0, 100);
+        CpuParkingMaxProcessorDC = Math.Clamp(CpuParkingMaxProcessorDC, 50, 100);
         DiskIdleTimeoutSeconds = Math.Clamp(DiskIdleTimeoutSeconds, 10, 300);
 
         // Memory
