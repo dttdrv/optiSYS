@@ -51,6 +51,28 @@ public class UnifiedOptimizationEngineTests
         snapshotStore.RemoveRange([firstId, secondId]);
     }
 
+    [Fact]
+    public void ActivateDomain_WiFiOptimizer_IsGatedOffByDefault_NeverApplies()
+    {
+        // The Wi-Fi optimizer ships opt-in (default OFF): activating it with default settings
+        // must be a clean no-op — no baseline captured, no Apply — so it never auto-runs at startup.
+        // Isolated temp-file store so HasSnapshots doesn't observe the shared on-disk file.
+        var snapshotStore = new SnapshotStore(
+            Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json"));
+        using var wifi = new RecordingDomain("wifi-optimizer", "Network");
+
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings(),
+            snapshotStore,
+            [wifi]);
+
+        var result = engine.ActivateDomain("wifi-optimizer");
+
+        Assert.False(wifi.IsActive);                // never applied
+        Assert.False(snapshotStore.HasSnapshots);   // no baseline stored
+        Assert.Contains("not applicable", result.Message);
+    }
+
     private sealed class RecordingDomain : IOptimizationDomain
     {
         private readonly List<string>? _log;

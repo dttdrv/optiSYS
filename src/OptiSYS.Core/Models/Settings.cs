@@ -118,13 +118,14 @@ public sealed class Settings
     public bool CpuParkingEnabled { get; set; } = true;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
-    // Wi-Fi latency optimizer — part of the all-in-one automatic optimization (ON by default).
-    // Unelevated + session-scoped + reversible. Disabling the background scan removes 100ms+
-    // spikes on the active connection; streaming mode prioritizes it. Activated/reverted together
-    // with the master "Automatic optimization" switch; a no-op on machines without a Wi-Fi adapter.
-    public bool WiFiOptimizerEnabled { get; set; } = true;
+    // Wi-Fi latency optimizer — strictly OPT-IN (default OFF). Unelevated + session-scoped +
+    // reversible. Disabling the background scan can remove latency spikes on the active connection,
+    // but the effect is adapter-dependent and media-streaming mode has been observed to ADD latency
+    // on some adapters, so it does not auto-apply: the user must explicitly enable it. When enabled
+    // it activates/reverts with the master "Automatic optimization" switch; a no-op without Wi-Fi.
+    public bool WiFiOptimizerEnabled { get; set; } = false;
     public bool WiFiDisableBackgroundScan { get; set; } = true;
-    public bool WiFiStreamingMode { get; set; } = true;
+    public bool WiFiStreamingMode { get; set; } = false;
 
     // Services-to-Manual — part of the AIO set, but ADMIN-GATED (only applies when the app runs
     // elevated, granted once via the installer checkbox). ON by default to match that checkbox;

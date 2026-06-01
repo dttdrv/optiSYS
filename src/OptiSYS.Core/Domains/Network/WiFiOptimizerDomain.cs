@@ -13,19 +13,23 @@ public sealed class WiFiInterfaceBaseline
 }
 
 /// <summary>
-/// Disables the connection-killing background scan and enables media-streaming mode on the active
-/// Wi-Fi adapter(s) — the WLAN Optimizer technique. A pure latency win, fully reversible, and
-/// session-scoped (no system mutation, no admin). Ships OFF (opt-in).
+/// Toggles per-interface Native WiFi opcodes on the active adapter(s) — the WLAN Optimizer
+/// technique. Fully reversible and session-scoped (no system mutation, no admin). Ships OFF
+/// (opt-in): the effect is adapter-dependent. Disabling the background scan can remove latency
+/// spikes, but media-streaming mode (its driver contract lives in the deprecated Native 802.11
+/// model) has been observed to ADD latency on some WDI/WiFiCx adapters, so it defaults off.
 ///
 /// <para>
 /// The toggled opcodes revert when the WLAN client handle closes, so the handle is held open for
-/// the active lifetime, and a lightweight reapply timer re-asserts the settings (Wi-Fi reconnects
-/// reset them) — matching the open-source <c>catid/WLANOptimizer</c> reference.
+/// the active lifetime, and a reapply timer re-asserts the settings (Wi-Fi reconnects reset them).
+/// The interval is deliberately longer than the <c>catid/WLANOptimizer</c> reference's 11s: re-issuing
+/// WlanSetInterface on a live connection is undocumented and chatty (WDI guidance favors minimizing
+/// host↔IHV traffic), and a slightly later re-assert after a reconnect is harmless.
 /// </para>
 /// </summary>
 public sealed class WiFiOptimizerDomain : IOptimizationDomain
 {
-    private static readonly TimeSpan ReapplyInterval = TimeSpan.FromSeconds(11);
+    private static readonly TimeSpan ReapplyInterval = TimeSpan.FromSeconds(45);
 
     private readonly Settings _settings;
     private readonly IWlanInterop _wlan;
