@@ -15,39 +15,42 @@ public class CpuParkingDomainTests
     private static readonly Guid Park = NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD;
 
     [Fact]
-    public void Apply_WritesMinZero_AndMaxCap_OnBattery()
+    public void Apply_WritesMinZero_OnBattery_AndDoesNotTouchMax()
     {
+        // The max-state cap was dropped: measurement showed it's redundant under load (thermal/TDP
+        // binds first). Battery saving relies on min->0% + EcoQoS + parking, not a max cap.
         var power = new FakePowerScheme(Scheme);
         power.SetDc(Min, 5);
         power.SetDc(Max, 100);
         power.SetDc(Park, 50);
-        var domain = new CpuParkingDomain(
-            new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 }, power);
+        var domain = new CpuParkingDomain(new Settings { CpuParkingMinProcessorDC = 0 }, power);
 
         var result = domain.Apply(domain.CaptureBaseline());
 
         Assert.True(result.Success);
-        Assert.Equal(0u, power.GetDc(Min));    // minimum -> 0%
-        Assert.Equal(85u, power.GetDc(Max));   // maximum -> 85% (the new ~15% reduction)
+        Assert.Equal(0u, power.GetDc(Min));        // minimum -> 0%
+        Assert.Equal(100u, power.GetDc(Max));      // maximum untouched
+        Assert.DoesNotContain(Max, power.WrittenSettings);
         Assert.True(domain.IsActive);
     }
 
     [Fact]
-    public void Revert_RestoresCapturedMinAndMax()
+    public void Revert_RestoresCapturedMin_AndMaxIfPresent()
     {
+        // Revert still restores max if a snapshot carried it (protects pre-change snapshots),
+        // even though Apply no longer modifies max.
         var power = new FakePowerScheme(Scheme);
         power.SetDc(Min, 5);
         power.SetDc(Max, 100);
         power.SetDc(Park, 50);
-        var domain = new CpuParkingDomain(
-            new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 }, power);
+        var domain = new CpuParkingDomain(new Settings { CpuParkingMinProcessorDC = 0 }, power);
 
         var baseline = domain.CaptureBaseline();
         domain.Apply(baseline);
         domain.Revert(baseline);
 
         Assert.Equal(5u, power.GetDc(Min));    // restored
-        Assert.Equal(100u, power.GetDc(Max));  // restored (previously the max was never restored)
+        Assert.Equal(100u, power.GetDc(Max));  // unchanged throughout
         Assert.False(domain.IsActive);
     }
 
@@ -98,7 +101,7 @@ public class CpuParkingDomainTests
         power.FailWritesFor.Add(Max);   // restoring max fails
 
         var domain = new CpuParkingDomain(
-            new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 }, power);
+            new Settings { CpuParkingMinProcessorDC = 0 }, power);
         var baseline = domain.CaptureBaseline();
         domain.Apply(baseline);
 
@@ -115,7 +118,7 @@ public class CpuParkingDomainTests
         power.SetDc(Max, 100);
         power.SetDc(Park, 50);
         var domain = new CpuParkingDomain(
-            new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 }, power);
+            new Settings { CpuParkingMinProcessorDC = 0 }, power);
         var baseline = domain.CaptureBaseline();
         domain.Apply(baseline);
 

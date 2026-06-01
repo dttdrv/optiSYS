@@ -86,14 +86,6 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
 
         if (_power.WriteDcValue(scheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
-            NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM,
-            (uint)_settings.CpuParkingMaxProcessorDC))
-            applied++;
-        else
-            failed++;
-
-        if (_power.WriteDcValue(scheme,
-            NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
             NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD,
             100u))
             applied++;
@@ -106,7 +98,7 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
         sw.Stop();
 
         return ApplyResult.Ok(Id,
-            $"CPU optimized: min state {_settings.CpuParkingMinProcessorDC}%, max state {_settings.CpuParkingMaxProcessorDC}%, max parking",
+            $"CPU optimized: min state {_settings.CpuParkingMinProcessorDC}%, max parking",
             applied, failed, duration: sw.Elapsed);
     }
 
@@ -164,7 +156,7 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
             IsSupported = IsSupported,
             IsActive = _isActive,
             Summary = _isActive
-                ? $"Min state: {_settings.CpuParkingMinProcessorDC}%, max: {_settings.CpuParkingMaxProcessorDC}%, parking: aggressive"
+                ? $"Min state: {_settings.CpuParkingMinProcessorDC}%, parking: aggressive"
                 : minProc.HasValue ? $"Min state: {minProc}%" : "Inactive",
         };
     }

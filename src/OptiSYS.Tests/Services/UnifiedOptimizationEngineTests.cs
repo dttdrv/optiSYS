@@ -20,15 +20,14 @@ public class UnifiedOptimizationEngineTests
         var path = NewStorePath();
         var scheme = new Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         var power = new FakePowerScheme(scheme, min: 5, max: 100, parking: 50);
-        var settings = new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 };
+        var settings = new Settings { CpuParkingMinProcessorDC = 0 };
 
         // Session 1: apply, then abandon WITHOUT reverting (the crash).
         var store1 = new SnapshotStore(path);
         using (var engine1 = new UnifiedOptimizationEngine(settings, store1, [new CpuParkingDomain(settings, power)]))
         {
             engine1.ActivateDomain("cpu-parking");
-            Assert.Equal(0u, power.GetDc(NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM));   // applied
-            Assert.Equal(85u, power.GetDc(NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM));
+            Assert.Equal(0u, power.GetDc(NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM));   // applied (min only)
         }
 
         // Session 2: fresh engine + fresh domain over the SAME snapshot file → crash recovery.
@@ -49,7 +48,7 @@ public class UnifiedOptimizationEngineTests
         var path = NewStorePath();
         var scheme = new Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         var power = new FakePowerScheme(scheme, min: 5, max: 100, parking: 50);
-        var settings = new Settings { CpuParkingMinProcessorDC = 0, CpuParkingMaxProcessorDC = 85 };
+        var settings = new Settings { CpuParkingMinProcessorDC = 0 };
 
         var store1 = new SnapshotStore(path);
         using (var engine1 = new UnifiedOptimizationEngine(settings, store1, [new CpuParkingDomain(settings, power)]))

@@ -24,7 +24,6 @@ public class SettingsTests
         Assert.False(settings.GpuPowerEnabled);
         Assert.True(settings.CpuParkingEnabled);    // auto-on-battery (owner-approved battery rule relaxation): min 0% + max 85% + parking
         Assert.Equal(0, settings.CpuParkingMinProcessorDC);
-        Assert.Equal(85, settings.CpuParkingMaxProcessorDC);  // ~15% max-state reduction on battery
         Assert.False(settings.DiskCoalescingEnabled);
         Assert.True(settings.WiFiOptimizerEnabled);     // background-scan-disable must always be on while connected
         Assert.True(settings.WiFiDisableBackgroundScan);

@@ -112,11 +112,11 @@ public sealed class Settings
     public bool UsbSuspendEnabled { get; set; } = false;
     public bool NetworkPowerEnabled { get; set; } = false;
     public bool GpuPowerEnabled { get; set; } = false;
-    // CPU core parking + DC minimum/maximum processor state. ON by default and auto-applied on
-    // battery: per the owner's explicit battery-category relaxation of the no-mutation rule, on DC
-    // it lowers the DC "Minimum Processor State" to CpuParkingMinProcessorDC (0%), caps the DC
-    // "Maximum Processor State" to CpuParkingMaxProcessorDC (~15% reduction → 85%), and parks cores
-    // aggressively. All are exact-captured and restored on AC/exit/crash. See the 2026-06-01 spec.
+    // CPU core parking + DC minimum processor state. ON by default and auto-applied on battery:
+    // per the owner's explicit battery-category relaxation of the no-mutation rule, on DC it lowers
+    // the DC "Minimum Processor State" to CpuParkingMinProcessorDC (0%, deeper idle) and parks cores
+    // aggressively. Exact-captured and restored on AC/exit/crash. (A DC max-state cap was trialled
+    // and removed: measurement showed thermal/TDP binds below it, so it was redundant under load.)
     public bool CpuParkingEnabled { get; set; } = true;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
@@ -143,9 +143,6 @@ public sealed class Settings
     public List<string> ServicesToThrottle { get; set; } = [.. DefaultServicesToThrottle];
 
     public int CpuParkingMinProcessorDC { get; set; } = 0;
-    // DC maximum processor state cap (the "~15% power reduction"): 85% trims the turbo/frequency
-    // ceiling on battery. Captured and restored on AC/exit. Clamped 50–100 in Validate().
-    public int CpuParkingMaxProcessorDC { get; set; } = 85;
     public int DiskIdleTimeoutSeconds { get; set; } = 30;
 
     public List<string> TimerResolutionExcludedProcesses { get; set; } =
@@ -298,7 +295,6 @@ public sealed class Settings
         // Battery
         DebouncePowerChangeSeconds = Math.Clamp(DebouncePowerChangeSeconds, 1, 10);
         CpuParkingMinProcessorDC = Math.Clamp(CpuParkingMinProcessorDC, 0, 100);
-        CpuParkingMaxProcessorDC = Math.Clamp(CpuParkingMaxProcessorDC, 50, 100);
         DiskIdleTimeoutSeconds = Math.Clamp(DiskIdleTimeoutSeconds, 10, 300);
 
         // Memory
