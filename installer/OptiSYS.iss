@@ -41,9 +41,10 @@ DisableProgramGroupPage=yes
 DisableDirPage=yes
 DisableReadyPage=yes
 DisableFinishedPage=yes
-; Admin up front (single UAC at launch). optiSYS is meant to run elevated, so the installer
-; provisions the silent elevated logon task itself after copy — no in-installer questions.
-PrivilegesRequired=admin
+; Install per-user into %LOCALAPPDATA% with NO upfront UAC (Chrome-style: it just installs). The
+; only elevation is the post-copy provisioning of the silent elevated logon task, which the
+; ssPostInstall step requests on its own via ShellExec 'runas' (one UAC, at the end).
+PrivilegesRequired=lowest
 CloseApplications=yes
 CloseApplicationsFilter={#AppExeName}
 RestartApplications=no
@@ -171,10 +172,11 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // Provision the silent elevated logon task (we already hold admin). The app's
-    // --provision-elevation branch registers the HighestAvailable logon task, flips
-    // UseTaskScheduler on, and exits without a window.
-    Exec(ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
+    // The install itself is per-user (no elevation). Elevate ONLY this step (one UAC) to provision
+    // the silent elevated logon task: the app's --provision-elevation branch registers the
+    // HighestAvailable logon task, flips UseTaskScheduler on, and exits without a window. From the
+    // next logon the app launches elevated silently.
+    ShellExec('runas', ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
       SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 
