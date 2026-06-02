@@ -101,6 +101,10 @@ public sealed partial class MainWindow : Window
         BuildOnboardingDots();
         RenderOnboardingStep();
         OnboardingOverlay.Visibility = Visibility.Visible;
+
+        // Gentle entrance: fade the whole overlay in, then ease the first step up into place.
+        FadeIn(OnboardingOverlay, durationMs: 220);
+        SlideStepIn(forward: true);
     }
 
     private void BuildOnboardingDots()
@@ -141,17 +145,18 @@ public sealed partial class MainWindow : Window
                 dot.Fill = i == active ? accent : dim;
     }
 
+    private bool _onboardingAnimating;
+
     private void OnOnboardingBack(object sender, RoutedEventArgs e)
     {
-        if (_onboarding is null) return;
+        if (_onboarding is null || _onboardingAnimating) return;
         CaptureOnboardingChoices();
-        _onboarding.Back();
-        RenderOnboardingStep();
+        TransitionStep(() => _onboarding.Back(), forward: false);
     }
 
     private void OnOnboardingNext(object sender, RoutedEventArgs e)
     {
-        if (_onboarding is null) return;
+        if (_onboarding is null || _onboardingAnimating) return;
         CaptureOnboardingChoices();
 
         if (_onboarding.IsLastStep)
@@ -160,8 +165,74 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _onboarding.Next();
-        RenderOnboardingStep();
+        TransitionStep(() => _onboarding.Next(), forward: true);
+    }
+
+    // ── Onboarding motion ───────────────────────────────────────────────
+    // Fade + horizontal slide between steps (Fluent "connected" feel). Opacity and
+    // TranslateTransform.X are independent animations (GPU-composited), so no new control
+    // types and no dependent-animation cost — keeps clear of the XAML fail-fast class.
+
+    private void TransitionStep(Action changeState, bool forward)
+    {
+        var xform = (Microsoft.UI.Xaml.Media.TranslateTransform)OnboardingStepHost.RenderTransform;
+        _onboardingAnimating = true;
+
+        // Phase 1: ease the current step out toward the travel direction.
+        var outBoard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        AddDouble(outBoard, OnboardingStepHost, "Opacity", OnboardingStepHost.Opacity, 0, 120);
+        AddDouble(outBoard, xform, "X", xform.X, forward ? -28 : 28, 120,
+            new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseIn });
+
+        outBoard.Completed += (_, _) =>
+        {
+            changeState();
+            RenderOnboardingStep();
+            SlideStepIn(forward);
+        };
+        outBoard.Begin();
+    }
+
+    /// <summary>Phase 2: bring the (now-updated) step in from the opposite side.</summary>
+    private void SlideStepIn(bool forward)
+    {
+        var xform = (Microsoft.UI.Xaml.Media.TranslateTransform)OnboardingStepHost.RenderTransform;
+        xform.X = forward ? 28 : -28;
+        OnboardingStepHost.Opacity = 0;
+
+        var inBoard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        AddDouble(inBoard, OnboardingStepHost, "Opacity", 0, 1, 200);
+        AddDouble(inBoard, xform, "X", xform.X, 0, 220,
+            new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut });
+        inBoard.Completed += (_, _) => _onboardingAnimating = false;
+        inBoard.Begin();
+    }
+
+    private static void FadeIn(UIElement target, int durationMs)
+    {
+        target.Opacity = 0;
+        var board = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        AddDouble(board, target, "Opacity", 0, 1, durationMs);
+        board.Begin();
+    }
+
+    private static void AddDouble(
+        Microsoft.UI.Xaml.Media.Animation.Storyboard board,
+        Microsoft.UI.Xaml.DependencyObject target,
+        string property, double from, double to, int durationMs,
+        Microsoft.UI.Xaml.Media.Animation.EasingFunctionBase? easing = null)
+    {
+        var anim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = new Microsoft.UI.Xaml.Duration(TimeSpan.FromMilliseconds(durationMs)),
+            EnableDependentAnimation = false,
+            EasingFunction = easing,
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, target);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, property);
+        board.Children.Add(anim);
     }
 
     /// <summary>Pull the current panel's toggle/level values into the state before navigating.</summary>

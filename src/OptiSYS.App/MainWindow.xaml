@@ -352,48 +352,56 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
                     CornerRadius="12" Padding="32,28">
                 <StackPanel Spacing="20" MinWidth="360">
-                    <!-- Icon + step content -->
+                    <!-- Icon stays fixed; only the step host fades/slides between steps. -->
                     <Image x:Name="OnboardingIcon" Width="40" Height="40" HorizontalAlignment="Center" />
 
-                    <!-- Welcome -->
-                    <StackPanel x:Name="StepWelcome" Spacing="8" Visibility="Visible">
-                        <TextBlock Text="Welcome to optiSYS" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
-                        <TextBlock Text="optiSYS keeps your PC fast and efficient — automatically, and fully reversibly. Let's pick what it should help with." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
+                    <!-- Animatable step host: the 5 panels overlap (only one visible at a time);
+                         a fade+slide Storyboard runs on this host's Opacity + TranslateTransform.X. -->
+                    <Grid x:Name="OnboardingStepHost">
+                        <Grid.RenderTransform>
+                            <TranslateTransform />
+                        </Grid.RenderTransform>
 
-                    <!-- Wi-Fi -->
-                    <StackPanel x:Name="StepWiFi" Spacing="12" Visibility="Collapsed">
-                        <TextBlock Text="Wi-Fi" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
-                        <TextBlock Text="Keeps your connection responsive by stopping background Wi-Fi scans while you're online. Fully reversible — no permanent system changes." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ToggleSwitch x:Name="OnboardWiFiToggle" IsOn="True" HorizontalAlignment="Center" OnContent="On" OffContent="Off" />
-                    </StackPanel>
-
-                    <!-- Battery -->
-                    <StackPanel x:Name="StepBattery" Spacing="12" Visibility="Collapsed">
-                        <TextBlock Text="Battery" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
-                        <TextBlock Text="Saves power when you're on battery and steps back the moment you plug in — automatically. Nothing to manage." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ToggleSwitch x:Name="OnboardBatteryToggle" IsOn="True" HorizontalAlignment="Center" OnContent="On" OffContent="Off" />
-                    </StackPanel>
-
-                    <!-- Memory -->
-                    <StackPanel x:Name="StepMemory" Spacing="12" Visibility="Collapsed">
-                        <TextBlock Text="Memory" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
-                        <TextBlock Text="Frees up memory when your PC is under pressure. 'Max' reclaims more, more often." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <ToggleSwitch x:Name="OnboardMemoryToggle" IsOn="True" HorizontalAlignment="Center" OnContent="On" OffContent="Off" />
-                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
-                            <TextBlock Text="Level" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <ComboBox x:Name="OnboardMemoryLevel" MinWidth="140" SelectedIndex="0">
-                                <ComboBoxItem Content="Balanced" />
-                                <ComboBoxItem Content="Max" />
-                            </ComboBox>
+                        <!-- Welcome -->
+                        <StackPanel x:Name="StepWelcome" Spacing="8" Visibility="Visible">
+                            <TextBlock Text="Welcome to optiSYS" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
+                            <TextBlock Text="optiSYS keeps your PC fast and efficient — automatically, and fully reversibly. Let's pick what it should help with." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
-                    </StackPanel>
 
-                    <!-- Done -->
-                    <StackPanel x:Name="StepDone" Spacing="8" Visibility="Collapsed">
-                        <TextBlock Text="You're all set" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
-                        <TextBlock Text="optiSYS will work quietly in the background. You can change anything later in Settings." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
+                        <!-- Wi-Fi -->
+                        <StackPanel x:Name="StepWiFi" Spacing="12" Visibility="Collapsed">
+                            <TextBlock Text="Wi-Fi" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Keeps your connection responsive by stopping background Wi-Fi scans while you're online. Fully reversible — no permanent system changes." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ToggleSwitch x:Name="OnboardWiFiToggle" IsOn="True" HorizontalAlignment="Center" MinWidth="0" OnContent="On" OffContent="Off" />
+                        </StackPanel>
+
+                        <!-- Battery -->
+                        <StackPanel x:Name="StepBattery" Spacing="12" Visibility="Collapsed">
+                            <TextBlock Text="Battery" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Saves power when you're on battery and steps back the moment you plug in — automatically. Nothing to manage." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ToggleSwitch x:Name="OnboardBatteryToggle" IsOn="True" HorizontalAlignment="Center" MinWidth="0" OnContent="On" OffContent="Off" />
+                        </StackPanel>
+
+                        <!-- Memory -->
+                        <StackPanel x:Name="StepMemory" Spacing="12" Visibility="Collapsed">
+                            <TextBlock Text="Memory" Style="{StaticResource SubtitleTextBlockStyle}" HorizontalAlignment="Center" />
+                            <TextBlock Text="Frees up memory when your PC is under pressure. 'Max' reclaims more, more often." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <ToggleSwitch x:Name="OnboardMemoryToggle" IsOn="True" HorizontalAlignment="Center" MinWidth="0" OnContent="On" OffContent="Off" />
+                            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                                <TextBlock Text="Level" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ComboBox x:Name="OnboardMemoryLevel" MinWidth="140" SelectedIndex="0">
+                                    <ComboBoxItem Content="Balanced" />
+                                    <ComboBoxItem Content="Max" />
+                                </ComboBox>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Done -->
+                        <StackPanel x:Name="StepDone" Spacing="8" Visibility="Collapsed">
+                            <TextBlock Text="You're all set" Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" />
+                            <TextBlock Text="optiSYS will work quietly in the background. You can change anything later in Settings." TextWrapping="Wrap" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
 
                     <!-- Step dots -->
                     <StackPanel x:Name="OnboardingDots" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" />
