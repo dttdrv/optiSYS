@@ -130,7 +130,11 @@ public static class AppHost
         sc.AddSingleton<IQuietAutomationService>(p => p.GetRequiredService<QuietAutomationService>());
         sc.AddSingleton<TrayIconService>();
         sc.AddSingleton<ITrayIconService>(p => p.GetRequiredService<TrayIconService>());
-        sc.AddSingleton<ITimerService, DispatcherTimerService>();
+        // Memory watcher timer: threadpool-backed (NOT DispatcherTimer) so it ticks even on the
+        // background/logon launch where no UI message pump runs — otherwise the watcher silently
+        // never fires until the window is shown. Heavy work is Task.Run'd; UI updates marshal via
+        // DispatcherQueue.TryEnqueue. QuietAutomationService is the only consumer.
+        sc.AddSingleton<ITimerService, ThreadPoolTimerService>();
         sc.AddSingleton<IStartupRegistrationStore, CurrentUserStartupRegistrationStore>();
         sc.AddSingleton<IExecutablePathProvider, ProcessExecutablePathProvider>();
         sc.AddSingleton<StartupRegistrationService>();

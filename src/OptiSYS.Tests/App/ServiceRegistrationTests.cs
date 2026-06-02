@@ -71,7 +71,7 @@ public class ServiceRegistrationTests
     [InlineData(typeof(IAppRuntimeCoordinator), typeof(AppRuntimeCoordinator))]
     [InlineData(typeof(IQuietAutomationService), typeof(QuietAutomationService))]
     [InlineData(typeof(ITrayIconService), typeof(TrayIconService))]
-    [InlineData(typeof(ITimerService), typeof(DispatcherTimerService))]
+    [InlineData(typeof(ITimerService), typeof(ThreadPoolTimerService))]
     [InlineData(typeof(IStartupRegistrationService), typeof(StartupRegistrationService))]
     public void InterfaceRegistration_ReturnsExpectedImplementation(Type serviceType, Type? expectedImplType = null)
     {
