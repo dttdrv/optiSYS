@@ -134,16 +134,17 @@ public class UnifiedOptimizationEngineTests
     }
 
     [Fact]
-    public void ActivateDomain_WiFiOptimizer_AppliesByDefault()
+    public void ActivateDomain_WiFiOptimizer_AppliesWhenExplicitlyEnabled()
     {
-        // The Wi-Fi optimizer is ON by default now (background scan must always be off while
-        // connected), so activating it with default settings applies and stores a baseline.
-        // Isolated temp-file store so HasSnapshots doesn't observe the shared on-disk file.
+        // The Wi-Fi optimizer is OFF by default now (it net-degraded the connection on real
+        // hardware), so it only applies when the user explicitly opts in. Isolated temp-file store
+        // so HasSnapshots doesn't observe the shared on-disk file.
         var snapshotStore = new SnapshotStore(
             Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json"));
         using var wifi = new RecordingDomain("wifi-optimizer", "Network");
 
-        using var engine = new UnifiedOptimizationEngine(new Settings(), snapshotStore, [wifi]);
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings { WiFiOptimizerEnabled = true }, snapshotStore, [wifi]);
 
         var result = engine.ActivateDomain("wifi-optimizer");
 

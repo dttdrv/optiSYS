@@ -14,7 +14,7 @@
 #define AppPublisher "Deyan Todorov"
 #define AppExeName "OptiSYS.exe"
 #ifndef AppVersion
-  #define AppVersion "0.4.0"
+  #define AppVersion "0.4.0-alpha"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\installer\publish\release-win-x64"
@@ -93,11 +93,11 @@ begin
   Result := True;
 end;
 
-procedure LaunchButtonClick(Sender: TObject);
+procedure DoLaunch();
 var
   ResultCode: Integer;
 begin
-  // Create the desktop shortcut if requested, then launch and close the installer.
+  // Create the desktop shortcut if requested, then launch the app.
   if PinCheckBox.Checked then
     CreateShellLink(
       ExpandConstant('{autodesktop}\{#AppName}.lnk'),
@@ -105,6 +105,11 @@ begin
       ExpandConstant('{app}'), '', 0, SW_SHOWNORMAL);
 
   ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+end;
+
+procedure LaunchButtonClick(Sender: TObject);
+begin
+  DoLaunch();
   WizardForm.Close;
 end;
 
@@ -187,5 +192,11 @@ begin
     if WizardForm.ProgressGauge <> nil then WizardForm.ProgressGauge.Visible := False;
     if PinCheckBox <> nil then PinCheckBox.Visible := True;
     if LaunchButton <> nil then LaunchButton.Visible := True;
+
+    // Auto-launch so the app always opens after install (the Launch button stays as a manual
+    // backup). Default the desktop shortcut on, since the auto-launch fires before the user
+    // toggles the checkbox.
+    if PinCheckBox <> nil then PinCheckBox.Checked := True;
+    DoLaunch();
   end;
 end;

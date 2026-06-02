@@ -46,7 +46,7 @@ public sealed partial class MainWindow : Window
         _startup = AppHost.Services.GetRequiredService<IStartupRegistrationService>();
 
         InitializeComponent();
-        AppVersionText.Text = $"Version {typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.4.0"}";
+        AppVersionText.Text = $"Version {GetDisplayVersion()}";
 
         _theme = new ThemeManager(this, ShellRoot, GetAppWindow, _settings);
 
@@ -91,6 +91,28 @@ public sealed partial class MainWindow : Window
     // ── First-run onboarding ────────────────────────────────────────────
     // Stepped, in-shell overlay shown once (HasCompletedOnboarding). Uses the same Visibility
     // pattern as the page tabs — no ContentDialog/NavigationView — per the crash-risk gate.
+
+    /// <summary>
+    /// The display version. Uses AssemblyInformationalVersion (carries the SemVer pre-release
+    /// suffix, e.g. "0.4.0-alpha") since Assembly.Version is numeric-only and drops it. Strips any
+    /// "+githash" build-metadata tail.
+    /// </summary>
+    private static string GetDisplayVersion()
+    {
+        var info = typeof(MainWindow).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            is [System.Reflection.AssemblyInformationalVersionAttribute attr, ..]
+            ? attr.InformationalVersion
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(info))
+        {
+            var plus = info.IndexOf('+');
+            return plus >= 0 ? info[..plus] : info;
+        }
+
+        return typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.4.0-alpha";
+    }
 
     private void MaybeStartOnboarding()
     {
