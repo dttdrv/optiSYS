@@ -120,13 +120,13 @@ public sealed class Settings
     public bool CpuParkingEnabled { get; set; } = true;
     public bool DiskCoalescingEnabled { get; set; } = false;
 
-    // Wi-Fi latency optimizer — ON by default. The background scan must ALWAYS be off while
-    // connected (periodic in-connection scanning causes latency spikes), so the optimizer activates
-    // at startup and holds the session-scoped opcode. Media-streaming mode stays OFF: it is
-    // adapter-dependent and was observed to ADD latency on some WiFiCx adapters. Unelevated,
-    // session-scoped, fully reversible (handle close reverts); a no-op without a Wi-Fi adapter.
-    public bool WiFiOptimizerEnabled { get; set; } = true;
+    // Wi-Fi latency optimizer — OFF by default. It net-degraded the connection on real hardware
+    // (Qualcomm WCN685x), so it must not touch the adapter unless the user explicitly opts in.
+    public bool WiFiOptimizerEnabled { get; set; } = false;
     public bool WiFiDisableBackgroundScan { get; set; } = true;
+    // PERMANENTLY OFF and never written (see WiFiOptimizerDomain.ApplyToConnectedLocked): media-
+    // streaming mode adds latency on some WiFiCx adapters. The field is retained only for settings
+    // de/serialization compatibility and so revert can restore a value left set by an older build.
     public bool WiFiStreamingMode { get; set; } = false;
 
     // Services-to-Manual — part of the AIO set, but ADMIN-GATED (only applies when the app runs

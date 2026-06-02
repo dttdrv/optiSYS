@@ -35,13 +35,11 @@ UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName} — System Optimizer
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Chrome-style minimal: skip welcome/dir/group/finished, but KEEP the Ready page — it is the
-; natural pre-copy gate that carries the "Install" button. We style it down to icon + a single
-; Install button (see [Code]); progress then runs; a custom finish state shows pin + auto-launches.
+; Chrome-style: no pages at all. Jump straight to installing; we drive a custom minimal finish.
 DisableWelcomePage=yes
 DisableProgramGroupPage=yes
 DisableDirPage=yes
-DisableReadyPage=no
+DisableReadyPage=yes
 DisableFinishedPage=yes
 ; Install per-user into %LOCALAPPDATA% with NO upfront UAC (Chrome-style: it just installs). The
 ; only elevation is the post-copy provisioning of the silent elevated logon task, which the
@@ -84,6 +82,7 @@ Type: filesandordirs; Name: "{localappdata}\optiSYS"
 var
   TitleLabel: TNewStaticText;
   PinCheckBox: TNewCheckBox;
+  LaunchButton: TNewButton;
 
 function InitializeSetup(): Boolean;
 var
@@ -94,61 +93,77 @@ begin
   Result := True;
 end;
 
-procedure InitializeWizard();
-begin
-  // Compact, chrome-light window: hide the header/bevel so only the icon + page body show. We KEEP
-  // Inno's own Next/Install/Cancel buttons (the Ready page's Install button is the explicit gate)
-  // rather than hand-rolling one — far more robust than racing the install sequence.
-  WizardForm.Caption := '{#AppName} Setup';
-  WizardForm.MainPanel.Visible := False;
-  WizardForm.Bevel.Visible := False;
-  WizardForm.BackButton.Visible := False;
-
-  // App icon centered on the Ready page body.
-  WizardForm.WizardSmallBitmapImage.Parent := WizardForm.ReadyPage;
-  WizardForm.WizardSmallBitmapImage.Left := (WizardForm.ReadyPage.Width - WizardForm.WizardSmallBitmapImage.Width) div 2;
-  WizardForm.WizardSmallBitmapImage.Top := ScaleY(24);
-  WizardForm.WizardSmallBitmapImage.Visible := True;
-
-  // Replace the Ready page's verbose memo with a single centered line.
-  WizardForm.ReadyMemo.Visible := False;
-  TitleLabel := TNewStaticText.Create(WizardForm);
-  TitleLabel.Parent := WizardForm.ReadyPage;
-  TitleLabel.Caption := 'Ready to install {#AppName}.';
-  TitleLabel.Font.Size := 11;
-  TitleLabel.AutoSize := True;
-  TitleLabel.Top := ScaleY(92);
-  TitleLabel.Left := (WizardForm.ReadyPage.Width - TitleLabel.Width) div 2;
-
-  // Pin-to-desktop choice lives on the Ready page; LaunchApp() (on ssDone) reads it. Default on.
-  PinCheckBox := TNewCheckBox.Create(WizardForm);
-  PinCheckBox.Parent := WizardForm.ReadyPage;
-  PinCheckBox.Caption := 'Pin to desktop';
-  PinCheckBox.Width := ScaleX(160);
-  PinCheckBox.Top := ScaleY(124);
-  PinCheckBox.Left := (WizardForm.ReadyPage.Width - PinCheckBox.Width) div 2;
-  PinCheckBox.Checked := True;
-end;
-
-procedure LaunchApp();
+procedure LaunchButtonClick(Sender: TObject);
 var
   ResultCode: Integer;
 begin
-  if PinCheckBox <> nil then
-    if PinCheckBox.Checked then
-      CreateShellLink(
-        ExpandConstant('{autodesktop}\{#AppName}.lnk'),
-        '', ExpandConstant('{app}\{#AppExeName}'), '',
-        ExpandConstant('{app}'), '', 0, SW_SHOWNORMAL);
+  // Create the desktop shortcut if requested, then launch and close the installer.
+  if PinCheckBox.Checked then
+    CreateShellLink(
+      ExpandConstant('{autodesktop}\{#AppName}.lnk'),
+      '', ExpandConstant('{app}\{#AppExeName}'), '',
+      ExpandConstant('{app}'), '', 0, SW_SHOWNORMAL);
+
   ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
+  WizardForm.Close;
 end;
 
-procedure CurPageChanged(CurPageID: Integer);
+procedure InitializeWizard();
 begin
-  // On the Ready page, relabel the Next button to "Install" (Inno usually does this; force it for
-  // the trimmed UI) so the single visible button reads clearly.
-  if CurPageID = wpReady then
-    WizardForm.NextButton.Caption := 'Install';
+  // Shrink the wizard to a compact, chrome-light window: hide the standard header, bevels and
+  // navigation buttons so only our icon + progress (and later the finish controls) are visible.
+  WizardForm.Caption := '{#AppName} Setup';
+  WizardForm.ClientWidth := ScaleX(380);
+  WizardForm.ClientHeight := ScaleY(220);
+  WizardForm.Position := poScreenCenter;
+
+  WizardForm.MainPanel.Visible := False;
+  WizardForm.Bevel.Visible := False;
+  WizardForm.BackButton.Visible := False;
+  WizardForm.NextButton.Visible := False;
+  WizardForm.CancelButton.Visible := False;
+  WizardForm.OuterNotebook.Visible := False;
+
+  // App icon: reuse Inno's natively-loaded small bitmap (from WizardSmallImageFile), reparented
+  // and centered near the top of the compact window.
+  WizardForm.WizardSmallBitmapImage.Parent := WizardForm;
+  WizardForm.WizardSmallBitmapImage.Left := (WizardForm.ClientWidth - WizardForm.WizardSmallBitmapImage.Width) div 2;
+  WizardForm.WizardSmallBitmapImage.Top := ScaleY(24);
+  WizardForm.WizardSmallBitmapImage.Visible := True;
+
+  TitleLabel := TNewStaticText.Create(WizardForm);
+  TitleLabel.Parent := WizardForm;
+  TitleLabel.Caption := 'Installing {#AppName}…';
+  TitleLabel.Font.Size := 11;
+  TitleLabel.AutoSize := True;
+  TitleLabel.Top := ScaleY(86);
+  TitleLabel.Left := (WizardForm.ClientWidth - TitleLabel.Width) div 2;
+
+  // Reparent the progress bar onto the form, centered.
+  WizardForm.ProgressGauge.Parent := WizardForm;
+  WizardForm.ProgressGauge.Width := ScaleX(300);
+  WizardForm.ProgressGauge.Left := (WizardForm.ClientWidth - WizardForm.ProgressGauge.Width) div 2;
+  WizardForm.ProgressGauge.Top := ScaleY(120);
+  WizardForm.ProgressGauge.Visible := True;
+
+  // Finish controls — hidden until install completes.
+  PinCheckBox := TNewCheckBox.Create(WizardForm);
+  PinCheckBox.Parent := WizardForm;
+  PinCheckBox.Caption := 'Pin to desktop';
+  PinCheckBox.Width := ScaleX(160);
+  PinCheckBox.Top := ScaleY(118);
+  PinCheckBox.Left := (WizardForm.ClientWidth - PinCheckBox.Width) div 2;
+  PinCheckBox.Visible := False;
+
+  LaunchButton := TNewButton.Create(WizardForm);
+  LaunchButton.Parent := WizardForm;
+  LaunchButton.Caption := 'Launch {#AppName}';
+  LaunchButton.Width := ScaleX(150);
+  LaunchButton.Height := ScaleY(30);
+  LaunchButton.Top := ScaleY(150);
+  LaunchButton.Left := (WizardForm.ClientWidth - LaunchButton.Width) div 2;
+  LaunchButton.Visible := False;
+  LaunchButton.OnClick := @LaunchButtonClick;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -157,16 +172,20 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // Per-user install (no elevation). Elevate ONLY this step (one UAC) to provision the silent
-    // elevated logon task: the app's --provision-elevation branch registers the HighestAvailable
-    // logon task, flips UseTaskScheduler on, and exits without a window.
+    // The install itself is per-user (no elevation). Elevate ONLY this step (one UAC) to provision
+    // the silent elevated logon task: the app's --provision-elevation branch registers the
+    // HighestAvailable logon task, flips UseTaskScheduler on, and exits without a window. From the
+    // next logon the app launches elevated silently.
     ShellExec('runas', ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
       SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 
   if CurStep = ssDone then
   begin
-    // Install finished — launch the app automatically (reliable; not dependent on a custom button).
-    LaunchApp();
+    // Swap progress for the finish controls in the same window.
+    if TitleLabel <> nil then TitleLabel.Caption := '{#AppName} is ready.';
+    if WizardForm.ProgressGauge <> nil then WizardForm.ProgressGauge.Visible := False;
+    if PinCheckBox <> nil then PinCheckBox.Visible := True;
+    if LaunchButton <> nil then LaunchButton.Visible := True;
   end;
 end;

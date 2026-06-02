@@ -11,7 +11,7 @@ public class WiFiOptimizerDomainTests
     private static readonly Guid IfaceB = new("22222222-2222-2222-2222-222222222222");
 
     [Fact]
-    public void Apply_ConnectedInterface_DisablesBackgroundScan_EnablesStreaming_KeepsHandleOpen()
+    public void Apply_ConnectedInterface_DisablesBackgroundScan_NeverEnablesStreaming_KeepsHandleOpen()
     {
         var wlan = new FakeWlanInterop();
         wlan.AddInterface(IfaceA, connected: true, backgroundScan: true, streaming: false);
@@ -23,7 +23,7 @@ public class WiFiOptimizerDomainTests
         Assert.True(result.Success);
         Assert.True(domain.IsActive);
         Assert.False(wlan.Get(IfaceA, WlanOpcode.BackgroundScan));  // disabled
-        Assert.True(wlan.Get(IfaceA, WlanOpcode.MediaStreaming));   // enabled
+        Assert.False(wlan.Get(IfaceA, WlanOpcode.MediaStreaming));  // PERMANENTLY OFF — never enabled
         // The handle MUST stay open — closing it would revert the session-scoped opcodes.
         Assert.True(wlan.IsOpen);
 
@@ -116,8 +116,8 @@ public class WiFiOptimizerDomainTests
 
         domain.Reapply();
 
-        Assert.False(wlan.Get(IfaceA, WlanOpcode.BackgroundScan));
-        Assert.True(wlan.Get(IfaceA, WlanOpcode.MediaStreaming));
+        Assert.False(wlan.Get(IfaceA, WlanOpcode.BackgroundScan));   // re-asserted off
+        Assert.False(wlan.Get(IfaceA, WlanOpcode.MediaStreaming));   // never enabled
 
         domain.Dispose();
     }
@@ -134,7 +134,7 @@ public class WiFiOptimizerDomainTests
     }
 
     private static WiFiOptimizerDomain NewDomain(IWlanInterop wlan) =>
-        new(new Settings { WiFiDisableBackgroundScan = true, WiFiStreamingMode = true }, wlan);
+        new(new Settings { WiFiDisableBackgroundScan = true, WiFiStreamingMode = false }, wlan);
 
     private sealed class FakeWlanInterop : IWlanInterop
     {

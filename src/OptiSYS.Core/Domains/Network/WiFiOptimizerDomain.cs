@@ -201,8 +201,9 @@ public sealed class WiFiOptimizerDomain : IOptimizationDomain
 
             if (_settings.WiFiDisableBackgroundScan)
                 ApplyAndVerify(iface.Guid, WlanOpcode.BackgroundScan, false, ref changed, ref ifaceIgnored);
-            if (_settings.WiFiStreamingMode)
-                ApplyAndVerify(iface.Guid, WlanOpcode.MediaStreaming, true, ref changed, ref ifaceIgnored);
+            // Media-streaming mode is permanently disabled: it net-degraded latency on real adapters
+            // (Qualcomm WCN685x) and is never enabled, regardless of any setting. The capture/revert
+            // paths remain so a value left set by an older build is still restored to its baseline.
 
             if (ifaceIgnored) ignored++;
             else if (changed) applied++;
