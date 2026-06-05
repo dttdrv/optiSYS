@@ -121,9 +121,15 @@ public static class AppHost
         sc.AddSingleton<PowerSourceMonitor>();
         sc.AddSingleton<OptiSYS.Core.Interfaces.IPowerSourceMonitor>(p => p.GetRequiredService<PowerSourceMonitor>());
 
+        // Effective-power-mode signal ("follow, never fight"): read-only awareness of the user's
+        // chosen power mode so the adaptive controller stands down its EcoQoS throttling at
+        // High/Max Performance / Game Mode. Native-backed; degrades to Unknown when unavailable.
+        sc.AddSingleton<IEffectivePowerModeProvider, EffectivePowerModeProvider>();
+
         // Adaptive EcoQoS controller: maintains the (engine-initiated) EcoQoS state on battery,
         // following the foreground and catching newly-spawned processes. Shares the EcoQosDomain
-        // singleton above; started/stopped by the runtime coordinator.
+        // singleton above; started/stopped by the runtime coordinator. Consults the effective-power-
+        // mode provider above to stand down at user-chosen high-performance modes.
         sc.AddSingleton<AdaptiveEcoQosController>();
         sc.AddSingleton<IAdaptiveEcoQosController>(p => p.GetRequiredService<AdaptiveEcoQosController>());
 

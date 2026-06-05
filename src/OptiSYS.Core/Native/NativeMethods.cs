@@ -235,6 +235,28 @@ internal static partial class NativeMethods
 
     internal const int SystemBatteryStateLevel = 5;
 
+    // ── Effective power mode (read-only "follow, never fight" signal) ──
+    // PowerRegisterForEffectivePowerModeNotifications was added in Windows 10 1809; V2 (which adds
+    // GameMode / MixedReality) in a later release. Both return an HRESULT (0 == S_OK). The callback
+    // delegate MUST be kept rooted by the caller for the lifetime of the registration, and the
+    // registration handle unregistered on teardown. These are declared via DllImport (not
+    // LibraryImport) because the delegate marshalling for the callback is simplest that way and this
+    // is invoked rarely (registration once at start, on change thereafter).
+
+    internal const uint EFFECTIVE_POWER_MODE_V1 = 1;
+    internal const uint EFFECTIVE_POWER_MODE_V2 = 2;
+
+    // EFFECTIVE_POWER_MODE_CALLBACK(EFFECTIVE_POWER_MODE Mode, VOID* Context)
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    internal delegate void EffectivePowerModeCallback(int mode, IntPtr context);
+
+    [DllImport("powrprof.dll")]
+    internal static extern int PowerRegisterForEffectivePowerModeNotifications(
+        uint version, EffectivePowerModeCallback callback, IntPtr context, out IntPtr registrationHandle);
+
+    [DllImport("powrprof.dll")]
+    internal static extern int PowerUnregisterFromEffectivePowerModeNotifications(IntPtr registrationHandle);
+
     // ── ntdll.dll ─────────────────────────────────────────────────────
 
     [LibraryImport("ntdll.dll")]

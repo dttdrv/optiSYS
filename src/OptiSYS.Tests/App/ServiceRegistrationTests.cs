@@ -52,6 +52,8 @@ public class ServiceRegistrationTests
     [InlineData(typeof(ITimerService))]
     [InlineData(typeof(StartupRegistrationService))]
     [InlineData(typeof(IStartupRegistrationService))]
+    [InlineData(typeof(IEffectivePowerModeProvider))]
+    [InlineData(typeof(IAdaptiveEcoQosController))]
     public void RegisteredService_Resolves(Type serviceType)
     {
         using var provider = (ServiceProvider)BuildProvider();

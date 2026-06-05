@@ -24,15 +24,23 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
     private readonly EcoQosDomain _domain;
     private readonly INativeBridge _native;
     private readonly Settings _settings;
+    private readonly IEffectivePowerModeProvider? _powerMode;
     private readonly object _gate = new();
     private System.Threading.Timer? _timer;
     private bool _disposed;
 
-    public AdaptiveEcoQosController(EcoQosDomain domain, INativeBridge native, Settings settings)
+    public AdaptiveEcoQosController(
+        EcoQosDomain domain,
+        INativeBridge native,
+        Settings settings,
+        IEffectivePowerModeProvider? powerMode = null)
     {
         _domain = domain ?? throw new ArgumentNullException(nameof(domain));
         _native = native ?? throw new ArgumentNullException(nameof(native));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        // Optional: when absent (API unavailable / not wired), the controller behaves exactly as
+        // before — no effective-power-mode gating.
+        _powerMode = powerMode;
     }
 
     public void Start()
@@ -41,6 +49,7 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
         {
             if (_disposed || _timer != null)
                 return;
+            _powerMode?.Start();
             _timer = new System.Threading.Timer(_ => MaintainOnce(), null, MaintainInterval, MaintainInterval);
         }
     }
@@ -55,6 +64,7 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
         }
 
         timer?.Dispose();
+        _powerMode?.Stop();
     }
 
     internal void MaintainOnce()
@@ -70,6 +80,17 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
 
         if (_native.GetPowerSource() != PowerSource.Battery)
             return;
+
+        // Follow, never fight: when the user picked a high-performance effective mode
+        // (HighPerformance / MaxPerformance / GameMode), Windows opts every app OUT of throttling.
+        // Stand down — release anything we had throttled (reversible, back to OS-managed) and skip
+        // reconcile so we never re-throttle background apps the user/OS wants at full speed.
+        if (_powerMode is { } pm && EffectivePowerModeDecision.IsHighPerformance(pm.Current))
+        {
+            // The outer guard already established _domain.IsActive, so there is throttling to release.
+            try { _domain.Revert(_domain.CaptureBaseline()); } catch { }
+            return;
+        }
 
         try { _domain.Reconcile(); } catch { }
     }
