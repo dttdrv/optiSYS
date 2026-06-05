@@ -13,7 +13,13 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     private readonly SnapshotStore _snapshotStore;
     private readonly Settings _settings;
     private readonly IDiagnosticLog _diagnostics;
-    private int _optimizing; // Interlocked guard
+    private int _optimizing; // Interlocked guard backing the public IsOptimizing flag
+    // Serializes EVERY mutation entry point (capture -> store -> apply / revert) so a
+    // power-transition revert on a timer thread can never interleave a UI-thread apply and race
+    // the snapshot store. C# lock/Monitor is reentrant, so a method holding it may call another
+    // locked method on the same thread without deadlock. All these methods are synchronous (no
+    // await inside the critical section), which is why a plain lock — not a SemaphoreSlim — is used.
+    private readonly object _mutationGate = new();
     private bool _disposed;
 
     public event Action<EngineEvent>? EventOccurred;
@@ -49,6 +55,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
 
         try
         {
+            lock (_mutationGate)
             foreach (var domain in _domains.Where(d =>
                 d.Category.Equals(category, StringComparison.OrdinalIgnoreCase)))
             {
@@ -108,26 +115,29 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         if (!domain.IsEnabled(_settings) || !domain.IsSupported || domain.IsActive)
             return new EngineResult { Message = $"Domain '{domainId}' not applicable" };
 
-        try
+        lock (_mutationGate)
         {
-            var snapshot = domain.CaptureBaseline();
-            _snapshotStore.Store(snapshot);
-            var result = domain.Apply(snapshot);
-
-            if (!result.Success)
-                _snapshotStore.Remove(domain.Id);
-
-            return new EngineResult
+            try
             {
-                Success = result.Success,
-                Results = [result],
-                Message = result.Message
-            };
-        }
-        catch (Exception ex)
-        {
-            _snapshotStore.Remove(domain.Id);
-            return new EngineResult { Success = false, Message = ex.Message };
+                var snapshot = domain.CaptureBaseline();
+                _snapshotStore.Store(snapshot);
+                var result = domain.Apply(snapshot);
+
+                if (!result.Success)
+                    _snapshotStore.Remove(domain.Id);
+
+                return new EngineResult
+                {
+                    Success = result.Success,
+                    Results = [result],
+                    Message = result.Message
+                };
+            }
+            catch (Exception ex)
+            {
+                _snapshotStore.Remove(domain.Id);
+                return new EngineResult { Success = false, Message = ex.Message };
+            }
         }
     }
 
@@ -143,6 +153,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
 
         try
         {
+            lock (_mutationGate)
             foreach (var domain in _domains.AsEnumerable().Reverse())
             {
                 if (!domain.IsActive) continue;
@@ -202,15 +213,18 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         if (snapshot == null)
             return new EngineResult { Message = $"No snapshot for domain '{domainId}'" };
 
-        try
+        lock (_mutationGate)
         {
-            if (RevertAndRemoveIfClean(domain, snapshot))
-                return new EngineResult { Success = true, Message = $"{domain.DisplayName} reverted" };
-            return new EngineResult { Success = false, Message = $"{domain.DisplayName} revert incomplete — snapshot retained" };
-        }
-        catch (Exception ex)
-        {
-            return new EngineResult { Success = false, Message = ex.Message };
+            try
+            {
+                if (RevertAndRemoveIfClean(domain, snapshot))
+                    return new EngineResult { Success = true, Message = $"{domain.DisplayName} reverted" };
+                return new EngineResult { Success = false, Message = $"{domain.DisplayName} revert incomplete — snapshot retained" };
+            }
+            catch (Exception ex)
+            {
+                return new EngineResult { Success = false, Message = ex.Message };
+            }
         }
     }
 
@@ -245,6 +259,8 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     /// <summary>Attempt crash recovery.</summary>
     public void TryCrashRecovery()
     {
+        lock (_mutationGate)
+        {
         if (!_snapshotStore.HasSnapshots) return;
 
         Emit("Detected snapshots from previous session — attempting recovery...");
@@ -288,6 +304,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
 
         if (toRemove.Count > 0)
             _snapshotStore.RemoveRange(toRemove);
+        }
     }
 
     /// <summary>Get live status for all domains.</summary>

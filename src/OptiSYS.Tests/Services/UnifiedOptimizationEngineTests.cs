@@ -354,6 +354,123 @@ public class UnifiedOptimizationEngineTests
         Assert.Contains("not applicable", result.Message);
     }
 
+    [Fact]
+    public void ConcurrentMutations_AreSerialized_CaptureApplyRevertNeverInterleave()
+    {
+        // Two mutation paths driven from different threads (an ActivateDomain apply and a
+        // RevertDomain revert against two distinct domains) must NOT have their critical sections
+        // overlap. The engine must serialize every capture->store->apply / revert path under one
+        // interlock so a power-transition revert on a timer thread can never interleave a UI-thread
+        // apply. Deterministic: thread 1 enters Apply and parks; thread 2 must block at the engine
+        // gate (cannot enter Revert) until thread 1 is released.
+        var snapshotStore = new SnapshotStore(NewStorePath());
+
+        var inFlight = 0;
+        var maxInFlight = 0;
+        var concurrencyLock = new object();
+        void EnterCritical()
+        {
+            lock (concurrencyLock)
+            {
+                inFlight++;
+                if (inFlight > maxInFlight) maxInFlight = inFlight;
+            }
+        }
+        void LeaveCritical()
+        {
+            lock (concurrencyLock) { inFlight--; }
+        }
+
+        var applyEntered = new ManualResetEventSlim(false);
+        var releaseApply = new ManualResetEventSlim(false);
+        var revertEntered = new ManualResetEventSlim(false);
+
+        using var applyDomain = new BlockingDomain("apply-domain", "Battery")
+        {
+            OnApply = () => { EnterCritical(); applyEntered.Set(); releaseApply.Wait(5000); LeaveCritical(); },
+        };
+        using var revertDomain = new BlockingDomain("revert-domain", "Battery", isActive: true)
+        {
+            OnRevert = () => { EnterCritical(); revertEntered.Set(); LeaveCritical(); },
+        };
+
+        // revert-domain must already have a stored snapshot for RevertDomain to act.
+        snapshotStore.Store(new DomainSnapshot { DomainId = "revert-domain" });
+
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings(), snapshotStore, [applyDomain, revertDomain]);
+
+        var t1 = new Thread(() => engine.ActivateDomain("apply-domain"));
+        t1.Start();
+
+        Assert.True(applyEntered.Wait(5000), "Apply critical section never entered");
+
+        // Thread 1 now holds the engine interlock inside Apply. Thread 2's RevertDomain must block
+        // at the gate — its Revert body must NOT run while Apply is in flight.
+        var t2 = new Thread(() => engine.RevertDomain("revert-domain"));
+        t2.Start();
+
+        // With correct serialization, Revert cannot enter while Apply is parked.
+        Assert.False(revertEntered.Wait(500), "Revert interleaved with Apply — mutations not serialized");
+
+        releaseApply.Set();
+        Assert.True(t1.Join(5000));
+        Assert.True(t2.Join(5000));
+
+        // After release, the revert ran exactly once and never overlapped the apply.
+        Assert.True(revertEntered.IsSet);
+        Assert.Equal(1, maxInFlight);
+        snapshotStore.RemoveRange(["apply-domain", "revert-domain"]);
+    }
+
+    /// <summary>Fake whose Apply/Revert run injected callbacks so a test can block inside the
+    /// engine's critical section and observe whether a second mutation interleaves.</summary>
+    private sealed class BlockingDomain : IOptimizationDomain
+    {
+        public BlockingDomain(string id, string category, bool isActive = false)
+        {
+            Id = id;
+            Category = category;
+            IsActive = isActive;
+        }
+
+        public string Id { get; }
+        public string DisplayName => Id;
+        public string Category { get; }
+        public bool IsSupported => true;
+        public bool IsActive { get; private set; }
+
+        public Action? OnApply { get; init; }
+        public Action? OnRevert { get; init; }
+
+        public bool IsEnabled(Settings settings) => true;
+        public DomainSnapshot CaptureBaseline() => new() { DomainId = Id };
+
+        public ApplyResult Apply(DomainSnapshot baseline)
+        {
+            OnApply?.Invoke();
+            IsActive = true;
+            return ApplyResult.Ok(Id);
+        }
+
+        public void Revert(DomainSnapshot baseline)
+        {
+            OnRevert?.Invoke();
+            IsActive = false;
+        }
+
+        public DomainStatus GetStatus() => new()
+        {
+            DomainId = Id,
+            DisplayName = DisplayName,
+            Category = Category,
+            IsSupported = IsSupported,
+            IsActive = IsActive,
+        };
+
+        public void Dispose() { }
+    }
+
     private sealed class RecordingDomain : IOptimizationDomain
     {
         private readonly List<string>? _log;
