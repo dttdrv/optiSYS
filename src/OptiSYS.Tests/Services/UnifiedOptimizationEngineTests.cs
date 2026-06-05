@@ -63,6 +63,36 @@ public class UnifiedOptimizationEngineTests
         Assert.True(store2.HasSnapshots);   // retained for retry
     }
 
+    [Fact]
+    public void CrashRecovery_RegistryDomainRevertWriteFails_RetainsSnapshot()
+    {
+        // A registry-backed battery domain (GpuPower) now reports revert failure too: a failed
+        // restore write must KEEP the snapshot so the next launch can retry, never discard the
+        // only copy of the user's original GPU preference.
+        var path = NewStorePath();
+        var settings = new Settings { GpuPowerEnabled = true };
+
+        var store = new SnapshotStore(path);
+        var snapshot = new DomainSnapshot { DomainId = "gpu-power" };
+        snapshot.Set("globalPreference", 1);   // user's original
+        store.Store(snapshot);
+
+        var reg = new FailingRegistryWriter();
+        var domain = new GpuPowerDomain(reg);
+
+        using var engine = new UnifiedOptimizationEngine(settings, store, [domain]);
+        engine.TryCrashRecovery();
+
+        Assert.True(store.HasSnapshots);   // retained for retry
+    }
+
+    private sealed class FailingRegistryWriter : IRegistryRestoreWriter
+    {
+        public bool SetDword(RegistryRoot root, string subKey, string name, int value) => false;
+        public bool SetString(RegistryRoot root, string subKey, string name, string value) => false;
+        public bool DeleteValue(RegistryRoot root, string subKey, string name) => false;
+    }
+
     private sealed class FakePowerScheme : IPowerSchemeController
     {
         private readonly Guid _scheme;

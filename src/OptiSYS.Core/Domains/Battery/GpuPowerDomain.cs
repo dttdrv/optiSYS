@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Win32;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Native;
 
 namespace OptiSYS.Core.Domains.Battery;
 
@@ -11,8 +12,9 @@ namespace OptiSYS.Core.Domains.Battery;
 /// Settings > Display > Graphics uses under the hood.
 /// Does NOT require vendor-specific APIs (NVIDIA/AMD).
 /// </summary>
-public sealed class GpuPowerDomain : IOptimizationDomain
+public sealed class GpuPowerDomain : IOptimizationDomain, IVerifiableRevert
 {
+    private readonly IRegistryRestoreWriter _registry;
     private bool _isActive;
     private bool? _hasDiscreteGpu;
 
@@ -24,6 +26,11 @@ public sealed class GpuPowerDomain : IOptimizationDomain
     public string Category => "Battery";
     public bool IsSupported => _hasDiscreteGpu ??= DetectDiscreteGpuCore();
     public bool IsActive => _isActive;
+
+    public GpuPowerDomain(IRegistryRestoreWriter? registry = null)
+    {
+        _registry = registry ?? new RegistryRestoreWriter();
+    }
 
     public DomainSnapshot CaptureBaseline()
     {
@@ -76,21 +83,24 @@ public sealed class GpuPowerDomain : IOptimizationDomain
         }
     }
 
-    public void Revert(DomainSnapshot baseline)
-    {
-        try
-        {
-            var originalPref = baseline.Get<int>("globalPreference");
-            using var globalKey = Registry.CurrentUser.CreateSubKey(GPU_GLOBAL_KEY);
+    public void Revert(DomainSnapshot baseline) => TryRevert(baseline);
 
-            if (originalPref == 0)
-                globalKey.DeleteValue("DefaultGraphicsPreference", throwOnMissingValue: false);
-            else
-                globalKey.SetValue("DefaultGraphicsPreference", originalPref, RegistryValueKind.DWord);
-        }
-        catch { }
+    /// <summary>
+    /// Restore the captured global GPU preference. Returns false if the restore write fails — the
+    /// engine / crash recovery must then RETAIN the snapshot so the only copy of the user's
+    /// original preference is not lost. Original value 0 (the default) is restored by DELETING the
+    /// value, matching how the value is absent on an untouched machine.
+    /// </summary>
+    public bool TryRevert(DomainSnapshot baseline)
+    {
+        var originalPref = baseline.Get<int>("globalPreference");
+
+        bool ok = originalPref == 0
+            ? _registry.DeleteValue(RegistryRoot.CurrentUser, GPU_GLOBAL_KEY, "DefaultGraphicsPreference")
+            : _registry.SetDword(RegistryRoot.CurrentUser, GPU_GLOBAL_KEY, "DefaultGraphicsPreference", originalPref);
 
         _isActive = false;
+        return ok;
     }
 
     public DomainStatus GetStatus() => new()

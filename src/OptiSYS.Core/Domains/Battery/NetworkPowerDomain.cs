@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.Win32;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Native;
 
 namespace OptiSYS.Core.Domains.Battery;
 
@@ -10,8 +11,9 @@ namespace OptiSYS.Core.Domains.Battery;
 /// Disables wake-on-LAN and enables power saving on Wi-Fi/Ethernet when on battery.
 /// Uses registry-based approach for reliability across adapter types.
 /// </summary>
-public sealed class NetworkPowerDomain : IOptimizationDomain
+public sealed class NetworkPowerDomain : IOptimizationDomain, IVerifiableRevert
 {
+    private readonly IRegistryRestoreWriter _registry;
     private bool _isActive;
     private int _adaptersModified;
 
@@ -22,6 +24,11 @@ public sealed class NetworkPowerDomain : IOptimizationDomain
     public string Category => "Battery";
     public bool IsSupported => true;
     public bool IsActive => _isActive;
+
+    public NetworkPowerDomain(IRegistryRestoreWriter? registry = null)
+    {
+        _registry = registry ?? new RegistryRestoreWriter();
+    }
 
     public DomainSnapshot CaptureBaseline()
     {
@@ -117,31 +124,33 @@ public sealed class NetworkPowerDomain : IOptimizationDomain
             modified, failed, skipped, sw.Elapsed);
     }
 
-    public void Revert(DomainSnapshot baseline)
+    public void Revert(DomainSnapshot baseline) => TryRevert(baseline);
+
+    /// <summary>
+    /// Restore each captured adapter's power values. Returns false if any restore write fails — the
+    /// engine / crash recovery must then RETAIN the snapshot so the only copy of the user's
+    /// originals is not lost. A missing adapter baseline is a clean no-op (nothing to restore).
+    /// </summary>
+    public bool TryRevert(DomainSnapshot baseline)
     {
         var adapters = baseline.Get<Dictionary<string, AdapterPowerState>>("adapters");
-        if (adapters == null) { _isActive = false; return; }
+        if (adapters == null) { _isActive = false; return true; }
 
+        bool ok = true;
         foreach (var (subKeyName, state) in adapters)
         {
-            try
-            {
-                using var adapterKey = Registry.LocalMachine.OpenSubKey(
-                    $@"{NET_CLASS_KEY}\{subKeyName}", writable: true);
-                if (adapterKey == null) continue;
+            var subKey = $@"{NET_CLASS_KEY}\{subKeyName}";
+            ok &= _registry.SetDword(RegistryRoot.LocalMachine, subKey, "PnPCapabilities", state.PnPCapabilities);
+            ok &= _registry.SetString(RegistryRoot.LocalMachine, subKey, "*WakeOnMagicPacket", state.WakeOnMagicPacket);
+            ok &= _registry.SetString(RegistryRoot.LocalMachine, subKey, "*WakeOnPattern", state.WakeOnPattern);
 
-                adapterKey.SetValue("PnPCapabilities", state.PnPCapabilities, RegistryValueKind.DWord);
-                adapterKey.SetValue("*WakeOnMagicPacket", state.WakeOnMagicPacket, RegistryValueKind.String);
-                adapterKey.SetValue("*WakeOnPattern", state.WakeOnPattern, RegistryValueKind.String);
-
-                if (state.EEE != null)
-                    adapterKey.SetValue("*EEE", state.EEE, RegistryValueKind.String);
-            }
-            catch { }
+            if (state.EEE != null)
+                ok &= _registry.SetString(RegistryRoot.LocalMachine, subKey, "*EEE", state.EEE);
         }
 
         _isActive = false;
         _adaptersModified = 0;
+        return ok;
     }
 
     public DomainStatus GetStatus() => new()

@@ -505,26 +505,51 @@ internal static partial class NativeMethods
 
     // ── Helper methods ───────────────────────────────────────────────
 
+    // Pure builders for the power-throttling state — split out so the masks are unit-testable
+    // without a real process handle. Revert RESETS to OS-managed (Control=0, State=0): clearing
+    // the override returns the process to Windows-managed QoS. Sending Control=flag with State=0
+    // instead PINS the process to high performance ("never throttle"), the opposite of revert.
+
+    internal static PROCESS_POWER_THROTTLING_STATE BuildEcoQoSState(bool enable) =>
+        enable
+            ? new PROCESS_POWER_THROTTLING_STATE
+            {
+                Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+                StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED
+            }
+            : new PROCESS_POWER_THROTTLING_STATE
+            {
+                Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ControlMask = 0,
+                StateMask = 0
+            };
+
+    internal static PROCESS_POWER_THROTTLING_STATE BuildTimerResolutionState(bool ignore) =>
+        ignore
+            ? new PROCESS_POWER_THROTTLING_STATE
+            {
+                Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ControlMask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
+                StateMask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION
+            }
+            : new PROCESS_POWER_THROTTLING_STATE
+            {
+                Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ControlMask = 0,
+                StateMask = 0
+            };
+
     internal static unsafe bool SetProcessEcoQoS(IntPtr hProcess, bool enable)
     {
-        var state = new PROCESS_POWER_THROTTLING_STATE
-        {
-            Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-            ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
-            StateMask = enable ? PROCESS_POWER_THROTTLING_EXECUTION_SPEED : 0
-        };
+        var state = BuildEcoQoSState(enable);
         var ptr = (IntPtr)(&state);
         return SetProcessInformation(hProcess, ProcessPowerThrottling, ptr, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
     }
 
     internal static unsafe bool SetProcessTimerResolutionIgnore(IntPtr hProcess, bool ignore)
     {
-        var state = new PROCESS_POWER_THROTTLING_STATE
-        {
-            Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-            ControlMask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
-            StateMask = ignore ? PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION : 0
-        };
+        var state = BuildTimerResolutionState(ignore);
         var ptr = (IntPtr)(&state);
         return SetProcessInformation(hProcess, ProcessPowerThrottling, ptr, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
     }
