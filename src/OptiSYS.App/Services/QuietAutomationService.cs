@@ -94,7 +94,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
             SetOptionalOptimizations(true);   // Wi-Fi + (admin) services tune-up are part of the AIO set
         _memoryWatcher = _timer.Start(
             TimeSpan.FromSeconds(Math.Max(1, _settings.MemoryCheckIntervalSeconds)),
-            () => _ = EvaluateMemoryPressureAsync());
+            () => _lastEvaluation = EvaluateMemoryPressureAsync());
         Publish("Safe background optimization started.");
         return Task.CompletedTask;
     }
@@ -190,6 +190,11 @@ public sealed class QuietAutomationService : IQuietAutomationService
         try { _optimizer.RestoreBackgroundMemoryPriority(); } catch { }
         _cleanupGate.Dispose();
     }
+
+    // Holds the most recent watcher evaluation so tests can deterministically await a tick's full
+    // completion (including the gated cleanup) instead of racing a fire-and-forget Task.
+    private Task _lastEvaluation = Task.CompletedTask;
+    internal Task LastEvaluationForTests => _lastEvaluation;
 
     private async Task EvaluateMemoryPressureAsync()
     {

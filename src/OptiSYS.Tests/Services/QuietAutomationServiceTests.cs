@@ -140,15 +140,18 @@ public sealed class QuietAutomationServiceTests
         var service = CreateService(settings, timer, memory, optimizer);
         await service.StartAsync();
 
+        // Await each tick's full evaluation (including the gated Task.Run cleanup) before the next
+        // tick: the cleanup gate releases only after OptimizeAll returns, so polling on the call
+        // count alone let the second tick race the first one's gate under threadpool contention.
         timer.Tick();
-        // Critical reclaim awaits a Task.Run cleanup; give the poll an adequate budget (300 * 10ms
-        // = 3s) so the assertion never races the async completion (was a fixed ~200ms — flaky).
-        await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Once), attempts: 300);
+        await service.LastEvaluationForTests;
+        optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Once);
 
         timer.Tick();   // still critical, still inside the 300s cooldown
-        await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Exactly(2)), attempts: 300);
+        await service.LastEvaluationForTests;
+        optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Exactly(2));
     }
 
     [Fact]
