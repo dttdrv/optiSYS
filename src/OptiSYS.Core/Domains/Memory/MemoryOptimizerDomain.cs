@@ -97,7 +97,10 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
 
     public void Revert(DomainSnapshot baseline)
     {
-        // Memory optimization is inherently reversible: Windows pages data back as needed
+        // Working-set trims and standby purges are inherently reversible (Windows pages data back as
+        // needed). The background-priority hint is NOT auto-reverted by the OS, so restore the prior
+        // memory priority of every process we lowered.
+        _optimizer.RestoreBackgroundMemoryPriority();
         _isActive = false;
     }
 

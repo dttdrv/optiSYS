@@ -58,6 +58,14 @@ public interface IMemoryOptimizer : IDisposable
     /// </summary>
     int HintBackgroundMemoryPriority();
 
+    /// <summary>
+    /// Restores the memory priority of every process that <see cref="HintBackgroundMemoryPriority"/>
+    /// lowered, back to its captured prior value (NORMAL when the prior couldn't be read). This is
+    /// the undo for the background-priority hint and must run on teardown so no process is left at a
+    /// lowered priority for the rest of its lifetime.
+    /// </summary>
+    void RestoreBackgroundMemoryPriority();
+
     /// <summary>Processes excluded from trimming or optimization.</summary>
     HashSet<string> ExcludedProcesses { get; set; }
 }

@@ -90,6 +90,23 @@ public class MemoryOptimizerDomainTests
     }
 
     [Fact]
+    public void Revert_RestoresBackgroundMemoryPriority()
+    {
+        // The background-priority hint has no OS auto-revert, so Revert must route through the
+        // optimizer's restore to put every lowered process's prior priority back.
+        var settings = new Settings();
+        var memoryInfo = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>(MockBehavior.Strict);
+        optimizer.Setup(o => o.RestoreBackgroundMemoryPriority());
+
+        using var domain = new MemoryOptimizerDomain(settings, optimizer.Object, memoryInfo.Object);
+
+        domain.Revert(new DomainSnapshot { DomainId = MemoryOptimizerDomainId });
+
+        optimizer.Verify(o => o.RestoreBackgroundMemoryPriority(), Times.Once);
+    }
+
+    [Fact]
     public void Dispose_DoesNotDisposeInjectedSharedDependencies()
     {
         var settings = new Settings();

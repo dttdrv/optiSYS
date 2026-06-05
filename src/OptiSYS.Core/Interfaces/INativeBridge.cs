@@ -20,6 +20,11 @@ public interface INativeBridge : IDisposable
     bool ClearStandbyList();
     bool FlushModifications();
 
+    // Process memory priority (capture-before-lower so the hint can be fully reverted).
+    // GetProcessMemoryPriority returns 0 when the value can't be read.
+    uint GetProcessMemoryPriority(int processId);
+    bool SetProcessMemoryPriority(int processId, uint priority);
+
     // Process
     int GetForegroundProcessId();
     NativeProcessInfo[] GetProcessList();

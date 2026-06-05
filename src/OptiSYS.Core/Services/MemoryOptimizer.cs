@@ -19,6 +19,8 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     private readonly IMemoryInfoService _memoryInfo;
     private readonly INativeBridge? _native;
     private readonly StepEffectivenessTracker _tracker = new();
+    // PIDs we lowered to LOW + their captured prior priority, so the hint can be fully reverted.
+    private readonly Dictionary<int, uint> _loweredPriorities = new();
     private bool _disposed;
 
     public HashSet<string> ExcludedProcesses { get; set; } = new(DefaultExclusions, StringComparer.OrdinalIgnoreCase);
@@ -202,7 +204,58 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         return hinted;
     }
 
-    private static bool LowerProcessMemoryPriority(int pid)
+    private bool LowerProcessMemoryPriority(int pid)
+    {
+        // Capture the current priority BEFORE lowering, so revert can restore the exact prior value.
+        // Already-tracked PIDs keep their original capture (don't overwrite LOW back onto itself).
+        if (!_loweredPriorities.ContainsKey(pid))
+        {
+            var prior = _native?.GetProcessMemoryPriority(pid) ?? GetProcessMemoryPriorityRaw(pid);
+            _loweredPriorities[pid] = prior;
+        }
+
+        if (_native is not null)
+            return _native.SetProcessMemoryPriority(pid, NativeMethods.MEMORY_PRIORITY_LOW);
+
+        return SetProcessMemoryPriorityRaw(pid, NativeMethods.MEMORY_PRIORITY_LOW);
+    }
+
+    /// <summary>
+    /// Restores the memory priority of every process this instance lowered, back to its captured
+    /// prior value (NORMAL when the prior couldn't be read). A process that has exited or denies
+    /// access is a clean skip — it can't be left in a lowered state, and the rest still restore.
+    /// </summary>
+    public void RestoreBackgroundMemoryPriority()
+    {
+        ThrowIfDisposed();
+
+        foreach (var (pid, prior) in _loweredPriorities)
+        {
+            var target = prior != 0 ? prior : NativeMethods.MEMORY_PRIORITY_NORMAL;
+            try
+            {
+                if (_native is not null)
+                    _native.SetProcessMemoryPriority(pid, target);
+                else
+                    SetProcessMemoryPriorityRaw(pid, target);
+            }
+            catch { /* process exited or access denied — skip */ }
+        }
+
+        _loweredPriorities.Clear();
+    }
+
+    private static uint GetProcessMemoryPriorityRaw(int pid)
+    {
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_INFORMATION, false, (uint)pid);
+        if (handle == IntPtr.Zero)
+            return 0;
+        try { return NativeMethods.GetProcessMemoryPriority(handle); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
+    private static bool SetProcessMemoryPriorityRaw(int pid, uint priority)
     {
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_SET_INFORMATION, false, (uint)pid);
@@ -210,7 +263,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
             return false;
         try
         {
-            return NativeMethods.SetProcessMemoryPriority(handle, NativeMethods.MEMORY_PRIORITY_LOW);
+            return NativeMethods.SetProcessMemoryPriority(handle, priority);
         }
         finally { NativeMethods.CloseHandle(handle); }
     }

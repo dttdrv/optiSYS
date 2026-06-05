@@ -185,6 +185,9 @@ public sealed class QuietAutomationService : IQuietAutomationService
         _disposed = true;
         _memoryWatcher?.Dispose();
         _memoryWatcher = null;
+        // Undo the background-priority hints applied across the session so no process is left at a
+        // lowered memory priority for the rest of its lifetime (the hint has no OS auto-revert).
+        try { _optimizer.RestoreBackgroundMemoryPriority(); } catch { }
         _cleanupGate.Dispose();
     }
 

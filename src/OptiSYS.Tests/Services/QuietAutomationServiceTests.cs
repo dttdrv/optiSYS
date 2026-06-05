@@ -210,6 +210,23 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task Dispose_RestoresBackgroundMemoryPriority()
+    {
+        // The watcher lowers background-process memory priority across the session; on teardown we
+        // must put every lowered process back so none is left at a lowered priority for its lifetime.
+        var settings = new Settings();
+        var timer = new FakeTimerService();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        var service = CreateService(settings, timer, optimizer: optimizer);
+        await service.StartAsync();
+
+        service.Dispose();
+
+        optimizer.Verify(o => o.RestoreBackgroundMemoryPriority(), Times.Once);
+    }
+
+    [Fact]
     public async Task ApplyBatteryPreset_ActivatesOnlyEngineCategoryAfterSafeSettings()
     {
         var settings = new Settings();

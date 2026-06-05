@@ -168,6 +168,24 @@ public sealed class WindowsNativeBridge : INativeBridge
     public bool ClearStandbyList() => false;
     public bool FlushModifications() => false;
 
+    public uint GetProcessMemoryPriority(int processId)
+    {
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_INFORMATION, false, (uint)processId);
+        if (handle == IntPtr.Zero) return 0;
+        try { return NativeMethods.GetProcessMemoryPriority(handle); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
+    public bool SetProcessMemoryPriority(int processId, uint priority)
+    {
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_SET_INFORMATION, false, (uint)processId);
+        if (handle == IntPtr.Zero) return false;
+        try { return NativeMethods.SetProcessMemoryPriority(handle, priority); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
     public int GetForegroundProcessId() => (int)NativeMethods.GetForegroundProcessId();
 
     public Interfaces.NativeProcessInfo[] GetProcessList()

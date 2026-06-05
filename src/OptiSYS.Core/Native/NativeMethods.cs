@@ -157,6 +157,10 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool SetProcessInformation(IntPtr hProcess, int ProcessInformationClass, IntPtr ProcessInformation, uint ProcessInformationSize);
 
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetProcessInformation(IntPtr hProcess, int ProcessInformationClass, IntPtr ProcessInformation, uint ProcessInformationSize);
+
     [LibraryImport("kernel32.dll")]
     internal static partial IntPtr GetCurrentProcess();
 
@@ -399,6 +403,7 @@ internal static partial class NativeMethods
     internal const uint MEMORY_PRIORITY_LOW = 2;
     internal const uint MEMORY_PRIORITY_MEDIUM = 3;
     internal const uint MEMORY_PRIORITY_BELOW_NORMAL = 4;
+    internal const uint MEMORY_PRIORITY_NORMAL = 5;
 
     internal const int IO_PRIORITY_VERY_LOW = 0;
     internal const int IO_PRIORITY_LOW = 1;
@@ -474,6 +479,18 @@ internal static partial class NativeMethods
         var ptr = (IntPtr)(&info);
         return SetProcessInformation(hProcess, ProcessMemoryPriority,
             ptr, (uint)Marshal.SizeOf<MEMORY_PRIORITY_INFORMATION>());
+    }
+
+    // Reads the process's current memory priority. Returns 0 when it can't be queried, so the
+    // caller can capture-before-lower (to restore the exact prior value on revert).
+    internal static unsafe uint GetProcessMemoryPriority(IntPtr hProcess)
+    {
+        var info = new MEMORY_PRIORITY_INFORMATION();
+        var ptr = (IntPtr)(&info);
+        return GetProcessInformation(hProcess, ProcessMemoryPriority,
+            ptr, (uint)Marshal.SizeOf<MEMORY_PRIORITY_INFORMATION>())
+            ? info.MemoryPriority
+            : 0;
     }
 
     internal static unsafe bool SetProcessIoPriority(IntPtr hProcess, int ioPriority)
