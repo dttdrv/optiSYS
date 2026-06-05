@@ -92,10 +92,25 @@ public sealed class Settings
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        // Persist enums by NAME (reorder-safe). System.Text.Json still READS legacy numeric
+        // ordinals, so existing settings.json files upgrade transparently. Unknown names/ordinals
+        // are clamped to a safe default in Validate().
+        Converters = { new JsonStringEnumConverter() }
     };
 
+    // Serializes ALL writers (Save + the debounced path) so a synchronous Save can never race an
+    // in-flight debounced write to the same file (Lever 4: single serialized writer).
+    private static readonly object SaveLock = new();
+
     private CancellationTokenSource? _debounceCts;
+
+    /// <summary>
+    /// Persisted settings schema version. Bumped when a migration is added; a file with a lower
+    /// (or missing → 0) version is upgraded on Load via <see cref="Migrate"/>.
+    /// </summary>
+    internal const int CurrentSchemaVersion = 1;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
     // ── Battery optimization settings ────────────────────────────────
     public bool AutoOptimizeOnBattery { get; set; } = true;
@@ -210,8 +225,10 @@ public sealed class Settings
     /// <summary>
     /// Transient UI state: set when <see cref="UseTaskScheduler"/> is on but the elevated
     /// logon task is missing/stale and we are not elevated — drives a non-nagging
-    /// "Grant admin access" banner. Recomputed at startup; not a persisted user intent.
+    /// "Grant admin access" banner. Recomputed at startup; not a persisted user intent — so it is
+    /// never written to or read from disk (a stale value would muddy the persistence contract).
     /// </summary>
+    [JsonIgnore]
     public bool ElevationPending { get; set; } = false;
 
     public bool HasCompletedOnboarding { get; set; } = false;
@@ -243,33 +260,61 @@ public sealed class Settings
         ?? [];
 
     // ── Load / Save ──────────────────────────────────────────────────
-    public static Settings Load()
+    public static Settings Load() => Load(SettingsFile);
+
+    internal static Settings Load(string file)
+    {
+        // Try the main file; if it is missing or torn (crash mid-write), fall back to the last-good
+        // .bak so user intent / opt-ins are never silently reset by a corrupt file (Lever 4).
+        var settings = TryLoadFrom(file) ?? TryLoadFrom(file + ".bak") ?? new Settings();
+        settings.Migrate();
+        settings.Validate();
+        return settings;
+    }
+
+    private static Settings? TryLoadFrom(string file)
     {
         try
         {
-            if (!File.Exists(SettingsFile))
-                return new Settings();
-
-            var json = File.ReadAllText(SettingsFile);
-            var settings = JsonSerializer.Deserialize<Settings>(json, JsonOptions) ?? new Settings();
-            settings.Validate();
-            return settings;
+            if (!File.Exists(file)) return null;
+            var json = File.ReadAllText(file);
+            return JsonSerializer.Deserialize<Settings>(json, JsonOptions);
         }
         catch
         {
-            return new Settings();
+            return null;   // corrupt — let the caller try the backup
         }
     }
 
-    public void Save()
+    public void Save() => SaveTo(SettingsFile);
+
+    internal void SaveTo(string file)
     {
-        try
+        // Clamp runtime-set values before they reach disk, so what is persisted is always valid
+        // (Validate previously ran only on Load, a launch too late).
+        Validate();
+
+        lock (SaveLock)   // serialize against any concurrent / debounced write to the same file
         {
-            Directory.CreateDirectory(SettingsDir);
-            var json = JsonSerializer.Serialize(this, JsonOptions);
-            File.WriteAllText(SettingsFile, json);
+            try
+            {
+                var dir = Path.GetDirectoryName(file)!;
+                Directory.CreateDirectory(dir);
+                var json = JsonSerializer.Serialize(this, JsonOptions);
+
+                // Atomic write: serialize to a temp file, then replace. A crash can leave the temp
+                // file or the intact previous file, but never a half-written target. Preserve the
+                // prior good file as .bak so Load can fall back if the replace is interrupted.
+                var tmp = file + ".tmp";
+                File.WriteAllText(tmp, json);
+
+                if (File.Exists(file))
+                    File.Replace(tmp, file, file + ".bak");
+                else
+                    File.Move(tmp, file);
+            }
+            catch { }
         }
-        catch { }
     }
 
     public async void SaveDebounced()
@@ -278,20 +323,34 @@ public sealed class Settings
         old?.Cancel();
         old?.Dispose();
         var token = _debounceCts!.Token;
-        var json = JsonSerializer.Serialize(this, JsonOptions);
 
         try
         {
             await Task.Delay(500, token);
-            Directory.CreateDirectory(SettingsDir);
-            await File.WriteAllTextAsync(SettingsFile, json, token);
+            SaveTo(SettingsFile);   // same atomic + serialized writer as Save()
         }
         catch (OperationCanceledException) { }
         catch { }
     }
 
+    /// <summary>
+    /// Ordered schema migration scaffold, run on Load between deserialize and Validate. A file with
+    /// no <see cref="SchemaVersion"/> deserializes to 0 and is upgraded to <see cref="CurrentSchemaVersion"/>.
+    /// No historical migrations exist yet; add future vN→vN+1 steps here, append-only.
+    /// </summary>
+    private void Migrate()
+    {
+        // (no historical migrations yet — when one is needed, gate it on the on-disk version, e.g.
+        //  if (SchemaVersion < 1) { /* transform */ } )
+        SchemaVersion = CurrentSchemaVersion;
+    }
+
     public void Validate()
     {
+        // Enums — a legacy/forward file can carry an undefined ordinal; realize to a safe default.
+        if (!Enum.IsDefined(OptimizationLevel)) OptimizationLevel = OptimizationLevel.Balanced;
+        if (!Enum.IsDefined(BatteryPreset)) BatteryPreset = BatteryPreset.Recommended;
+
         // Battery
         DebouncePowerChangeSeconds = Math.Clamp(DebouncePowerChangeSeconds, 1, 10);
         CpuParkingMinProcessorDC = Math.Clamp(CpuParkingMinProcessorDC, 0, 100);
