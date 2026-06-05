@@ -151,30 +151,6 @@ public sealed class MemoryInfoService : IMemoryInfoService
         return managedInfo;
     }
 
-    public IReadOnlyList<(string name, long bytes)> GetTopMemoryProcesses(long thresholdBytes, int max)
-    {
-        var native = _native?.GetProcessList();
-        if (native is { Length: > 0 })
-            return MemoryProcessSelector.SelectHeavy(native, thresholdBytes, max);
-
-        var list = new List<Interfaces.NativeProcessInfo>();
-        foreach (var proc in Process.GetProcesses())
-        {
-            try
-            {
-                list.Add(new Interfaces.NativeProcessInfo
-                {
-                    ProcessId = proc.Id,
-                    ProcessName = proc.ProcessName,
-                    WorkingSetBytes = proc.WorkingSet64,
-                });
-            }
-            catch { }
-            finally { proc.Dispose(); }
-        }
-        return MemoryProcessSelector.SelectHeavy(list, thresholdBytes, max);
-    }
-
     private MemoryInfo GetManagedMemoryInfo()
     {
         var memStatus = new NativeMethods.MEMORYSTATUSEX

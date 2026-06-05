@@ -250,17 +250,6 @@
                             </Border>
                         </Grid>
 
-                        <!-- Memory-heavy apps (processes over 1 GB) — hidden when none qualify. -->
-                        <Border x:Name="HeavyAppsCard" Visibility="Collapsed" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="20">
-                            <StackPanel Spacing="12">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <FontIcon Glyph="&#xE964;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="Memory-heavy apps" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
-                                </StackPanel>
-                                <StackPanel x:Name="HeavyAppsList" Spacing="6" />
-                            </StackPanel>
-                        </Border>
-
                         <!-- Memory Usage Trend Chart Card -->
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                             <StackPanel Spacing="12">

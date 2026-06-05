@@ -27,9 +27,6 @@ public interface IMemoryInfoService : IDisposable
     /// <summary>Synchronously collects a fresh memory snapshot via native APIs + perf counters.</summary>
     MemoryInfo GetCurrentMemoryInfo();
 
-    /// <summary>Processes at/above <paramref name="thresholdBytes"/> working set, largest first, capped at <paramref name="max"/>.</summary>
-    IReadOnlyList<(string name, long bytes)> GetTopMemoryProcesses(long thresholdBytes, int max);
-
     /// <summary>Primes performance counters in the background. Call once at startup.</summary>
     Task WarmUpAsync();
 }

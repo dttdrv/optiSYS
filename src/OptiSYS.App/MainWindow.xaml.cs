@@ -33,7 +33,6 @@ public sealed partial class MainWindow : Window
     private bool _allowExit;
     private bool _initializing = true;
     private bool _suppressAutoToggle;
-    private DateTimeOffset _lastHeavyAppsAt;
     private OptiSYS.Core.Services.OnboardingState? _onboarding;
 
     public MainWindow()
@@ -589,7 +588,6 @@ public sealed partial class MainWindow : Window
 
         // Update Fluent UI dashboard telemetry
         UpdateDashboardUI(memory, battery);
-        UpdateHeavyApps();
     }
 
     private void UpdateDashboardUI(MemoryInfo? memory, BatteryInfo? battery)
@@ -718,62 +716,6 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         {
             ManualTrimButton.IsEnabled = true;
         }
-    }
-
-    /// <summary>
-    /// Rebuilds the "memory-heavy apps" list (processes &gt; 1 GB, top 5). Enumerating processes
-    /// isn't free, so it runs on a ~5 s throttle inside the 1 s UI refresh. The card hides entirely
-    /// when nothing exceeds 1 GB.
-    /// </summary>
-    private void UpdateHeavyApps()
-    {
-        if (DateTimeOffset.UtcNow - _lastHeavyAppsAt < TimeSpan.FromSeconds(5))
-        {
-            return;
-        }
-        _lastHeavyAppsAt = DateTimeOffset.UtcNow;
-
-        IReadOnlyList<(string name, long bytes)> heavy;
-        try { heavy = _memory.GetTopMemoryProcesses(1024L * 1024 * 1024, 5) ?? []; }
-        catch { return; }
-
-        HeavyAppsList.Children.Clear();
-        foreach (var (name, bytes) in heavy)
-        {
-            HeavyAppsList.Children.Add(BuildHeavyAppRow(name, bytes));
-        }
-        HeavyAppsCard.Visibility = heavy.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    private static FrameworkElement BuildHeavyAppRow(string name, long bytes)
-    {
-        var caption = Application.Current.Resources.TryGetValue("CaptionTextBlockStyle", out var s) ? s as Style : null;
-        var secondary = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var b) ? b as Brush : null;
-
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var nameText = new TextBlock
-        {
-            Text = name,
-            Style = caption,
-            Foreground = secondary,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var sizeText = new TextBlock
-        {
-            Text = OptiSYS.Core.Models.OptimizationResult.FormatBytesStatic(bytes),
-            Style = caption,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
-        };
-        Grid.SetColumn(sizeText, 1);
-        row.Children.Add(nameText);
-        row.Children.Add(sizeText);
-        return row;
     }
 
     private void OnSettingsChanged(object sender, RoutedEventArgs e)
