@@ -86,6 +86,51 @@ public class UnifiedOptimizationEngineTests
         Assert.True(store.HasSnapshots);   // retained for retry
     }
 
+    [Fact]
+    public void ActivateCategory_WhenApplyFails_EmitsDiagnostic()
+    {
+        var snapshotStore = new SnapshotStore(NewStorePath());
+        using var domain = new RecordingDomain("wifi-optimizer", "Battery") { FailApply = true };
+        var diag = new RecordingDiagnosticLog();
+
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings { WiFiOptimizerEnabled = true },
+            snapshotStore, [domain], native: null, diagnostics: diag);
+
+        engine.ActivateCategory("Battery");
+
+        Assert.Contains(diag.Entries, e => e.Contains("wifi-optimizer", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CrashRecovery_WhenRevertFails_EmitsDiagnostic()
+    {
+        var path = NewStorePath();
+        var settings = new Settings { GpuPowerEnabled = true };
+
+        var store = new SnapshotStore(path);
+        var snapshot = new DomainSnapshot { DomainId = "gpu-power" };
+        snapshot.Set("globalPreference", 1);
+        store.Store(snapshot);
+
+        var reg = new FailingRegistryWriter();
+        var domain = new GpuPowerDomain(reg);
+        var diag = new RecordingDiagnosticLog();
+
+        using var engine = new UnifiedOptimizationEngine(
+            settings, store, [domain], native: null, diagnostics: diag);
+        engine.TryCrashRecovery();
+
+        Assert.Contains(diag.Entries, e => e.Contains("gpu-power", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class RecordingDiagnosticLog : IDiagnosticLog
+    {
+        public List<string> Entries { get; } = [];
+        public void Write(string level, string category, string message) =>
+            Entries.Add($"{level}|{category}|{message}");
+    }
+
     private sealed class FailingRegistryWriter : IRegistryRestoreWriter
     {
         public bool SetDword(RegistryRoot root, string subKey, string name, int value) => false;
@@ -217,11 +262,14 @@ public class UnifiedOptimizationEngineTests
         public string Category { get; }
         public bool IsSupported => true;
         public bool IsActive { get; private set; }
+        public bool FailApply { get; init; }
 
         public DomainSnapshot CaptureBaseline() => new() { DomainId = Id };
 
         public ApplyResult Apply(DomainSnapshot baseline)
         {
+            if (FailApply)
+                return ApplyResult.Fail(Id, "forced apply failure");
             IsActive = true;
             return ApplyResult.Ok(Id);
         }

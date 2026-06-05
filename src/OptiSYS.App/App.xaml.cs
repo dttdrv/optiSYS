@@ -25,6 +25,7 @@ public partial class App : Application
     {
         UnhandledException += OnUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnCurrentDomainUnhandledException;
+        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         StartupLog.Write("App ctor: handlers attached");
         InitializeComponent();
@@ -62,6 +63,11 @@ public partial class App : Application
                 Environment.Exit(0);
                 return;
             }
+
+            // Crash triage: flag if the previous run never recorded a clean exit, then arm the
+            // running-marker for this session. Done after the provision-elevation child exits so
+            // that short-lived helper instance isn't counted as a real session.
+            StartupLog.BeginSession();
 
             // Step 1 — build the DI container. Must happen before `new MainWindow()` because
             // the shell resolves its application services through AppHost.Services.
@@ -173,5 +179,13 @@ public partial class App : Application
     private void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
         StartupLog.WriteException("TaskScheduler.UnobservedTaskException", e.Exception);
+    }
+
+    // Normal process teardown: record a clean exit so the next launch won't flag an unexpected end.
+    // A crash / kill-9 never runs this, leaving the running-marker armed — exactly the triage signal.
+    private void OnProcessExit(object? sender, EventArgs e)
+    {
+        StartupLog.Write("ProcessExit: clean exit");
+        StartupLog.MarkCleanExit();
     }
 }

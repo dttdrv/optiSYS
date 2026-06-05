@@ -14,6 +14,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     private readonly List<IOptimizationDomain> _domains;
     private readonly SnapshotStore _snapshotStore;
     private readonly Settings _settings;
+    private readonly IDiagnosticLog _diagnostics;
     private int _optimizing; // Interlocked guard
     private bool _disposed;
 
@@ -27,10 +28,12 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         Settings settings,
         SnapshotStore snapshotStore,
         IEnumerable<IOptimizationDomain>? domains = null,
-        INativeBridge? native = null)
+        INativeBridge? native = null,
+        IDiagnosticLog? diagnostics = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
+        _diagnostics = diagnostics ?? NullDiagnosticLog.Instance;
 
         var orderedDomains = domains?.ToList();
         _domains = orderedDomains is { Count: > 0 }
@@ -75,6 +78,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
                     else
                     {
                         Emit($"{domain.DisplayName} failed: {result.Message}");
+                        _diagnostics.Write("warn", "engine", $"apply failed: {domain.Id}: {result.Message}");
                         _snapshotStore.Remove(domain.Id);
                     }
                 }
@@ -82,6 +86,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
                 {
                     results.Add(ApplyResult.Fail(domain.Id, ex.Message));
                     Emit($"{domain.DisplayName} error: {ex.Message}");
+                    _diagnostics.Write("error", "engine", $"apply threw: {domain.Id}: {ex.Message}");
                     _snapshotStore.Remove(domain.Id);
                 }
             }
@@ -169,12 +174,14 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
                     {
                         failed++;
                         Emit($"{domain.DisplayName} revert incomplete — snapshot retained for retry");
+                        _diagnostics.Write("warn", "engine", $"revert incomplete: {domain.Id}");
                     }
                 }
                 catch (Exception ex)
                 {
                     failed++;
                     Emit($"{domain.DisplayName} revert failed: {ex.Message}");
+                    _diagnostics.Write("error", "engine", $"revert threw: {domain.Id}: {ex.Message}");
                 }
             }
 
@@ -277,11 +284,13 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
                 else
                 {
                     Emit($"Recovery incomplete for {domain.DisplayName} — snapshot retained for retry");
+                    _diagnostics.Write("warn", "engine", $"recovery incomplete: {domain.Id} — snapshot retained");
                 }
             }
             catch (Exception ex)
             {
                 Emit($"Recovery failed for {domain.DisplayName}: {ex.Message}");
+                _diagnostics.Write("error", "engine", $"recovery threw: {domain.Id}: {ex.Message}");
             }
         }
 

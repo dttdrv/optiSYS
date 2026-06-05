@@ -67,7 +67,11 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
 
     private async Task StartCoreAsync()
     {
+        // Per-step breadcrumbs: if startup stalls or automation fails to start, the on-disk log
+        // localizes the failing step instead of going silent (the "app disappears" triage signal).
+        StartupLog.Write("runtime: battery start");
         _battery.Start();
+        StartupLog.Write("runtime: power-source monitor start");
         _powerSourceMonitor.Start();
         // Booting while already on battery never produces an AC->DC transition, so apply the Battery
         // category once at startup. The engine's own enabled/active/in-progress guards keep this from
@@ -77,10 +81,13 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         {
             _engine.ActivateCategory("Battery");
         }
+        StartupLog.Write("runtime: adaptive ecoqos start");
         _adaptiveEcoQos.Start();
         // Startup begins on the WinUI thread. We keep that context through warm-up so the
         // first automation timer can bind to the UI dispatcher safely.
+        StartupLog.Write("runtime: memory warm-up");
         await _memory.WarmUpAsync();
+        StartupLog.Write("runtime: automation start");
         await _automation.StartAsync();
         ConfigureAutostartBackend();
         _battery.Updated += OnBatteryUpdated;

@@ -141,12 +141,14 @@ public sealed class QuietAutomationServiceTests
         await service.StartAsync();
 
         timer.Tick();
+        // Critical reclaim awaits a Task.Run cleanup; give the poll an adequate budget (300 * 10ms
+        // = 3s) so the assertion never races the async completion (was a fixed ~200ms — flaky).
         await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Once));
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Once), attempts: 300);
 
         timer.Tick();   // still critical, still inside the 300s cooldown
         await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
-            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Exactly(2)));
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Exactly(2)), attempts: 300);
     }
 
     [Fact]

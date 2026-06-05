@@ -65,6 +65,10 @@ public static class AppHost
 
         sc.AddSingleton<SnapshotStore>();
 
+        // Internal diagnostic sink: routes engine/runtime diagnostics into the same on-disk
+        // startup.log. Registered so the engine's optional IDiagnosticLog ctor param resolves.
+        sc.AddSingleton<IDiagnosticLog, StartupLogDiagnosticLog>();
+
         // Power-scheme seam used by CpuParkingDomain to capture/write/restore DC processor values.
         sc.AddSingleton<IPowerSchemeController, PowerSchemeController>();
 
