@@ -21,6 +21,8 @@ public sealed class UsbSuspendDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.UsbSuspendEnabled;
+
     public DomainSnapshot CaptureBaseline()
     {
         var snapshot = new DomainSnapshot { DomainId = Id };

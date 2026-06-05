@@ -21,6 +21,8 @@ public sealed class DiskIoCoalescingDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.DiskCoalescingEnabled;
+
     public DiskIoCoalescingDomain(Settings settings) { _settings = settings; }
 
     public DomainSnapshot CaptureBaseline()

@@ -27,6 +27,8 @@ public sealed class GpuPowerDomain : IOptimizationDomain, IVerifiableRevert
     public bool IsSupported => _hasDiscreteGpu ??= DetectDiscreteGpuCore();
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.GpuPowerEnabled;
+
     public GpuPowerDomain(IRegistryRestoreWriter? registry = null)
     {
         _registry = registry ?? new RegistryRestoreWriter();

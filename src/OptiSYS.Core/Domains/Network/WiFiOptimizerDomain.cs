@@ -46,6 +46,8 @@ public sealed class WiFiOptimizerDomain : IOptimizationDomain
     public bool IsSupported => _available ??= DetectAvailability();
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.WiFiOptimizerEnabled;
+
     public WiFiOptimizerDomain(Settings settings, IWlanInterop wlan)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));

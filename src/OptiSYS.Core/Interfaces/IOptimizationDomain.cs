@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OptiSYS.Core.Models;
 
 namespace OptiSYS.Core.Interfaces;
 
@@ -13,6 +14,13 @@ public interface IOptimizationDomain : IDisposable
     string Category { get; }
     bool IsSupported { get; }
     bool IsActive { get; }
+
+    /// <summary>
+    /// Whether this domain is opted in for the given settings. The enable gate is owned by each
+    /// domain (not a central switch), so a new domain becomes active by registration alone and a
+    /// typo can never silently leave it disabled. The engine consults this before applying.
+    /// </summary>
+    bool IsEnabled(Settings settings);
 
     DomainSnapshot CaptureBaseline();
     ApplyResult Apply(DomainSnapshot baseline);

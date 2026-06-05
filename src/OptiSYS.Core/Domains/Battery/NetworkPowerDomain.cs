@@ -25,6 +25,8 @@ public sealed class NetworkPowerDomain : IOptimizationDomain, IVerifiableRevert
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.NetworkPowerEnabled;
+
     public NetworkPowerDomain(IRegistryRestoreWriter? registry = null)
     {
         _registry = registry ?? new RegistryRestoreWriter();

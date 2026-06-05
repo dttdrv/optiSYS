@@ -139,7 +139,8 @@ public class UnifiedOptimizationEngineTests
     public void ActivateCategory_WhenApplyFails_EmitsDiagnostic()
     {
         var snapshotStore = new SnapshotStore(NewStorePath());
-        using var domain = new RecordingDomain("wifi-optimizer", "Battery") { FailApply = true };
+        using var domain = new RecordingDomain("wifi-optimizer", "Battery")
+            { FailApply = true, Enable = s => s.WiFiOptimizerEnabled };
         var diag = new RecordingDiagnosticLog();
 
         using var engine = new UnifiedOptimizationEngine(
@@ -257,6 +258,63 @@ public class UnifiedOptimizationEngineTests
         snapshotStore.RemoveRange([firstId, secondId]);
     }
 
+    /// <summary>
+    /// The enable gate moved from the engine's stringly-typed switch onto each domain
+    /// (<see cref="IOptimizationDomain.IsEnabled"/>). This pins the exact historical
+    /// id → Settings-flag mapping the old switch used, so the per-domain predicates can
+    /// never drift from the behavior they replaced. Each domain is evaluated against a
+    /// Settings whose flag for that id is true and a Settings whose flag is false.
+    /// </summary>
+    [Fact]
+    public void EachDomain_IsEnabled_MatchesHistoricalSwitchMapping()
+    {
+        // (id, set the historical flag) → (id, clear the historical flag)
+        var enable = new (string id, Action<Settings> set)[]
+        {
+            ("ecoqos",              s => s.EcoQosEnabled = true),
+            ("timer-resolution",    s => s.TimerResolutionEnabled = true),
+            ("background-services", s => s.BackgroundServicesEnabled = true),
+            ("usb-suspend",         s => s.UsbSuspendEnabled = true),
+            ("network-power",       s => s.NetworkPowerEnabled = true),
+            ("gpu-power",           s => s.GpuPowerEnabled = true),
+            ("cpu-parking",         s => s.CpuParkingEnabled = true),
+            ("disk-coalescing",     s => s.DiskCoalescingEnabled = true),
+            ("wifi-optimizer",      s => s.WiFiOptimizerEnabled = true),
+            ("services-manual",     s => s.ServicesManualEnabled = true),
+            ("memory-optimize",     s => s.AutoOptimizeMemoryEnabled = true),
+        };
+        var disable = new (string id, Action<Settings> clear)[]
+        {
+            ("ecoqos",              s => s.EcoQosEnabled = false),
+            ("timer-resolution",    s => s.TimerResolutionEnabled = false),
+            ("background-services", s => s.BackgroundServicesEnabled = false),
+            ("usb-suspend",         s => s.UsbSuspendEnabled = false),
+            ("network-power",       s => s.NetworkPowerEnabled = false),
+            ("gpu-power",           s => s.GpuPowerEnabled = false),
+            ("cpu-parking",         s => s.CpuParkingEnabled = false),
+            ("disk-coalescing",     s => s.DiskCoalescingEnabled = false),
+            ("wifi-optimizer",      s => s.WiFiOptimizerEnabled = false),
+            ("services-manual",     s => s.ServicesManualEnabled = false),
+            ("memory-optimize",     s => s.AutoOptimizeMemoryEnabled = false),
+        };
+
+        var domains = BuildProductionDomains();
+        foreach (var (id, set) in enable)
+        {
+            var s = new Settings();
+            set(s);
+            var domain = domains.Single(d => d.Id == id);
+            Assert.True(domain.IsEnabled(s), $"{id} should be enabled when its historical flag is true");
+        }
+        foreach (var (id, clear) in disable)
+        {
+            var s = new Settings();
+            clear(s);
+            var domain = domains.Single(d => d.Id == id);
+            Assert.False(domain.IsEnabled(s), $"{id} should be disabled when its historical flag is false");
+        }
+    }
+
     [Fact]
     public void ActivateDomain_WiFiOptimizer_AppliesWhenExplicitlyEnabled()
     {
@@ -265,7 +323,8 @@ public class UnifiedOptimizationEngineTests
         // so HasSnapshots doesn't observe the shared on-disk file.
         var snapshotStore = new SnapshotStore(
             Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json"));
-        using var wifi = new RecordingDomain("wifi-optimizer", "Network");
+        using var wifi = new RecordingDomain("wifi-optimizer", "Network")
+            { Enable = s => s.WiFiOptimizerEnabled };
 
         using var engine = new UnifiedOptimizationEngine(
             new Settings { WiFiOptimizerEnabled = true }, snapshotStore, [wifi]);
@@ -282,7 +341,8 @@ public class UnifiedOptimizationEngineTests
         // The enable-gate still works both ways: an explicit opt-out is a clean no-op.
         var snapshotStore = new SnapshotStore(
             Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json"));
-        using var wifi = new RecordingDomain("wifi-optimizer", "Network");
+        using var wifi = new RecordingDomain("wifi-optimizer", "Network")
+            { Enable = s => s.WiFiOptimizerEnabled };
 
         using var engine = new UnifiedOptimizationEngine(
             new Settings { WiFiOptimizerEnabled = false }, snapshotStore, [wifi]);
@@ -312,6 +372,15 @@ public class UnifiedOptimizationEngineTests
         public bool IsSupported => true;
         public bool IsActive { get; private set; }
         public bool FailApply { get; init; }
+
+        /// <summary>
+        /// Enable predicate this fake reports to the engine. Defaults to always-enabled (order/revert
+        /// tests don't gate); the Wi-Fi gating tests inject a predicate reading the historical flag,
+        /// mirroring the real domain's <c>IsEnabled(s) =&gt; s.WiFiOptimizerEnabled</c>.
+        /// </summary>
+        public Func<Settings, bool> Enable { get; init; } = _ => true;
+
+        public bool IsEnabled(Settings settings) => Enable(settings);
 
         public DomainSnapshot CaptureBaseline() => new() { DomainId = Id };
 

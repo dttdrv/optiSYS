@@ -36,6 +36,8 @@ public sealed class EcoQosDomain : IOptimizationDomain
     public bool IsSupported => Environment.OSVersion.Version >= new Version(10, 0, 16299);
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.EcoQosEnabled;
+
     public EcoQosDomain(Settings settings, INativeBridge? native = null)
     {
         _settings = settings;

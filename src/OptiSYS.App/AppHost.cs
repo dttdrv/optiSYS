@@ -97,7 +97,7 @@ public static class AppHost
 
         // The battery-category domains below are complete but ship gated OFF (their
         // Settings flags default false), so registering them only makes them reachable
-        // as opt-in — ActivateCategory skips any whose IsDomainEnabled flag is false.
+        // as opt-in — ActivateCategory skips any whose IsEnabled(settings) returns false.
         // Apply iterates registration order; Revert iterates the reverse.
         sc.AddSingleton<IOptimizationDomain, BackgroundServiceDomain>();
         sc.AddSingleton<IOptimizationDomain, UsbSuspendDomain>();

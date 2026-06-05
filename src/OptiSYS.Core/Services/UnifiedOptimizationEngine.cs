@@ -52,7 +52,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
             foreach (var domain in _domains.Where(d =>
                 d.Category.Equals(category, StringComparison.OrdinalIgnoreCase)))
             {
-                if (!IsDomainEnabled(domain.Id) || !domain.IsSupported || domain.IsActive)
+                if (!domain.IsEnabled(_settings) || !domain.IsSupported || domain.IsActive)
                     continue;
 
                 try
@@ -105,7 +105,7 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         if (domain == null)
             return new EngineResult { Message = $"Domain '{domainId}' not found" };
 
-        if (!IsDomainEnabled(domain.Id) || !domain.IsSupported || domain.IsActive)
+        if (!domain.IsEnabled(_settings) || !domain.IsSupported || domain.IsActive)
             return new EngineResult { Message = $"Domain '{domainId}' not applicable" };
 
         try
@@ -299,22 +299,6 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
             catch { return new DomainStatus { DomainId = d.Id, DisplayName = d.DisplayName, Category = d.Category, Summary = "Error" }; }
         }).ToList();
     }
-
-    private bool IsDomainEnabled(string domainId) => domainId switch
-    {
-        "ecoqos" => _settings.EcoQosEnabled,
-        "timer-resolution" => _settings.TimerResolutionEnabled,
-        "background-services" => _settings.BackgroundServicesEnabled,
-        "usb-suspend" => _settings.UsbSuspendEnabled,
-        "network-power" => _settings.NetworkPowerEnabled,
-        "gpu-power" => _settings.GpuPowerEnabled,
-        "cpu-parking" => _settings.CpuParkingEnabled,
-        "disk-coalescing" => _settings.DiskCoalescingEnabled,
-        "wifi-optimizer" => _settings.WiFiOptimizerEnabled,
-        "services-manual" => _settings.ServicesManualEnabled,
-        "memory-optimize" => _settings.AutoOptimizeMemoryEnabled,
-        _ => false
-    };
 
     private void Emit(string message)
     {

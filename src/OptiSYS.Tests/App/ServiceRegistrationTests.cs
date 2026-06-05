@@ -161,25 +161,57 @@ public class ServiceRegistrationTests
     }
 
     /// <summary>
-    /// Every registered domain's <see cref="IOptimizationDomain.Id"/> must be a key the
-    /// engine's enable-switch recognizes. We can't reflect into the private switch, so we
-    /// pin the resolved Id set against the known-good keys — a typo'd or duplicate Id
-    /// (which would silently never enable) fails here.
+    /// Domain Ids must be unique. The enable gate moved from the engine's central switch onto
+    /// each domain (<see cref="IOptimizationDomain.IsEnabled"/>), so there is no longer a string
+    /// key-set to mirror; a duplicate Id (which would make snapshot/revert ambiguous) still fails
+    /// here. Per-domain enable wiring is asserted by
+    /// <see cref="OptimizationDomains_HaveAResponsiveEnablePredicate"/>.
     /// </summary>
     [Fact]
-    public void OptimizationDomains_HaveUniqueIdsMatchingEngineSwitchKeys()
+    public void OptimizationDomains_HaveUniqueIds()
     {
         using var provider = (ServiceProvider)BuildProvider();
         var ids = provider.GetServices<IOptimizationDomain>().Select(d => d.Id).ToArray();
 
-        var knownSwitchKeys = new[]
-        {
-            "ecoqos", "timer-resolution", "background-services", "usb-suspend",
-            "network-power", "gpu-power", "cpu-parking", "disk-coalescing", "wifi-optimizer",
-            "services-manual", "memory-optimize",
-        };
-
-        Assert.Equal(ids.Length, ids.Distinct().Count());            // no duplicate Ids
-        Assert.All(ids, id => Assert.Contains(id, knownSwitchKeys)); // every Id is switch-recognized
+        Assert.Equal(ids.Length, ids.Distinct().Count());   // no duplicate Ids
     }
+
+    /// <summary>
+    /// With the gate owned by each domain, the old "typo'd Id silently no-ops" trap is replaced by
+    /// a different invariant: every registered domain must have a <em>responsive</em> enable
+    /// predicate — one that is not hard-wired to a constant. We prove responsiveness by toggling
+    /// every domain-enable flag on <see cref="Settings"/> and asserting each domain's
+    /// <see cref="IOptimizationDomain.IsEnabled"/> differs between all-on and all-off. A domain that
+    /// forgot to read its flag (always-on / always-off) fails here, catching the spiritual successor
+    /// of the silent-no-op bug at registration time.
+    /// </summary>
+    [Fact]
+    public void OptimizationDomains_HaveAResponsiveEnablePredicate()
+    {
+        using var provider = (ServiceProvider)BuildProvider();
+        var domains = provider.GetServices<IOptimizationDomain>().ToArray();
+
+        var allOff = AllDomainFlags(false);
+        var allOn = AllDomainFlags(true);
+
+        Assert.All(domains, d =>
+            Assert.True(d.IsEnabled(allOn) != d.IsEnabled(allOff),
+                $"Domain '{d.Id}' does not respond to any enable flag — its IsEnabled is hard-wired."));
+    }
+
+    /// <summary>A Settings with every domain-enable flag set to <paramref name="value"/>.</summary>
+    private static Settings AllDomainFlags(bool value) => new()
+    {
+        EcoQosEnabled = value,
+        TimerResolutionEnabled = value,
+        BackgroundServicesEnabled = value,
+        UsbSuspendEnabled = value,
+        NetworkPowerEnabled = value,
+        GpuPowerEnabled = value,
+        CpuParkingEnabled = value,
+        DiskCoalescingEnabled = value,
+        WiFiOptimizerEnabled = value,
+        ServicesManualEnabled = value,
+        AutoOptimizeMemoryEnabled = value,
+    };
 }

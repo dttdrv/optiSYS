@@ -26,6 +26,8 @@ public sealed class ServiceManualDomain : IOptimizationDomain
     public bool IsSupported => _isElevated();
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.ServicesManualEnabled;
+
     public ServiceManualDomain(IServiceConfigStore store)
         : this(store, PrivilegeManager.IsProcessElevated)
     {

@@ -25,6 +25,8 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.AutoOptimizeMemoryEnabled;
+
     public MemoryOptimizerDomain(
         Settings settings,
         IMemoryOptimizer optimizer,

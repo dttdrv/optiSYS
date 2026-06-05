@@ -24,6 +24,8 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.CpuParkingEnabled;
+
     public CpuParkingDomain(Settings settings, IPowerSchemeController? power = null)
     {
         _settings = settings;

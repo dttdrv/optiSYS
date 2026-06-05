@@ -37,6 +37,8 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.TimerResolutionEnabled;
+
     public TimerResolutionDomain(Settings settings, INativeBridge? native = null)
     {
         _settings = settings;

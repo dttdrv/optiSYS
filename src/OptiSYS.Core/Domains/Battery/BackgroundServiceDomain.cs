@@ -23,6 +23,8 @@ public sealed class BackgroundServiceDomain : IOptimizationDomain
     public bool IsSupported => true;
     public bool IsActive => _isActive;
 
+    public bool IsEnabled(Settings settings) => settings.BackgroundServicesEnabled;
+
     public BackgroundServiceDomain(Settings settings) { _settings = settings; }
 
     public DomainSnapshot CaptureBaseline()
