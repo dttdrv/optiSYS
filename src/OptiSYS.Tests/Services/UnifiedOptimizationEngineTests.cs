@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using OptiSYS.Core.Domains.Battery;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
@@ -11,6 +12,54 @@ public class UnifiedOptimizationEngineTests
 {
     private static string NewStorePath() =>
         Path.Combine(Path.GetTempPath(), "optiSYS-tests", Guid.NewGuid().ToString("N"), "snapshots.json");
+
+    /// <summary>
+    /// The canonical apply order — defined in exactly one place (AppHost DI registration) and
+    /// pinned here. Apply runs forward in this order; Revert runs the reverse. This is the
+    /// PRODUCTION order from <see cref="OptiSYS.AppHost.ConfigureServices"/>.
+    /// </summary>
+    private static readonly string[] CanonicalDomainOrder =
+    [
+        "ecoqos",
+        "timer-resolution",
+        "memory-optimize",
+        "background-services",
+        "usb-suspend",
+        "network-power",
+        "gpu-power",
+        "cpu-parking",
+        "disk-coalescing",
+        "wifi-optimizer",
+        "services-manual",
+    ];
+
+    /// <summary>Builds the production domain set in the canonical DI order — the single source.</summary>
+    private static List<IOptimizationDomain> BuildProductionDomains()
+    {
+        var sc = new ServiceCollection();
+        OptiSYS.AppHost.ConfigureServices(sc);
+        using var provider = sc.BuildServiceProvider(validateScopes: false);
+        return provider.GetServices<IOptimizationDomain>().ToList();
+    }
+
+    /// <summary>
+    /// ONE source of truth: the engine must expose the domains in exactly the canonical
+    /// production order, with no duplicate Ids — including WiFi and ServicesManual, and with
+    /// Memory in its production position (3rd), not last. This pins the order the app actually
+    /// runs so the engine can never drift to a private/divergent ordering again.
+    /// </summary>
+    [Fact]
+    public void EngineDomainOrder_EqualsCanonicalProductionOrder_WithUniqueIds()
+    {
+        var snapshotStore = new SnapshotStore(NewStorePath());
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings(), snapshotStore, BuildProductionDomains());
+
+        var ids = engine.Domains.Select(d => d.Id).ToArray();
+
+        Assert.Equal(CanonicalDomainOrder, ids);
+        Assert.Equal(ids.Length, ids.Distinct().Count());   // no duplicate Ids
+    }
 
     [Fact]
     public void CrashRecovery_RestoresOriginalCpuValues_FromPersistedSnapshot()
@@ -95,7 +144,7 @@ public class UnifiedOptimizationEngineTests
 
         using var engine = new UnifiedOptimizationEngine(
             new Settings { WiFiOptimizerEnabled = true },
-            snapshotStore, [domain], native: null, diagnostics: diag);
+            snapshotStore, [domain], diagnostics: diag);
 
         engine.ActivateCategory("Battery");
 
@@ -118,7 +167,7 @@ public class UnifiedOptimizationEngineTests
         var diag = new RecordingDiagnosticLog();
 
         using var engine = new UnifiedOptimizationEngine(
-            settings, store, [domain], native: null, diagnostics: diag);
+            settings, store, [domain], diagnostics: diag);
         engine.TryCrashRecovery();
 
         Assert.Contains(diag.Entries, e => e.Contains("gpu-power", StringComparison.OrdinalIgnoreCase));

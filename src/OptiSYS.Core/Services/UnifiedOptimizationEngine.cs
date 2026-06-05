@@ -1,7 +1,5 @@
-using OptiSYS.Core.Domains.Battery;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
-using MemDomain = OptiSYS.Core.Domains.Memory.MemoryOptimizerDomain;
 
 namespace OptiSYS.Core.Services;
 
@@ -27,23 +25,17 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     public UnifiedOptimizationEngine(
         Settings settings,
         SnapshotStore snapshotStore,
-        IEnumerable<IOptimizationDomain>? domains = null,
-        INativeBridge? native = null,
+        IEnumerable<IOptimizationDomain> domains,
         IDiagnosticLog? diagnostics = null)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _snapshotStore = snapshotStore ?? throw new ArgumentNullException(nameof(snapshotStore));
         _diagnostics = diagnostics ?? NullDiagnosticLog.Instance;
 
-        var orderedDomains = domains?.ToList();
-        _domains = orderedDomains is { Count: > 0 }
-            ? orderedDomains
-            : BuildDefaultDomains(settings, native ?? NativeBridgeFactory.Create());
-    }
-
-    public UnifiedOptimizationEngine(Settings settings, SnapshotStore snapshotStore)
-        : this(settings, snapshotStore, null)
-    {
+        // Domains are the single canonical ordered source — injected by AppHost DI in production
+        // (apply forward, revert reverse). There is intentionally no internal default-building
+        // fallback so the engine cannot drift to a divergent private order.
+        _domains = (domains ?? throw new ArgumentNullException(nameof(domains))).ToList();
     }
 
     /// <summary>Activate all enabled and supported domains for the given category.</summary>
@@ -337,24 +329,5 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
         {
             try { domain.Dispose(); } catch { }
         }
-    }
-
-    private static List<IOptimizationDomain> BuildDefaultDomains(Settings settings, INativeBridge native) =>
-    [
-        new EcoQosDomain(settings, native),
-        new TimerResolutionDomain(settings, native),
-        new BackgroundServiceDomain(settings),
-        new UsbSuspendDomain(),
-        new NetworkPowerDomain(),
-        new GpuPowerDomain(),
-        new CpuParkingDomain(settings),
-        new DiskIoCoalescingDomain(settings),
-        BuildDefaultMemoryDomain(settings, native),
-    ];
-
-    private static IOptimizationDomain BuildDefaultMemoryDomain(Settings settings, INativeBridge native)
-    {
-        var memoryInfo = new MemoryInfoService(native);
-        return new MemDomain(settings, new MemoryOptimizer(memoryInfo, native), memoryInfo, ownsDependencies: true);
     }
 }
