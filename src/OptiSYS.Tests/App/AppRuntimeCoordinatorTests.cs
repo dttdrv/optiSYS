@@ -24,6 +24,7 @@ public class AppRuntimeCoordinatorTests
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
         var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
         var settings = new Settings();
         var warmUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -40,7 +41,8 @@ public class AppRuntimeCoordinatorTests
             startup.Object,
             taskScheduler.Object,
             settings,
-            adaptiveEcoQos.Object);
+            adaptiveEcoQos.Object,
+            engine.Object);
 
         var startTask = coordinator.StartAsync();
 
@@ -65,6 +67,88 @@ public class AppRuntimeCoordinatorTests
         tray.Verify(t => t.Update(It.IsAny<TraySnapshot>()), Times.Once);
     }
 
+    [Fact]
+    public async Task StartAsync_WhenAlreadyOnBattery_ActivatesBatteryCategoryOnce_AtStartup()
+    {
+        // Boot while already on battery: no AC->DC transition ever fires, so the category must be
+        // applied directly at startup (the bug was that it only fired on a later real transition).
+        var (coordinator, engine, powerMonitor) = BuildForBatteryBoot(
+            new Settings { AutoOptimizeOnBattery = true, AutomationPaused = false },
+            currentSource: PowerSource.Battery);
+
+        await coordinator.StartAsync();
+
+        engine.Verify(e => e.ActivateCategory("Battery"), Times.Once);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenOnAc_DoesNotActivateBatteryCategory_AtStartup()
+    {
+        var (coordinator, engine, _) = BuildForBatteryBoot(
+            new Settings { AutoOptimizeOnBattery = true, AutomationPaused = false },
+            currentSource: PowerSource.Ac);
+
+        await coordinator.StartAsync();
+
+        engine.Verify(e => e.ActivateCategory("Battery"), Times.Never);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenOnBatteryButPaused_DoesNotActivateBatteryCategory_AtStartup()
+    {
+        var (coordinator, engine, _) = BuildForBatteryBoot(
+            new Settings { AutoOptimizeOnBattery = true, AutomationPaused = true },
+            currentSource: PowerSource.Battery);
+
+        await coordinator.StartAsync();
+
+        engine.Verify(e => e.ActivateCategory("Battery"), Times.Never);
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenOnBatteryButAutoOptimizeOff_DoesNotActivateBatteryCategory_AtStartup()
+    {
+        var (coordinator, engine, _) = BuildForBatteryBoot(
+            new Settings { AutoOptimizeOnBattery = false, AutomationPaused = false },
+            currentSource: PowerSource.Battery);
+
+        await coordinator.StartAsync();
+
+        engine.Verify(e => e.ActivateCategory("Battery"), Times.Never);
+    }
+
+    private static (AppRuntimeCoordinator coordinator, Mock<IOptimizationEngine> engine, Mock<IPowerSourceMonitor> powerMonitor)
+        BuildForBatteryBoot(Settings settings, PowerSource currentSource)
+    {
+        var battery = new Mock<IBatteryInfoService>();
+        var memory = new Mock<IMemoryInfoService>();
+        var powerMonitor = new Mock<IPowerSourceMonitor>();
+        var automation = new Mock<IQuietAutomationService>();
+        var tray = new Mock<ITrayIconService>();
+        var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
+
+        memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.GetActiveBatteryStatuses()).Returns([]);
+        powerMonitor.Setup(p => p.CurrentPowerSource).Returns(currentSource);
+
+        var coordinator = new AppRuntimeCoordinator(
+            battery.Object,
+            memory.Object,
+            powerMonitor.Object,
+            automation.Object,
+            tray.Object,
+            startup.Object,
+            taskScheduler.Object,
+            settings,
+            adaptiveEcoQos.Object,
+            engine.Object);
+        return (coordinator, engine, powerMonitor);
+    }
+
     [Theory]
     [InlineData(PowerSource.Battery, BatteryPreset.Saver)]
     [InlineData(PowerSource.Ac, BatteryPreset.Recommended)]
@@ -80,6 +164,7 @@ public class AppRuntimeCoordinatorTests
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
         var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
         // Start opposite to the transition target so each case is a real change.
         var settings = new Settings
         {
@@ -104,7 +189,8 @@ public class AppRuntimeCoordinatorTests
             startup.Object,
             taskScheduler.Object,
             settings,
-            adaptiveEcoQos.Object);
+            adaptiveEcoQos.Object,
+            engine.Object);
 
         await coordinator.StartAsync();
 
@@ -128,6 +214,7 @@ public class AppRuntimeCoordinatorTests
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
         var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
         var settings = new Settings();
 
         var coordinator = new AppRuntimeCoordinator(
@@ -139,7 +226,8 @@ public class AppRuntimeCoordinatorTests
             startup.Object,
             taskScheduler.Object,
             settings,
-            adaptiveEcoQos.Object);
+            adaptiveEcoQos.Object,
+            engine.Object);
 
         coordinator.Dispose();
 
@@ -256,6 +344,7 @@ public class AppRuntimeCoordinatorTests
         var startup = new Mock<IStartupRegistrationService>();
         var task = new Mock<ITaskSchedulerService>();
         var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
 
         memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
         automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
@@ -270,7 +359,8 @@ public class AppRuntimeCoordinatorTests
             startup.Object,
             task.Object,
             settings,
-            adaptiveEcoQos.Object);
+            adaptiveEcoQos.Object,
+            engine.Object);
         return (coordinator, startup, task);
     }
 
@@ -291,6 +381,7 @@ public class AppRuntimeCoordinatorTests
         var startup = new Mock<IStartupRegistrationService>();
         var taskScheduler = new Mock<ITaskSchedulerService>();
         var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
         var settings = new Settings();
 
         memory.Setup(m => m.WarmUpAsync()).Returns(async () =>
@@ -307,7 +398,8 @@ public class AppRuntimeCoordinatorTests
                 startup.Object,
                 taskScheduler.Object,
                 settings,
-                adaptiveEcoQos.Object);
+                adaptiveEcoQos.Object,
+                engine.Object);
 
             await coordinator.StartAsync();
 

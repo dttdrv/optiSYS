@@ -24,6 +24,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
     private readonly ITrayIconService _tray;
     private readonly IStartupRegistrationService _startup;
     private readonly ITaskSchedulerService _taskScheduler;
+    private readonly IOptimizationEngine _engine;
     private readonly Settings _settings;
     private readonly HealthScoreCalculator _scoreCalculator = new();
     private readonly object _startGate = new();
@@ -39,7 +40,8 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         IStartupRegistrationService startup,
         ITaskSchedulerService taskScheduler,
         Settings settings,
-        IAdaptiveEcoQosController adaptiveEcoQos)
+        IAdaptiveEcoQosController adaptiveEcoQos,
+        IOptimizationEngine engine)
     {
         _battery = battery ?? throw new ArgumentNullException(nameof(battery));
         _memory = memory ?? throw new ArgumentNullException(nameof(memory));
@@ -49,6 +51,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         _tray = tray ?? throw new ArgumentNullException(nameof(tray));
         _startup = startup ?? throw new ArgumentNullException(nameof(startup));
         _taskScheduler = taskScheduler ?? throw new ArgumentNullException(nameof(taskScheduler));
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
     }
 
@@ -66,6 +69,14 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
     {
         _battery.Start();
         _powerSourceMonitor.Start();
+        // Booting while already on battery never produces an AC->DC transition, so apply the Battery
+        // category once at startup. The engine's own enabled/active/in-progress guards keep this from
+        // double-applying when a later real transition fires.
+        if (_powerSourceMonitor.CurrentPowerSource == PowerSource.Battery &&
+            _settings.AutoOptimizeOnBattery && !_settings.AutomationPaused)
+        {
+            _engine.ActivateCategory("Battery");
+        }
         _adaptiveEcoQos.Start();
         // Startup begins on the WinUI thread. We keep that context through warm-up so the
         // first automation timer can bind to the UI dispatcher safely.

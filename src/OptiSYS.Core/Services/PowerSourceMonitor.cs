@@ -18,6 +18,8 @@ public sealed class PowerSourceMonitor : IPowerSourceMonitor
 
     public event Action<PowerSource>? PowerSourceChanged;
 
+    public PowerSource CurrentPowerSource => _native.GetPowerSource();
+
     public PowerSourceMonitor(INativeBridge native, Settings settings, IOptimizationEngine engine)
     {
         _native = native;

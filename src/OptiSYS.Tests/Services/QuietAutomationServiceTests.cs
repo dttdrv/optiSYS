@@ -283,6 +283,51 @@ public sealed class QuietAutomationServiceTests
         engine.Verify(e => e.ActivateDomain("wifi-optimizer"), Times.Exactly(2)); // startup + resume
     }
 
+    [Fact]
+    public async Task StartAsync_WithRealThreadPoolTimer_RunsMemoryOptimizer_WithoutAnyDispatcher()
+    {
+        // Regression sentinel: the watcher must tick on a background/logon launch where no UI
+        // message pump exists. A DispatcherTimer-backed service would never fire here (no dispatcher),
+        // so this fails on the old regression and passes only with the threadpool-backed timer.
+        var settings = new Settings
+        {
+            MemoryCheckIntervalSeconds = 1,
+            MemoryThresholdPercent = 50,
+            AutoOptimizeMemoryEnabled = true,
+            AutomationPaused = false,
+            HasCompletedOnboarding = false,
+        };
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
+        {
+            TotalPhysicalBytes = 100,
+            AvailablePhysicalBytes = 30,   // 70% usage: above the 50% threshold
+        });
+        optimizer.Setup(o => o.OptimizeAll(
+                It.IsAny<OptimizationLevel>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<bool>()))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 10 });
+
+        var service = new QuietAutomationService(
+            settings,
+            Mock.Of<IBatteryInfoService>(),
+            memory.Object,
+            optimizer.Object,
+            Mock.Of<IOptimizationEngine>(),
+            new ThreadPoolTimerService());
+
+        using var disposable = service;
+        await service.StartAsync();
+
+        // No dispatcher driven: the real threadpool timer must tick on its own within ~3s
+        // (1s interval + scheduling slack); 300 attempts * 10ms = 3s budget.
+        await WaitForAssertionAsync(() => optimizer.Verify(o => o.OptimizeAll(
+            It.IsAny<OptimizationLevel>(), It.IsAny<int>(), It.IsAny<int>(),
+            It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<bool>()), Times.AtLeastOnce), attempts: 300);
+    }
+
     private static QuietAutomationService CreateService(
         Settings settings,
         FakeTimerService timer,
@@ -311,10 +356,10 @@ public sealed class QuietAutomationServiceTests
         CommitLimitBytes = 100,
     };
 
-    private static async Task WaitForAssertionAsync(Action assertion)
+    private static async Task WaitForAssertionAsync(Action assertion, int attempts = 20)
     {
         Exception? last = null;
-        for (var i = 0; i < 20; i++)
+        for (var i = 0; i < attempts; i++)
         {
             try
             {

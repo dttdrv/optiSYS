@@ -14,6 +14,9 @@ public interface IPowerSourceMonitor : IDisposable
     /// </summary>
     event Action<PowerSource>? PowerSourceChanged;
 
+    /// <summary>The machine's current power source, read live.</summary>
+    PowerSource CurrentPowerSource { get; }
+
     void Start();
     void Stop();
 }
