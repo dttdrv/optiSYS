@@ -74,9 +74,18 @@ public sealed class PowerSourceMonitor : IPowerSourceMonitor
             }
             else if (current == PowerSource.Ac && previous == PowerSource.Battery)
             {
-                _engine.RevertDomain("timer-resolution");
-                _engine.RevertDomain("ecoqos");
-                _engine.RevertDomain("cpu-parking");   // restore the DC min processor state on AC
+                // Symmetric with the AC->DC apply (ActivateCategory("Battery")): on AC, revert the
+                // FULL Battery category — every active battery-category domain — not a hand-picked
+                // subset. Otherwise opted-in persistent registry/power-scheme domains
+                // (disk-coalescing, network-power, gpu-power) would stay applied for the whole AC
+                // session until a clean exit. Reverse order mirrors the engine's RevertAll convention.
+                foreach (var domain in _engine.Domains
+                    .Where(d => d.IsActive &&
+                                d.Category.Equals("Battery", StringComparison.OrdinalIgnoreCase))
+                    .Reverse())
+                {
+                    _engine.RevertDomain(domain.Id);
+                }
             }
         }
     }
