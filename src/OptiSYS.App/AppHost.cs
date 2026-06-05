@@ -60,8 +60,9 @@ public static class AppHost
         sc.AddSingleton<Settings>(_ => Settings.Load());
 
         // Native Windows bridge: centralizes the P/Invoke implementation used by
-        // telemetry and runtime optimizer domains.
-        sc.AddSingleton<INativeBridge>(_ => NativeBridgeFactory.Create());
+        // telemetry and runtime optimizer domains. Pass the diagnostic sink so Win32 failures
+        // captured at the bridge boundary land in the same on-disk startup.log.
+        sc.AddSingleton<INativeBridge>(p => NativeBridgeFactory.Create(p.GetService<IDiagnosticLog>()));
 
         sc.AddSingleton<SnapshotStore>();
 

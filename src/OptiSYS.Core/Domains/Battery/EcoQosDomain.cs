@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
-using OptiSYS.Core.Native;
 
 namespace OptiSYS.Core.Domains.Battery;
 
@@ -25,7 +24,7 @@ public sealed class EcoQosDomain : IOptimizationDomain
     };
 
     private readonly Settings _settings;
-    private readonly INativeBridge? _native;
+    private readonly INativeBridge _native;
     private bool _isActive;
     private readonly HashSet<uint> _throttledPids = [];
     private readonly object _gate = new();
@@ -38,10 +37,10 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
     public bool IsEnabled(Settings settings) => settings.EcoQosEnabled;
 
-    public EcoQosDomain(Settings settings, INativeBridge? native = null)
+    public EcoQosDomain(Settings settings, INativeBridge native)
     {
         _settings = settings;
-        _native = native;
+        _native = native ?? throw new ArgumentNullException(nameof(native));
     }
 
     public DomainSnapshot CaptureBaseline()
@@ -70,10 +69,8 @@ public sealed class EcoQosDomain : IOptimizationDomain
     {
         var sw = Stopwatch.StartNew();
 
-        var nativeForegroundPid = _native?.GetForegroundProcessId() ?? 0;
-        var foregroundPid = nativeForegroundPid > 0
-            ? (uint)nativeForegroundPid
-            : NativeMethods.GetForegroundProcessId();
+        var nativeForegroundPid = _native.GetForegroundProcessId();
+        var foregroundPid = nativeForegroundPid > 0 ? (uint)nativeForegroundPid : 0u;
         var selfPid = (uint)Environment.ProcessId;
         var exclusions = new HashSet<string>(
             _settings.EcoQosExcludedProcesses.Concat(_settings.ProtectedApplications),
@@ -178,48 +175,19 @@ public sealed class EcoQosDomain : IOptimizationDomain
     internal static bool IsShellProcess(string processName) =>
         ShellProcessExclusions.Contains(processName);
 
-    // Enumeration goes through the native bridge (mockable, so the reconcile is unit-testable),
-    // falling back to Process.GetProcesses() when no bridge is supplied — the same pattern
-    // MemoryOptimizer uses.
-    private List<(uint pid, string name)> EnumerateProcesses()
-    {
-        var native = _native?.GetProcessList();
-        if (native is { Length: > 0 })
-            return native.Select(p => ((uint)p.ProcessId, p.ProcessName)).ToList();
+    // Enumeration goes through the native bridge (mockable, so the reconcile is unit-testable).
+    private List<(uint pid, string name)> EnumerateProcesses() =>
+        _native.GetProcessList().Select(p => ((uint)p.ProcessId, p.ProcessName)).ToList();
 
-        var list = new List<(uint, string)>();
-        foreach (var proc in Process.GetProcesses())
-        {
-            try { list.Add(((uint)proc.Id, proc.ProcessName)); }
-            catch { }
-            finally { proc.Dispose(); }
-        }
-        return list;
-    }
-
-    // Readback through the bridge seam (mockable). Returns null = unknown when no bridge is wired,
-    // the read fails, or it throws — never propagates, so reconcile degrades to attempt-and-track.
+    // Readback through the bridge seam (mockable). Returns null = unknown when the read fails or it
+    // throws — never propagates, so reconcile degrades to attempt-and-track.
     private bool? IsEcoQosThrottled(int pid)
     {
-        try { return _native?.IsEcoQosThrottled(pid); }
+        try { return _native.IsEcoQosThrottled(pid); }
         catch { return null; }
     }
 
-    private bool SetEcoQos(int pid, bool enable)
-    {
-        if (_native?.SetEcoQos(enable, pid) == true)
-            return true;
-
-        var handle = NativeMethods.OpenProcess(
-            NativeMethods.PROCESS_SET_INFORMATION | NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION,
-            false, (uint)pid);
-
-        if (handle == IntPtr.Zero)
-            return false;
-
-        try { return NativeMethods.SetProcessEcoQoS(handle, enable); }
-        finally { NativeMethods.CloseHandle(handle); }
-    }
+    private bool SetEcoQos(int pid, bool enable) => _native.SetEcoQos(enable, pid);
 
     public void Dispose() { }
 }

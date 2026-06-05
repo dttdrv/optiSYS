@@ -27,6 +27,14 @@ public class EcoQosDomainTests
     }
 
     [Fact]
+    public void Ctor_NullBridge_Throws()
+    {
+        // The bridge is required: omitting it must fail loudly at construction rather than silently
+        // falling through to real Win32 (which defeats mockability and hits the live system in tests).
+        Assert.Throws<ArgumentNullException>(() => new EcoQosDomain(new Settings(), null!));
+    }
+
+    [Fact]
     public void Reconcile_ThrottlesBackgroundProcesses_AndSkipsForeground()
     {
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "bgapp2"));

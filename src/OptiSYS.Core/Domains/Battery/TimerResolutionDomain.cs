@@ -27,7 +27,7 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
     };
 
     private readonly Settings _settings;
-    private readonly INativeBridge? _native;
+    private readonly INativeBridge _native;
     private bool _isActive;
     private readonly HashSet<uint> _processesIgnored = [];
 
@@ -39,10 +39,10 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
 
     public bool IsEnabled(Settings settings) => settings.TimerResolutionEnabled;
 
-    public TimerResolutionDomain(Settings settings, INativeBridge? native = null)
+    public TimerResolutionDomain(Settings settings, INativeBridge native)
     {
         _settings = settings;
-        _native = native;
+        _native = native ?? throw new ArgumentNullException(nameof(native));
     }
 
     public DomainSnapshot CaptureBaseline()
@@ -69,10 +69,8 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
 
         if (isWin11)
         {
-            var nativeForegroundPid = _native?.GetForegroundProcessId() ?? 0;
-            var foregroundPid = nativeForegroundPid > 0
-                ? (uint)nativeForegroundPid
-                : NativeMethods.GetForegroundProcessId();
+            var nativeForegroundPid = _native.GetForegroundProcessId();
+            var foregroundPid = nativeForegroundPid > 0 ? (uint)nativeForegroundPid : 0u;
 
             foreach (var proc in Process.GetProcesses())
             {
@@ -146,20 +144,8 @@ public sealed class TimerResolutionDomain : IOptimizationDomain
         };
     }
 
-    private bool SetTimerResolutionIgnore(int pid, bool enable)
-    {
-        if (_native?.SetTimerResolution(enable, pid) == true)
-            return true;
-
-        var handle = NativeMethods.OpenProcess(
-            NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
-            false, (uint)pid);
-        if (handle == IntPtr.Zero)
-            return false;
-
-        try { return NativeMethods.SetProcessTimerResolutionIgnore(handle, enable); }
-        finally { NativeMethods.CloseHandle(handle); }
-    }
+    private bool SetTimerResolutionIgnore(int pid, bool enable) =>
+        _native.SetTimerResolution(enable, pid);
 
     internal static bool IsShellProcess(string processName) =>
         ShellProcessExclusions.Contains(processName);

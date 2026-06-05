@@ -8,5 +8,5 @@ namespace OptiSYS.Core.Services;
 /// </summary>
 public static class NativeBridgeFactory
 {
-    public static INativeBridge Create() => new WindowsNativeBridge();
+    public static INativeBridge Create(IDiagnosticLog? log = null) => new WindowsNativeBridge(log);
 }

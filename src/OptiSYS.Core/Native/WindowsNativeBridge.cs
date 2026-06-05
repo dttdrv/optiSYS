@@ -14,6 +14,29 @@ public sealed class WindowsNativeBridge : INativeBridge
     private volatile bool _disposed;
 #pragma warning restore CS0414
 
+    private readonly IDiagnosticLog _log;
+    private readonly Func<int> _lastError;
+
+    /// <param name="log">
+    /// Diagnostic sink for Win32 failures captured at the bridge boundary. Defaults to a no-op so
+    /// existing callers (and the factory) keep working without a sink.
+    /// </param>
+    /// <param name="lastError">
+    /// Reader for the calling thread's Win32 last-error, injectable so the failure-logging seam is
+    /// unit-testable without a real failing P/Invoke. Defaults to <see cref="Marshal.GetLastPInvokeError"/>.
+    /// </param>
+    public WindowsNativeBridge(IDiagnosticLog? log = null, Func<int>? lastError = null)
+    {
+        _log = log ?? NullDiagnosticLog.Instance;
+        _lastError = lastError ?? Marshal.GetLastPInvokeError;
+    }
+
+    // Capture the Win32 last-error (set by the immediately-preceding failing P/Invoke) and route the
+    // operation name + numeric code to the diagnostic log. Call this right after a native call that
+    // returned false/null/zero — nothing between the failing call and here may clobber the last error.
+    internal void LogWin32Failure(string operation, int processId) =>
+        _log.Write("warn", "native", $"{operation} failed (pid {processId}): Win32 error {_lastError()}");
+
     // ── Windows API P/Invoke declarations ────────────────────────────
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -74,8 +97,13 @@ public sealed class WindowsNativeBridge : INativeBridge
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
             false, (uint)processId);
-        if (handle == IntPtr.Zero) return false;
-        try { return NativeMethods.SetProcessEcoQoS(handle, enable); }
+        if (handle == IntPtr.Zero) { LogWin32Failure("SetEcoQos/OpenProcess", processId); return false; }
+        try
+        {
+            if (NativeMethods.SetProcessEcoQoS(handle, enable)) return true;
+            LogWin32Failure("SetEcoQos", processId);
+            return false;
+        }
         finally { NativeMethods.CloseHandle(handle); }
     }
 
@@ -84,8 +112,13 @@ public sealed class WindowsNativeBridge : INativeBridge
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_QUERY_INFORMATION | NativeMethods.PROCESS_SET_INFORMATION,
             false, (uint)processId);
-        if (handle == IntPtr.Zero) return false;
-        try { return NativeMethods.SetProcessTimerResolutionIgnore(handle, ignore); }
+        if (handle == IntPtr.Zero) { LogWin32Failure("SetTimerResolution/OpenProcess", processId); return false; }
+        try
+        {
+            if (NativeMethods.SetProcessTimerResolutionIgnore(handle, ignore)) return true;
+            LogWin32Failure("SetTimerResolution", processId);
+            return false;
+        }
         finally { NativeMethods.CloseHandle(handle); }
     }
 
@@ -187,8 +220,13 @@ public sealed class WindowsNativeBridge : INativeBridge
     {
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_QUERY_INFORMATION, false, (uint)processId);
-        if (handle == IntPtr.Zero) return 0;
-        try { return NativeMethods.GetProcessMemoryPriority(handle); }
+        if (handle == IntPtr.Zero) { LogWin32Failure("GetProcessMemoryPriority/OpenProcess", processId); return 0; }
+        try
+        {
+            var priority = NativeMethods.GetProcessMemoryPriority(handle);
+            if (priority == 0) LogWin32Failure("GetProcessMemoryPriority", processId);
+            return priority;
+        }
         finally { NativeMethods.CloseHandle(handle); }
     }
 
@@ -196,8 +234,13 @@ public sealed class WindowsNativeBridge : INativeBridge
     {
         var handle = NativeMethods.OpenProcess(
             NativeMethods.PROCESS_SET_INFORMATION, false, (uint)processId);
-        if (handle == IntPtr.Zero) return false;
-        try { return NativeMethods.SetProcessMemoryPriority(handle, priority); }
+        if (handle == IntPtr.Zero) { LogWin32Failure("SetProcessMemoryPriority/OpenProcess", processId); return false; }
+        try
+        {
+            if (NativeMethods.SetProcessMemoryPriority(handle, priority)) return true;
+            LogWin32Failure("SetProcessMemoryPriority", processId);
+            return false;
+        }
         finally { NativeMethods.CloseHandle(handle); }
     }
 
