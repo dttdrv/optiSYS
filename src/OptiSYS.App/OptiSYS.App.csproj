@@ -28,7 +28,7 @@
     <IncludeBuiltProjectOutputGroup>false</IncludeBuiltProjectOutputGroup>
     <RootNamespace>OptiSYS</RootNamespace>
     <AssemblyName>OptiSYS</AssemblyName>
-    <Version>0.8.0</Version>
+    <Version>0.9.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Company>Deyan Todorov</Company>
     <Product>optiSYS</Product>
