@@ -423,6 +423,58 @@ public class UnifiedOptimizationEngineTests
         snapshotStore.RemoveRange(["apply-domain", "revert-domain"]);
     }
 
+    [Fact]
+    public void ActivateDomain_ConcurrentDoubleActivate_AppliesOnce_StoresOneSnapshot()
+    {
+        // The lookup + IsActive guard now runs inside the mutation gate, so two concurrent
+        // ActivateDomain calls for the same domain serialize: the first applies (flips IsActive),
+        // the second observes IsActive and bails as "not applicable". Exactly one apply, one capture,
+        // one stored snapshot — never capturing already-applied state as a corrupt baseline.
+        var snapshotStore = new SnapshotStore(NewStorePath());
+
+        var applyCount = 0;
+        var captureCount = 0;
+        var firstApplyEntered = new ManualResetEventSlim(false);
+        var releaseFirstApply = new ManualResetEventSlim(false);
+
+        using var domain = new BlockingDomain("dup-domain", "Battery")
+        {
+            OnCapture = () => Interlocked.Increment(ref captureCount),
+            OnApply = () =>
+            {
+                // First entrant parks inside the gate; the second call is blocked at the gate and,
+                // once released, sees IsActive==true and returns before ever reaching Apply.
+                if (Interlocked.Increment(ref applyCount) == 1)
+                {
+                    firstApplyEntered.Set();
+                    releaseFirstApply.Wait(5000);
+                }
+            },
+        };
+
+        using var engine = new UnifiedOptimizationEngine(
+            new Settings(), snapshotStore, [domain]);
+
+        var t1 = new Thread(() => engine.ActivateDomain("dup-domain"));
+        t1.Start();
+        Assert.True(firstApplyEntered.Wait(5000), "First Apply never entered the gate");
+
+        var t2 = new Thread(() => engine.ActivateDomain("dup-domain"));
+        t2.Start();
+        // t2 must block at the gate while t1 is parked; give it a moment to prove it can't proceed.
+        Assert.False(t2.Join(500), "Second ActivateDomain entered the gate while the first was parked");
+
+        releaseFirstApply.Set();
+        Assert.True(t1.Join(5000));
+        Assert.True(t2.Join(5000));
+
+        Assert.Equal(1, applyCount);     // applied exactly once
+        Assert.Equal(1, captureCount);   // captured baseline exactly once
+        Assert.True(domain.IsActive);
+        Assert.Single(snapshotStore.GetAll());   // exactly one stored snapshot
+        snapshotStore.RemoveRange(["dup-domain"]);
+    }
+
     /// <summary>Fake whose Apply/Revert run injected callbacks so a test can block inside the
     /// engine's critical section and observe whether a second mutation interleaves.</summary>
     private sealed class BlockingDomain : IOptimizationDomain
@@ -442,9 +494,14 @@ public class UnifiedOptimizationEngineTests
 
         public Action? OnApply { get; init; }
         public Action? OnRevert { get; init; }
+        public Action? OnCapture { get; init; }
 
         public bool IsEnabled(Settings settings) => true;
-        public DomainSnapshot CaptureBaseline() => new() { DomainId = Id };
+        public DomainSnapshot CaptureBaseline()
+        {
+            OnCapture?.Invoke();
+            return new() { DomainId = Id };
+        }
 
         public ApplyResult Apply(DomainSnapshot baseline)
         {

@@ -290,12 +290,13 @@ public sealed class Settings
 
     internal void SaveTo(string file)
     {
-        // Clamp runtime-set values before they reach disk, so what is persisted is always valid
-        // (Validate previously ran only on Load, a launch too late).
-        Validate();
-
         lock (SaveLock)   // serialize against any concurrent / debounced write to the same file
         {
+            // Clamp runtime-set values before they reach disk, so what is persisted is always valid
+            // (Validate previously ran only on Load, a launch too late). Inside the lock so a
+            // concurrent SaveTo can't mutate `this` mid-serialization.
+            Validate();
+
             try
             {
                 var dir = Path.GetDirectoryName(file)!;

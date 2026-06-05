@@ -108,15 +108,18 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     /// <summary>Activate a specific domain by ID.</summary>
     public EngineResult ActivateDomain(string domainId)
     {
-        var domain = _domains.FirstOrDefault(d => d.Id == domainId);
-        if (domain == null)
-            return new EngineResult { Message = $"Domain '{domainId}' not found" };
-
-        if (!domain.IsEnabled(_settings) || !domain.IsSupported || domain.IsActive)
-            return new EngineResult { Message = $"Domain '{domainId}' not applicable" };
-
+        // Lookup + applicability checks must run INSIDE the gate so the check-and-act is atomic:
+        // two concurrent calls can't both pass the IsActive guard and capture already-applied state
+        // as the baseline. lock/Monitor is reentrant, so a caller already holding the gate is safe.
         lock (_mutationGate)
         {
+            var domain = _domains.FirstOrDefault(d => d.Id == domainId);
+            if (domain == null)
+                return new EngineResult { Message = $"Domain '{domainId}' not found" };
+
+            if (!domain.IsEnabled(_settings) || !domain.IsSupported || domain.IsActive)
+                return new EngineResult { Message = $"Domain '{domainId}' not applicable" };
+
             try
             {
                 var snapshot = domain.CaptureBaseline();
@@ -205,16 +208,18 @@ public sealed class UnifiedOptimizationEngine : IOptimizationEngine
     /// <summary>Revert a specific domain.</summary>
     public EngineResult RevertDomain(string domainId)
     {
-        var domain = _domains.FirstOrDefault(d => d.Id == domainId);
-        if (domain == null || !domain.IsActive)
-            return new EngineResult { Message = $"Domain '{domainId}' not active" };
-
-        var snapshot = _snapshotStore.Get(domain.Id);
-        if (snapshot == null)
-            return new EngineResult { Message = $"No snapshot for domain '{domainId}'" };
-
+        // Lookup + IsActive/snapshot checks run INSIDE the gate so the check-and-act is atomic
+        // (closes the TOCTOU). lock/Monitor is reentrant, so a caller already holding it is safe.
         lock (_mutationGate)
         {
+            var domain = _domains.FirstOrDefault(d => d.Id == domainId);
+            if (domain == null || !domain.IsActive)
+                return new EngineResult { Message = $"Domain '{domainId}' not active" };
+
+            var snapshot = _snapshotStore.Get(domain.Id);
+            if (snapshot == null)
+                return new EngineResult { Message = $"No snapshot for domain '{domainId}'" };
+
             try
             {
                 if (RevertAndRemoveIfClean(domain, snapshot))

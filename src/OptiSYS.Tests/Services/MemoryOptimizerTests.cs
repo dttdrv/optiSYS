@@ -99,4 +99,30 @@ public class MemoryOptimizerTests
 
         native.Verify(n => n.SetProcessMemoryPriority(100, 5u), Times.Once);   // fallback NORMAL
     }
+
+    [Fact]
+    public void RestoreBackgroundMemoryPriority_ConcurrentWithItself_DoesNotThrow()
+    {
+        // The lowered-priority map is written by the threadpool watcher and snapshot+cleared by
+        // revert/dispose. Concurrent access must not throw "Collection was modified": the lock makes
+        // the snapshot+clear atomic, so two simultaneous restores both complete cleanly.
+        var memoryInfo = new Mock<IMemoryInfoService>();
+        var native = new Mock<INativeBridge>();
+        native.Setup(n => n.GetProcessList()).Returns(
+            Enumerable.Range(1, 200)
+                .Select(i => new NativeProcessInfo { ProcessId = i, ProcessName = "OneDrive" })
+                .ToArray());
+        native.Setup(n => n.GetProcessMemoryPriority(It.IsAny<int>())).Returns(5);
+        native.Setup(n => n.SetProcessMemoryPriority(It.IsAny<int>(), It.IsAny<uint>())).Returns(true);
+
+        using var optimizer = new MemoryOptimizer(memoryInfo.Object, native.Object);
+        optimizer.HintBackgroundMemoryPriority();
+
+        var ex = Record.Exception(() =>
+            Parallel.Invoke(
+                () => optimizer.RestoreBackgroundMemoryPriority(),
+                () => optimizer.RestoreBackgroundMemoryPriority()));
+
+        Assert.Null(ex);
+    }
 }

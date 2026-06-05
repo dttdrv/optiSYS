@@ -110,7 +110,7 @@ public sealed class WiFiOptimizerDomain : IOptimizationDomain
             sw.Stop();
             var message = ignored > 0
                 ? $"Optimized {applied} adapter(s); {ignored} ignored by driver"
-                : $"Optimized {applied} Wi-Fi adapter(s): background scan off, streaming on";
+                : $"Optimized {applied} Wi-Fi adapter(s): background scan off";
             return ApplyResult.Ok(Id, message, optimized: applied, skipped: ignored, duration: sw.Elapsed);
         }
     }
@@ -152,7 +152,7 @@ public sealed class WiFiOptimizerDomain : IOptimizationDomain
         Summary = _isActive
             ? (_driversIgnored > 0
                 ? $"Active — {_driversIgnored} adapter(s) ignored by driver"
-                : "Background scan off, streaming on")
+                : "Background scan off")
             : "Inactive",
     };
 

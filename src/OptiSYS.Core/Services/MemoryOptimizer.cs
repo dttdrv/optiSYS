@@ -21,6 +21,9 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     private readonly StepEffectivenessTracker _tracker = new();
     // PIDs we lowered to LOW + their captured prior priority, so the hint can be fully reverted.
     private readonly Dictionary<int, uint> _loweredPriorities = new();
+    // Guards _loweredPriorities: the threadpool watcher writes to it while a revert/dispose on
+    // another thread snapshots+clears it. Never held across native calls.
+    private readonly object _priorityLock = new();
     private bool _disposed;
 
     public HashSet<string> ExcludedProcesses { get; set; } = new(DefaultExclusions, StringComparer.OrdinalIgnoreCase);
@@ -208,10 +211,13 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     {
         // Capture the current priority BEFORE lowering, so revert can restore the exact prior value.
         // Already-tracked PIDs keep their original capture (don't overwrite LOW back onto itself).
-        if (!_loweredPriorities.ContainsKey(pid))
+        lock (_priorityLock)
         {
-            var prior = _native?.GetProcessMemoryPriority(pid) ?? GetProcessMemoryPriorityRaw(pid);
-            _loweredPriorities[pid] = prior;
+            if (!_loweredPriorities.ContainsKey(pid))
+            {
+                var prior = _native?.GetProcessMemoryPriority(pid) ?? GetProcessMemoryPriorityRaw(pid);
+                _loweredPriorities[pid] = prior;
+            }
         }
 
         if (_native is not null)
@@ -229,7 +235,16 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     {
         ThrowIfDisposed();
 
-        foreach (var (pid, prior) in _loweredPriorities)
+        // Snapshot + clear under the lock, then do the native restores OUTSIDE it so we never hold
+        // the lock across native calls (and a concurrent watcher tick can't mutate mid-enumeration).
+        List<KeyValuePair<int, uint>> toRestore;
+        lock (_priorityLock)
+        {
+            toRestore = new List<KeyValuePair<int, uint>>(_loweredPriorities);
+            _loweredPriorities.Clear();
+        }
+
+        foreach (var (pid, prior) in toRestore)
         {
             var target = prior != 0 ? prior : NativeMethods.MEMORY_PRIORITY_NORMAL;
             try
@@ -241,8 +256,6 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
             }
             catch { /* process exited or access denied — skip */ }
         }
-
-        _loweredPriorities.Clear();
     }
 
     private static uint GetProcessMemoryPriorityRaw(int pid)
