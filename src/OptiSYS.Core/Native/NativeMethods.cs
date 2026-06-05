@@ -62,7 +62,8 @@ internal static partial class NativeMethods
     internal static readonly Guid GUID_PROCESSOR_SETTINGS_SUBGROUP = new("54533251-82be-4824-96c1-47b60b740d00");
     internal static readonly Guid GUID_PROCESSOR_THROTTLE_MINIMUM = new("893dee8e-2bef-41e0-89c6-b55d0929964c");
     internal static readonly Guid GUID_PROCESSOR_THROTTLE_MAXIMUM = new("bc5038f7-23e0-4960-96da-33abaf5935ec");
-    internal static readonly Guid GUID_PROCESSOR_PARKING_CORE_THRESHOLD = new("0cc5b647-c1df-4637-891a-dec35c318583");
+    // CPMINCORES: minimum percent of cores kept unparked (low = aggressive parking, 100 = parking disabled).
+    internal static readonly Guid GUID_PROCESSOR_CORE_PARKING_MIN_CORES = new("0cc5b647-c1df-4637-891a-dec35c318583");
     internal static readonly Guid GUID_DISK_SUBGROUP = new("0012ee47-9041-4b5d-9b77-535fba8b1442");
     internal static readonly Guid GUID_DISK_IDLE_TIMEOUT = new("58e39ba8-b8e6-4ef6-90d0-89ae32b258d6");
     internal static readonly Guid GUID_DISK_AHCI_LINK_POWER = new("0b2d69d7-a2a1-449c-9680-f91c70521c60");

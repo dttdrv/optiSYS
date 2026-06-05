@@ -12,7 +12,7 @@ public class CpuParkingDomainTests
     private static readonly Guid Sub = NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP;
     private static readonly Guid Min = NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM;
     private static readonly Guid Max = NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM;
-    private static readonly Guid Park = NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD;
+    private static readonly Guid Park = NativeMethods.GUID_PROCESSOR_CORE_PARKING_MIN_CORES;
 
     [Fact]
     public void Apply_WritesMinZero_OnBattery_AndDoesNotTouchMax()
@@ -32,6 +32,23 @@ public class CpuParkingDomainTests
         Assert.Equal(100u, power.GetDc(Max));      // maximum untouched
         Assert.DoesNotContain(Max, power.WrittenSettings);
         Assert.True(domain.IsActive);
+    }
+
+    [Fact]
+    public void Apply_EnablesCoreParking_SetsLowMinUnparkedCores()
+    {
+        // CPMINCORES is the minimum percent of cores kept unparked. The old code wrote 100
+        // (all cores unparked = parking DISABLED), the opposite of this domain's stated intent.
+        // Aggressive battery parking needs a LOW floor so Windows can park idle cores on DC.
+        var power = new FakePowerScheme(Scheme);
+        power.SetDc(Min, 5);
+        power.SetDc(Park, 100);
+        var domain = new CpuParkingDomain(new Settings { CpuParkingMinProcessorDC = 0 }, power);
+
+        domain.Apply(domain.CaptureBaseline());
+
+        Assert.True(power.GetDc(Park) < 100u);   // parking is actually enabled now
+        Assert.Equal(0u, power.GetDc(Park));     // aggressive floor on battery
     }
 
     [Fact]

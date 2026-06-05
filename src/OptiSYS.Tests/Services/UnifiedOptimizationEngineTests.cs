@@ -74,7 +74,7 @@ public class UnifiedOptimizationEngineTests
             _scheme = scheme;
             _dc[NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM] = min;
             _dc[NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM] = max;
-            _dc[NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD] = parking;
+            _dc[NativeMethods.GUID_PROCESSOR_CORE_PARKING_MIN_CORES] = parking;
         }
 
         public uint GetDc(Guid setting) => _dc[setting];

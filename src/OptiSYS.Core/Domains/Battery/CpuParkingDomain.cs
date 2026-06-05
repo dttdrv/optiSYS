@@ -54,7 +54,7 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
 
         var coreParking = _power.ReadDcValue(_activeScheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
-            NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD);
+            NativeMethods.GUID_PROCESSOR_CORE_PARKING_MIN_CORES);
 
         snapshot.Set("minProcessorState", minProc ?? 5u);
         snapshot.Set("maxProcessorState", maxProc ?? 100u);
@@ -84,10 +84,12 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
         else
             failed++;
 
+        // CPMINCORES floor on battery: 0 = aggressive idle-core parking (the parking engine still
+        // unparks under load); 100 (the old value) disabled core parking entirely, inverting intent.
         if (_power.WriteDcValue(scheme,
             NativeMethods.GUID_PROCESSOR_SETTINGS_SUBGROUP,
-            NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD,
-            100u))
+            NativeMethods.GUID_PROCESSOR_CORE_PARKING_MIN_CORES,
+            0u))
             applied++;
         else
             failed++;
@@ -123,7 +125,7 @@ public sealed class CpuParkingDomain : IOptimizationDomain, IVerifiableRevert
         bool ok = true;
         ok &= RestoreIfPresent(baseline, "minProcessorState", scheme, NativeMethods.GUID_PROCESSOR_THROTTLE_MINIMUM);
         ok &= RestoreIfPresent(baseline, "maxProcessorState", scheme, NativeMethods.GUID_PROCESSOR_THROTTLE_MAXIMUM);
-        ok &= RestoreIfPresent(baseline, "coreParkingThreshold", scheme, NativeMethods.GUID_PROCESSOR_PARKING_CORE_THRESHOLD);
+        ok &= RestoreIfPresent(baseline, "coreParkingThreshold", scheme, NativeMethods.GUID_PROCESSOR_CORE_PARKING_MIN_CORES);
 
         _power.SetActiveScheme(scheme);
         _isActive = false;
