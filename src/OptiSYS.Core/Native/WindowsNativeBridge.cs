@@ -89,6 +89,21 @@ public sealed class WindowsNativeBridge : INativeBridge
         finally { NativeMethods.CloseHandle(handle); }
     }
 
+    public bool? IsEcoQosThrottled(int processId)
+    {
+        // Readback only needs QUERY_LIMITED_INFORMATION (works for protected processes that reject
+        // the heavier QUERY_INFORMATION right). A failed open or query -> null ("unknown").
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        if (handle == IntPtr.Zero) return null;
+        try
+        {
+            var state = NativeMethods.GetProcessEcoQoSState(handle);
+            return state is { } s ? NativeMethods.IsEcoQoSThrottled(s) : null;
+        }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
     public bool GetMemoryInfo(out Interfaces.NativeMemoryInfo info)
     {
         info = default;

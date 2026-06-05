@@ -586,6 +586,26 @@ internal static partial class NativeMethods
         return SetProcessInformation(hProcess, ProcessPowerThrottling, ptr, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
     }
 
+    // Pure decode (unit-testable without a process handle): a process is verified in EcoQoS only
+    // when EXECUTION_SPEED is set in BOTH the control and state masks. OS-managed (0,0) and
+    // pinned-high (Control=flag, State=0) are not EcoQoS.
+    internal static bool IsEcoQoSThrottled(in PROCESS_POWER_THROTTLING_STATE state) =>
+        (state.ControlMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED) != 0 &&
+        (state.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED) != 0;
+
+    // Reads the process's current power-throttling state via the documented GetProcessInformation
+    // (ProcessPowerThrottling). Returns null when it can't be queried (access denied, exited) so the
+    // caller can treat the result as "unknown" and fall back. Needs only QUERY_LIMITED_INFORMATION.
+    internal static unsafe PROCESS_POWER_THROTTLING_STATE? GetProcessEcoQoSState(IntPtr hProcess)
+    {
+        var state = new PROCESS_POWER_THROTTLING_STATE();
+        var ptr = (IntPtr)(&state);
+        return GetProcessInformation(hProcess, ProcessPowerThrottling,
+            ptr, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>())
+            ? state
+            : null;
+    }
+
     internal static unsafe bool SetProcessTimerResolutionIgnore(IntPtr hProcess, bool ignore)
     {
         var state = BuildTimerResolutionState(ignore);

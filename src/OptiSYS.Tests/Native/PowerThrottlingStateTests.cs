@@ -45,4 +45,39 @@ public class PowerThrottlingStateTests
         Assert.Equal(0u, state.ControlMask);   // OS-managed, not pinned
         Assert.Equal(0u, state.StateMask);
     }
+
+    // ── Readback decode (item #25) ───────────────────────────────────
+    // The readback decodes a queried PROCESS_POWER_THROTTLING_STATE: EcoQoS is verified ON only
+    // when the EXECUTION_SPEED bit is set in BOTH the control and state masks (Windows reports an
+    // explicitly-throttled process this way). OS-managed (Control=0,State=0) and pinned-high
+    // (Control=flag,State=0) are NOT EcoQoS.
+
+    [Fact]
+    public void IsEcoQoSThrottled_True_WhenExecutionSpeedSetInBothMasks()
+    {
+        var state = NativeMethods.BuildEcoQoSState(enable: true);
+
+        Assert.True(NativeMethods.IsEcoQoSThrottled(state));
+    }
+
+    [Fact]
+    public void IsEcoQoSThrottled_False_WhenOsManaged()
+    {
+        var state = NativeMethods.BuildEcoQoSState(enable: false);
+
+        Assert.False(NativeMethods.IsEcoQoSThrottled(state));
+    }
+
+    [Fact]
+    public void IsEcoQoSThrottled_False_WhenPinnedHigh_ControlSetStateClear()
+    {
+        var pinnedHigh = new NativeMethods.PROCESS_POWER_THROTTLING_STATE
+        {
+            Version = NativeMethods.PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask = NativeMethods.PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            StateMask = 0
+        };
+
+        Assert.False(NativeMethods.IsEcoQoSThrottled(pinnedHigh));
+    }
 }

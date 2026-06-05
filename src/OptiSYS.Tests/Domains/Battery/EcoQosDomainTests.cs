@@ -159,4 +159,68 @@ public class EcoQosDomainTests
         Assert.True(result.Success);
         Assert.True(domain.IsActive);
     }
+
+    // ── Readback-aware reconcile (item #25) ──────────────────────────
+
+    [Fact]
+    public void Reconcile_SkipsProcessAlreadyVerifiedThrottled_AndStillCountsItVerified()
+    {
+        // 1001 is already in EcoQoS (e.g. the OS classified it, or a prior session did): the bridge
+        // reports it throttled, so we must NOT re-apply it, but it still counts toward verified.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "already"));
+        native.Setup(n => n.IsEcoQosThrottled(1001)).Returns(true);
+        var domain = new EcoQosDomain(new Settings(), native.Object);
+
+        var result = domain.Reconcile();
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);   // skip-if-already-throttled
+        Assert.Contains("1 background processes verified", result.Message);
+        Assert.True(domain.IsActive);
+    }
+
+    [Fact]
+    public void Reconcile_AppliesToNotThrottledProcess_AndReportsVerifiedCount()
+    {
+        // 1001 reads back as not throttled before apply, throttled after apply -> verified.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
+        native.SetupSequence(n => n.IsEcoQosThrottled(1001))
+            .Returns(false)   // pre-apply: not yet throttled
+            .Returns(true);   // post-apply readback: confirmed
+        var domain = new EcoQosDomain(new Settings(), native.Object);
+
+        var result = domain.Reconcile();
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);    // applied (was not throttled)
+        Assert.Contains("1 background processes verified", result.Message);
+    }
+
+    [Fact]
+    public void Reconcile_SilentNoOp_AppliedButReadbackNotThrottled_NotCountedVerified()
+    {
+        // The write "succeeds" but readback shows the OS/driver ignored it: applied, NOT verified.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
+        native.Setup(n => n.IsEcoQosThrottled(1001)).Returns(false);   // never throttled, even post-apply
+        var domain = new EcoQosDomain(new Settings(), native.Object);
+
+        var result = domain.Reconcile();
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);       // attempted
+        Assert.Contains("0 background processes verified", result.Message);
+    }
+
+    [Fact]
+    public void Reconcile_NullReadback_FallsBackToAttempting_AndDoesNotThrow()
+    {
+        // Readback unavailable (access denied / exited) -> bridge returns null. Must fall back to
+        // today's attempt-and-track behavior and never throw. (Bridge() leaves IsEcoQosThrottled
+        // unmocked, so it returns null by default.)
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
+        var domain = new EcoQosDomain(new Settings(), native.Object);
+
+        var ex = Record.Exception(() => domain.Reconcile());
+
+        Assert.Null(ex);
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);       // attempted despite unknown state
+        Assert.True(domain.IsActive);
+    }
 }

@@ -13,6 +13,11 @@ public interface INativeBridge : IDisposable
     bool SetEcoQos(bool enable, int processId);
     bool SetTimerResolution(bool increase, int processId);
 
+    // Reads back a process's actual EcoQoS (EXECUTION_SPEED) throttling state via the documented
+    // GetProcessInformation. true = verified throttled, false = verified not throttled,
+    // null = unknown (access denied / exited) so the caller falls back to attempt-and-track.
+    bool? IsEcoQosThrottled(int processId);
+
     // Memory
     bool GetMemoryInfo(out NativeMemoryInfo info);
     long TrimProcessWorkingSet(int processId);

@@ -89,7 +89,7 @@ public sealed class EcoQosDomain : IOptimizationDomain
             desired.Add(pid);
         }
 
-        int throttled = 0, released = 0, failed = 0, active;
+        int throttled = 0, released = 0, failed = 0, alreadyThrottled = 0, verified = 0, active;
         lock (_gate)
         {
             // Release whatever we previously throttled that is no longer desired: the app that
@@ -106,10 +106,28 @@ public sealed class EcoQosDomain : IOptimizationDomain
             {
                 if (_throttledPids.Contains(pid))
                     continue;
+
+                // Readback first: if the OS (or a prior session) already has this process in EcoQoS,
+                // skip the redundant write — idempotent, less churn — but still track + count it.
+                // A null readback means "unknown" (access denied / exited): fall back to attempting.
+                var preState = IsEcoQosThrottled((int)pid);
+                if (preState == true)
+                {
+                    _throttledPids.Add(pid);
+                    alreadyThrottled++;
+                    verified++;
+                    continue;
+                }
+
                 if (SetEcoQos((int)pid, enable: true))
                 {
                     _throttledPids.Add(pid);
                     throttled++;
+
+                    // Confirm the write actually took (detect a silent driver/OS no-op). Unknown or
+                    // not-throttled means tracked-but-unverified — the count stays defensible.
+                    if (IsEcoQosThrottled((int)pid) == true)
+                        verified++;
                 }
                 else
                 {
@@ -123,8 +141,8 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
         sw.Stop();
         return ApplyResult.Ok(Id,
-            $"{active} background processes in efficiency mode",
-            optimized: throttled, failed: failed, skipped: released, duration: sw.Elapsed);
+            $"{verified} background processes verified in efficiency mode",
+            optimized: throttled, failed: failed, skipped: released + alreadyThrottled, duration: sw.Elapsed);
     }
 
     public void Revert(DomainSnapshot baseline)
@@ -177,6 +195,14 @@ public sealed class EcoQosDomain : IOptimizationDomain
             finally { proc.Dispose(); }
         }
         return list;
+    }
+
+    // Readback through the bridge seam (mockable). Returns null = unknown when no bridge is wired,
+    // the read fails, or it throws — never propagates, so reconcile degrades to attempt-and-track.
+    private bool? IsEcoQosThrottled(int pid)
+    {
+        try { return _native?.IsEcoQosThrottled(pid); }
+        catch { return null; }
     }
 
     private bool SetEcoQos(int pid, bool enable)
