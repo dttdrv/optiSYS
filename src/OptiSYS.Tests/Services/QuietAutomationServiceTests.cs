@@ -191,6 +191,68 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public void DefaultSettings_MatchPredictorCtorDefaults_SoDefaultConfigIsUnchanged()
+    {
+        // Wiring the knobs must be behaviour-preserving at default config: the Settings defaults
+        // must equal the predictor's hardcoded ctor defaults, otherwise a default install would see
+        // different predictive behaviour after wiring. This pins that invariant.
+        var settings = new Settings();
+        Assert.Equal(10, settings.TrendWindowSize);
+        Assert.Equal(15, settings.PredictiveLeadSeconds);
+        Assert.Equal(10, settings.HysteresisGap);
+    }
+
+    [Fact]
+    public async Task BuildsPredictorFromSettingsKnobs_NonDefaultLeadSecondsChangesFireDecision()
+    {
+        // Proves the Settings knobs reach the predictor the service builds (not a default one).
+        // The trend gives slope = 0.5 %/s at usage 70 (threshold 80). The fire test is
+        //   usage + slope * lead >= threshold:
+        //     default lead 15 -> 70 + 0.5*15 = 77.5  < 80 -> would NOT fire
+        //     wired   lead 40 -> 70 + 0.5*40 = 90.0 >= 80 -> fires
+        // So a pre-emptive cleanup on the third tick is observable ONLY if PredictiveLeadSeconds
+        // was wired from Settings into the predictor.
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 80,
+            MemoryCriticalThresholdPercent = 95,
+            MemoryCooldownSeconds = 15,
+            TrendWindowSize = 10,
+            PredictiveLeadSeconds = 40,    // non-default (default is 15)
+            HysteresisGap = 10,
+        };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        // Rising 60 -> 65 -> 70 over 20s => slope exactly 0.5 %/s; all below the 80 threshold.
+        memory.SetupSequence(m => m.GetCurrentMemoryInfo())
+            .Returns(Mem(60, commitRatio: 0.70))
+            .Returns(Mem(65, commitRatio: 0.70))
+            .Returns(Mem(70, commitRatio: 0.70));
+
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Balanced, 0, 80, false, 0, true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 5 });
+
+        // Deterministic clock wired into the predictor the service builds FROM SETTINGS.
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var service = new QuietAutomationService(
+            settings, Mock.Of<IBatteryInfoService>(), memory.Object, optimizer.Object,
+            Mock.Of<IOptimizationEngine>(), timer, utcNow: () => now);
+        await service.StartAsync();
+
+        timer.Tick(); await service.LastEvaluationForTests;            // 60 @ t0  (<3 samples)
+        now = now.AddSeconds(10);
+        timer.Tick(); await service.LastEvaluationForTests;            // 65 @ t10 (2 samples)
+        now = now.AddSeconds(10);
+        timer.Tick(); await service.LastEvaluationForTests;            // 70 @ t20 -> fire (lead 40)
+
+        await WaitForAssertionAsync(() =>
+            optimizer.Verify(o => o.OptimizeAll(
+                OptimizationLevel.Balanced, 0, 80, false, 0, true), Times.Once));
+    }
+
+    [Fact]
     public async Task TimerTick_HintsBackgroundMemoryPriorityEveryCycle()
     {
         var settings = new Settings { MemoryThresholdPercent = 80 };

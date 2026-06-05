@@ -51,12 +51,27 @@ public sealed class QuietAutomationService : IQuietAutomationService
         IMemoryOptimizer optimizer,
         IOptimizationEngine engine,
         ITimerService timer)
-        : this(settings, battery, memory, optimizer, engine, timer, predictor: null)
+        : this(settings, battery, memory, optimizer, engine, timer, utcNow: null)
     {
     }
 
-    // Test seam: injects a clock-controlled predictor. Internal so MS.DI never sees it and
-    // always picks the public ctor above (which builds a default predictor).
+    // Test seam: builds the predictor from the configured Settings knobs (exercising the same
+    // production wiring) but with an injected clock so OLS slopes are deterministic. Internal so
+    // MS.DI never sees it and always picks the public ctor above.
+    internal QuietAutomationService(
+        Settings settings,
+        IBatteryInfoService battery,
+        IMemoryInfoService memory,
+        IMemoryOptimizer optimizer,
+        IOptimizationEngine engine,
+        ITimerService timer,
+        Func<DateTime>? utcNow)
+        : this(settings, battery, memory, optimizer, engine, timer,
+               predictor: BuildPredictor(settings, utcNow))
+    {
+    }
+
+    // Test seam: injects a fully-built clock-controlled predictor. Internal so MS.DI never sees it.
     internal QuietAutomationService(
         Settings settings,
         IBatteryInfoService battery,
@@ -71,10 +86,15 @@ public sealed class QuietAutomationService : IQuietAutomationService
         _optimizer = optimizer ?? throw new ArgumentNullException(nameof(optimizer));
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _timer = timer ?? throw new ArgumentNullException(nameof(timer));
-        _predictor = predictor ?? new MemoryTrendPredictor();
+        _predictor = predictor ?? BuildPredictor(settings, utcNow: null);
 
         ArgumentNullException.ThrowIfNull(battery);
     }
+
+    // Single place the predictor is constructed: wires the user-configurable trend knobs from
+    // Settings (defaults match the predictor's own ctor defaults, so default config is unchanged).
+    private static MemoryTrendPredictor BuildPredictor(Settings settings, Func<DateTime>? utcNow) =>
+        new(settings.TrendWindowSize, settings.PredictiveLeadSeconds, settings.HysteresisGap, utcNow: utcNow);
 
     public Task StartAsync()
     {
