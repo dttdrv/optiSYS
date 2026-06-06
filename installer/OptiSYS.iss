@@ -41,10 +41,12 @@ DisableProgramGroupPage=yes
 DisableDirPage=yes
 DisableReadyPage=yes
 DisableFinishedPage=yes
-; Install per-user into %LOCALAPPDATA% with NO upfront UAC (Chrome-style: it just installs). The
-; only elevation is the post-copy provisioning of the silent elevated logon task, which the
-; ssPostInstall step requests on its own via ShellExec 'runas' (one UAC, at the end).
-PrivilegesRequired=lowest
+; optiSYS runs ELEVATED via its logon task, so its files (clrjit.dll, etc.) are locked by an
+; elevated process; a per-user installer cannot replace them on upgrade (DeleteFile Access denied,
+; code 5). Run the installer elevated (one UAC at start) so it can terminate the elevated instance,
+; replace files, and provision the logon task in a single elevation. Still a per-user install into
+; %LOCALAPPDATA%, and it still auto-runs (all pages disabled) once elevation is granted.
+PrivilegesRequired=admin
 CloseApplications=yes
 CloseApplicationsFilter={#AppExeName}
 RestartApplications=no
@@ -88,7 +90,10 @@ function InitializeSetup(): Boolean;
 var
   ResultCode: Integer;
 begin
-  // Close any running instance so files aren't locked during an upgrade.
+  // The installer is elevated, so end the elevated logon task and force-kill any running instance
+  // BEFORE the file copy — otherwise the elevated process keeps clrjit.dll (etc.) open and the
+  // replace fails with Access denied (code 5). An elevated Exec can terminate the elevated process.
+  Exec('schtasks.exe', '/End /TN "{#AppName}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec('taskkill.exe', '/F /IM {#AppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := True;
 end;
@@ -177,11 +182,11 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // The install itself is per-user (no elevation). Elevate ONLY this step (one UAC) to provision
-    // the silent elevated logon task: the app's --provision-elevation branch registers the
-    // HighestAvailable logon task, flips UseTaskScheduler on, and exits without a window. From the
-    // next logon the app launches elevated silently.
-    ShellExec('runas', ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
+    // The installer is already elevated, so provision the silent elevated logon task directly (no
+    // second UAC): the app's --provision-elevation branch registers the HighestAvailable logon
+    // task, flips UseTaskScheduler on, and exits without a window. From the next logon the app
+    // launches elevated silently.
+    ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
       SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 
