@@ -4,7 +4,6 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 using OptiSYS.Services;
@@ -470,12 +469,13 @@ public sealed partial class MainWindow : Window
         SettingsGrid.Visibility = tag == "Settings" ? Visibility.Visible : Visibility.Collapsed;
 
         var dashboardSelected = tag == "Dashboard";
-        // Win11 nav: fade the accent pill on the selected item, and give it a subtle persistent
-        // fill. Skip the fade during init so the first paint is instant.
-        FadeNavPill(DashboardAccentBorder, dashboardSelected);
-        FadeNavPill(SettingsAccentBorder, !dashboardSelected);
-        DashboardBtn.Background = dashboardSelected ? _navSelectedFill : _navTransparent;
-        SettingsBtn.Background = dashboardSelected ? _navTransparent : _navSelectedFill;
+        // Selection is expressed as a VisualState (not a code-set Background): the template's
+        // SelectionStates group paints the persistent subtle fill for the "Selected" item.
+        Microsoft.UI.Xaml.VisualStateManager.GoToState(DashboardBtn, dashboardSelected ? "Selected" : "Unselected", true);
+        Microsoft.UI.Xaml.VisualStateManager.GoToState(SettingsBtn, dashboardSelected ? "Unselected" : "Selected", true);
+
+        // Slide the single shared accent pill to the selected row (Fluent selection indicator).
+        SlideNavIndicator(dashboardSelected ? NavIndicatorRow0Y : NavIndicatorRow1Y);
 
         // Persist the active page so it is restored next launch (skip during init / no-op changes).
         if (!_initializing && _settings.SelectedNavItem != tag)
@@ -485,35 +485,38 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static readonly Brush _navTransparent = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-    private readonly Brush _navSelectedFill = ResolveThemeBrush("SubtleFillColorSecondaryBrush");
+    // Row offsets for the single sliding accent indicator, in the nav container's coordinate space.
+    // Layout: StackPanel Spacing=2, each item Height=36 with Margin 0,1 -> 40px pitch; the 16px pill
+    // is centred in the 36px row ((36-16)/2 = 10) above the item's top margin (1).
+    private const double NavIndicatorRow0Y = 11;   // Dashboard
+    private const double NavIndicatorRow1Y = 51;   // Settings
 
-    private static Brush ResolveThemeBrush(string key) =>
-        Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush
-            ? brush
-            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    private bool _navIndicatorPlaced;
 
-    /// <summary>Win11-style selection indicator: quick opacity ease in/out (no stretch).</summary>
-    private void FadeNavPill(Border pill, bool selected)
+    /// <summary>Slide the shared accent pill to the target row via TranslateTransform.Y
+    /// (167ms CubicEase EaseOut). The first placement snaps so the restored page paints correctly;
+    /// subsequent selection changes animate.</summary>
+    private void SlideNavIndicator(double targetY)
     {
-        var target = selected ? 1.0 : 0.0;
-        if (_initializing)
+        if (!_navIndicatorPlaced)
         {
-            pill.Opacity = target;
+            _navIndicatorPlaced = true;
+            NavIndicatorTransform.Y = targetY;
             return;
         }
 
         var anim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
         {
-            To = target,
+            To = targetY,
             Duration = new Duration(TimeSpan.FromMilliseconds(167)),
+            EnableDependentAnimation = true,
             EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
             {
                 EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
             },
         };
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, pill);
-        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "Opacity");
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, NavIndicatorTransform);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "Y");
         var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
         sb.Children.Add(anim);
         sb.Begin();

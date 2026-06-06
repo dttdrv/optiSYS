@@ -12,10 +12,13 @@
 
     <Grid x:Name="ShellRoot" Background="Transparent">
         <Grid.Resources>
-            <!-- Compact, Win11-Settings-style nav item: ~36px row, 4px corner, accent selection
-                 pill + a subtle persistent fill on the selected item (set in code). -->
+            <!-- Compact, Win11-Settings-style nav item: ~36px row, 4px corner. Hover / pressed /
+                 selected are driven entirely by the template's VisualStateManager off standard
+                 Fluent theme brushes (no code-set Background). There is intentionally NO Pressed
+                 RenderTransform / PointerDownThemeAnimation, so clicking never "bounces". The
+                 accent selection pill is a single shared indicator that slides between rows
+                 (see NavIndicator below), not a per-item border. -->
             <Style x:Key="SidebarButtonStyle" TargetType="Button">
-                <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -25,6 +28,68 @@
                 <Setter Property="Height" Value="36" />
                 <Setter Property="Margin" Value="0,1" />
                 <Setter Property="FontSize" Value="14" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Grid x:Name="RootGrid"
+                                  Background="Transparent"
+                                  CornerRadius="{TemplateBinding CornerRadius}">
+                                <Border x:Name="BackgroundBorder"
+                                        Background="Transparent"
+                                        CornerRadius="{TemplateBinding CornerRadius}" />
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Padding="{TemplateBinding Padding}"
+                                                  Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                <VisualStateManager.VisualStateGroups>
+                                    <!-- Hover / pressed background only. No scale transform -> no bounce.
+                                         Selection is shown by the shared sliding NavIndicator, plus a
+                                         persistent subtle fill applied via the SelectionStates group. -->
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundBorder" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BackgroundBorder" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <!-- Selected = persistent subtle fill. Driven from code via
+                                         VisualStateManager.GoToState (a state, not a code-set Background). -->
+                                    <VisualStateGroup x:Name="SelectionStates">
+                                        <VisualState x:Name="Unselected" />
+                                        <VisualState x:Name="Selected">
+                                            <Storyboard>
+                                                <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RootGrid" Storyboard.TargetProperty="Background">
+                                                    <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                                </ObjectAnimationUsingKeyFrames>
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
         </Grid.Resources>
         <Grid.RowDefinitions>
@@ -64,38 +129,40 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Navigation Links -->
-                <StackPanel Grid.Row="0" Margin="8,16,8,0" Spacing="2">
-                    <!-- Dashboard -->
-                    <Button x:Name="DashboardBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Dashboard" AutomationProperties.Name="Dashboard">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="DashboardAccentBorder" Width="3" Height="16" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-7,0,9,0" Opacity="1" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="14" VerticalAlignment="Center">
+                <!-- Navigation Links. The single shared accent indicator (NavIndicator) overlays
+                     the item list and slides between rows via its TranslateTransform.Y (animated in
+                     code on selection change). The items themselves no longer carry per-item pills. -->
+                <Grid Grid.Row="0" Margin="8,16,8,0">
+                    <!-- 3px accent selection pill, 16px tall, left edge. Y is set/animated in code. -->
+                    <Border x:Name="NavIndicator" Width="3" Height="16"
+                            Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="1.5"
+                            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="1,0,0,0"
+                            IsHitTestVisible="False">
+                        <Border.RenderTransform>
+                            <!-- Y defaults to the Dashboard row (NavIndicatorRow0Y) so the first
+                                 paint is correct; selection changes animate Y in code-behind. -->
+                            <TranslateTransform x:Name="NavIndicatorTransform" Y="11" />
+                        </Border.RenderTransform>
+                    </Border>
+
+                    <StackPanel Spacing="2">
+                        <!-- Dashboard -->
+                        <Button x:Name="DashboardBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Dashboard" AutomationProperties.Name="Dashboard">
+                            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center" Margin="5,0,0,0">
                                 <FontIcon Glyph="&#xE80F;" FontSize="16" />
                                 <TextBlock Text="Dashboard" VerticalAlignment="Center" />
                             </StackPanel>
-                        </Grid>
-                    </Button>
+                        </Button>
 
-                    <!-- Settings -->
-                    <Button x:Name="SettingsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Settings" AutomationProperties.Name="Settings">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Border x:Name="SettingsAccentBorder" Width="3" Height="16" Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="1.5" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-7,0,9,0" Opacity="0" />
-                            <StackPanel Orientation="Horizontal" Grid.Column="1" Spacing="14" VerticalAlignment="Center">
+                        <!-- Settings -->
+                        <Button x:Name="SettingsBtn" Click="SidebarBtn_Click" Style="{StaticResource SidebarButtonStyle}" Tag="Settings" AutomationProperties.Name="Settings">
+                            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center" Margin="5,0,0,0">
                                 <FontIcon Glyph="&#xE713;" FontSize="16" />
                                 <TextBlock Text="Settings" VerticalAlignment="Center" />
                             </StackPanel>
-                        </Grid>
-                    </Button>
-                </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
 
                 <!-- About (bottom-left): version + author + repo, minimal. -->
                 <StackPanel Grid.Row="1" Margin="12,0,12,14" Spacing="1">
