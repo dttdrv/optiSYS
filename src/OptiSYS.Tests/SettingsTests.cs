@@ -31,10 +31,10 @@ public class SettingsTests
         Assert.True(settings.ServicesManualEnabled);    // AIO set; admin-gated, no-op unless elevated
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
-        Assert.Equal(75, settings.MemoryThresholdPercent);
+        Assert.Equal(50, settings.MemoryThresholdPercent);
         // Critical must sit ABOVE the reactive threshold so the reactive branch isn't dead code
-        // (EvaluateMemoryPressureAsync tests >= critical first). 75/90, not the collapsed 75/75.
-        Assert.Equal(90, settings.MemoryCriticalThresholdPercent);
+        // (EvaluateMemoryPressureAsync tests >= critical first). 50/75, not the collapsed 75/75.
+        Assert.Equal(75, settings.MemoryCriticalThresholdPercent);
         Assert.True(settings.MemoryCriticalThresholdPercent > settings.MemoryThresholdPercent);
         Assert.Equal(5, settings.MemoryCheckIntervalSeconds);   // 5s reclaim cadence (matches RAMSpeed)
         Assert.Equal(30, settings.MemoryCooldownSeconds);

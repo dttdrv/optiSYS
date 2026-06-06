@@ -109,7 +109,7 @@ public sealed class Settings
     /// Persisted settings schema version. Bumped when a migration is added; a file with a lower
     /// (or missing → 0) version is upgraded on Load via <see cref="Migrate"/>.
     /// </summary>
-    internal const int CurrentSchemaVersion = 1;
+    internal const int CurrentSchemaVersion = 2;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
     // ── Battery optimization settings ────────────────────────────────
@@ -168,15 +168,15 @@ public sealed class Settings
 
     // Memory optimization settings. Baked-in (no UI knobs). DYNAMIC monitoring: a ~5s tick watches
     // continuously and reacts within seconds — but only SAMPLES memory each tick (cheap); actual
-    // reclaim is gated by the 75% reactive threshold + the predictive trend + the cooldown, so the
+    // reclaim is gated by the 50% reactive threshold + the predictive trend + the cooldown, so the
     // heavy work fires only under genuine pressure. Cooldown spaces consecutive reclaims.
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
     public int MemoryCheckIntervalSeconds { get; set; } = 5;
-    public int MemoryThresholdPercent { get; set; } = 75;
+    public int MemoryThresholdPercent { get; set; } = 50;
     // OOM prevention: at/above this usage %, automatic cleanup escalates to a full (Aggressive)
     // reclaim immediately and bypasses the cooldown, so a fast allocation burst (e.g. many large
     // processes) can't blow through the free-RAM buffer between spaced-out cleanups.
-    public int MemoryCriticalThresholdPercent { get; set; } = 90;
+    public int MemoryCriticalThresholdPercent { get; set; } = 75;
     public int MemoryCooldownSeconds { get; set; } = 30;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
@@ -341,8 +341,15 @@ public sealed class Settings
     /// </summary>
     private void Migrate()
     {
-        // (no historical migrations yet — when one is needed, gate it on the on-disk version, e.g.
-        //  if (SchemaVersion < 1) { /* transform */ } )
+        // v1 -> v2: adopt the 50% reactive / 75% critical memory thresholds. They are not
+        // user-configurable (no UI), so existing configs carrying old default values are brought to
+        // the current defaults rather than left stale — otherwise Validate's invariant would only
+        // self-heal a collapsed 75/75 to 75/85, never the intended 50/75.
+        if (SchemaVersion < 2)
+        {
+            MemoryThresholdPercent = 50;
+            MemoryCriticalThresholdPercent = 75;
+        }
         SchemaVersion = CurrentSchemaVersion;
     }
 

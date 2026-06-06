@@ -134,12 +134,28 @@ public class SettingsPersistenceTests
     {
         var path = NewSettingsPath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, "{ \"MemoryThresholdPercent\": 70 }");   // no SchemaVersion
+        File.WriteAllText(path, "{ \"MemoryCooldownSeconds\": 42 }");   // no SchemaVersion
 
         var loaded = Settings.Load(path);
 
         Assert.Equal(Settings.CurrentSchemaVersion, loaded.SchemaVersion);
-        Assert.Equal(70, loaded.MemoryThresholdPercent);
+        Assert.Equal(42, loaded.MemoryCooldownSeconds);   // a non-migrated field survives the upgrade
+    }
+
+    [Fact]
+    public void Migrate_PreV2Config_AdoptsNew50_75MemoryThresholds()
+    {
+        var path = NewSettingsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        // A v1 config carrying the old collapsed 75/75 thresholds (thresholds aren't user-configurable,
+        // so a pre-v2 config adopts the current 50/75 defaults rather than self-healing to 75/85).
+        File.WriteAllText(path, "{ \"SchemaVersion\": 1, \"MemoryThresholdPercent\": 75, \"MemoryCriticalThresholdPercent\": 75 }");
+
+        var loaded = Settings.Load(path);
+
+        Assert.Equal(50, loaded.MemoryThresholdPercent);
+        Assert.Equal(75, loaded.MemoryCriticalThresholdPercent);
+        Assert.Equal(Settings.CurrentSchemaVersion, loaded.SchemaVersion);
     }
 
     // ── 4. Validate-on-save ──────────────────────────────────────────
@@ -216,7 +232,7 @@ public class SettingsPersistenceTests
         Assert.True(loaded.CpuParkingEnabled);
         Assert.False(loaded.WiFiOptimizerEnabled);
         Assert.True(loaded.AutoOptimizeMemoryEnabled);
-        Assert.Equal(80, loaded.MemoryThresholdPercent);
+        Assert.Equal(80, loaded.MemoryThresholdPercent);   // version-less blob reads as current schema (initializer), so thresholds are not migrated
         Assert.Equal(OptimizationLevel.Aggressive, loaded.OptimizationLevel);
         Assert.Equal("Dark", loaded.ThemeMode);
         Assert.Equal(1400, loaded.WindowWidth);
