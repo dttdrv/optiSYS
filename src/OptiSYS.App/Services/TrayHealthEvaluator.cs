@@ -33,11 +33,35 @@ public static class TrayHealthEvaluator
         return Math.Min(watts, 99);
     }
 
-    /// <summary>Tray tooltip: memory usage only, e.g. <c>"Memory: 62%"</c> (rounded).</summary>
-    public static string MemoryTooltip(MemoryInfo? memory)
+    /// <summary>
+    /// The tray's main number: memory usage percent, rounded and clamped to two digits (>= 100 shows
+    /// 99) so it stays legible at icon size.
+    /// </summary>
+    public static int MemoryDisplayNumber(MemoryInfo? memory)
     {
         var percent = (int)Math.Round(memory?.UsagePercent ?? 0, MidpointRounding.AwayFromZero);
-        return $"Memory: {percent}%";
+        return Math.Clamp(percent, 0, 99);
+    }
+
+    /// <summary>Short, human efficiency label for the tooltip, e.g. <c>"Good"</c> / <c>"Poor"</c>.</summary>
+    public static string EfficiencyLabel(OverallHealthState state) => state switch
+    {
+        OverallHealthState.Great => "Great",
+        OverallHealthState.Good => "Good",
+        OverallHealthState.Normal => "Normal",
+        _ => "Poor",
+    };
+
+    /// <summary>
+    /// Tray tooltip (the number is memory now): battery draw + efficiency, e.g.
+    /// <c>"12 W draw • Good"</c> on battery, <c>"On AC • Good"</c> on AC.
+    /// </summary>
+    public static string BatteryTooltip(BatteryInfo? battery, OverallHealthState state)
+    {
+        var label = EfficiencyLabel(state);
+        return battery?.IsOnBattery == true
+            ? $"{DischargeWatts(battery)} W draw • {label}"
+            : $"On AC • {label}";
     }
 
     public static OverallHealthState Evaluate(

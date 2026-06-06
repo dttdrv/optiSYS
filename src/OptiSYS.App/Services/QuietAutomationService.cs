@@ -8,6 +8,9 @@ public interface IQuietAutomationService : IDisposable
 {
     event Action? StateChanged;
 
+    /// <summary>Raised once after each memory watcher sample so the tray can re-render on that cadence.</summary>
+    event Action? MemorySampled;
+
     string LastActivity { get; }
     DateTimeOffset? LastActivityAt { get; }
     bool IsCleanupRunning { get; }
@@ -38,6 +41,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
     private bool _disposed;
 
     public event Action? StateChanged;
+    public event Action? MemorySampled;
 
     public string LastActivity { get; private set; } = "Safe optimization is ready.";
     public DateTimeOffset? LastActivityAt { get; private set; }
@@ -284,6 +288,12 @@ public sealed class QuietAutomationService : IQuietAutomationService
         catch (Exception ex)
         {
             Publish($"Memory watcher skipped a sample: {ex.Message}");
+        }
+        finally
+        {
+            // The tray's memory-% number rides this cadence — one signal per tick keeps it fresh
+            // without a dedicated timer, even on the early-return (paused / no-telemetry) paths.
+            MemorySampled?.Invoke();
         }
     }
 

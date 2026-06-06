@@ -30,7 +30,7 @@ public sealed class TrayIconService : ITrayIconService
     private bool _initialized;
     private TraySnapshot _snapshot = new();
     private TrayDot? _renderedDot;
-    private int _renderedWatts = -1;
+    private int _renderedNumber = -1;
     private bool _renderedIsLight;
     private string _lastTooltip = string.Empty;
 
@@ -44,7 +44,7 @@ public sealed class TrayIconService : ITrayIconService
         try
         {
             _windowHandle = windowHandle;
-            RenderIcon(_snapshot.DischargeWatts, TrayHealthEvaluator.DotFor(_snapshot.HealthState), IsLightSystemTheme());
+            RenderIcon(_snapshot.DisplayNumber, TrayHealthEvaluator.DotFor(_snapshot.HealthState), IsLightSystemTheme());
 
             // Subclass the window so it receives the WM_TRAYICON callbacks (left-click = open,
             // right-click = context menu). Same subclass id used by Dispose's RemoveWindowSubclass.
@@ -77,16 +77,16 @@ public sealed class TrayIconService : ITrayIconService
 
         // Re-render when the displayed number, the efficiency dot colour, OR the system/taskbar theme
         // changes — the last guards against a stale, wrong-coloured number after a theme flip with no
-        // watts/dot change (notably on AC where watts is pinned 0).
+        // number/dot change.
         var dot = TrayHealthEvaluator.DotFor(snapshot.HealthState);
-        var watts = snapshot.DischargeWatts;
+        var number = snapshot.DisplayNumber;
         var isLightTheme = IsLightSystemTheme();
         var iconChanged =
-            ShouldRerender(_renderedWatts, _renderedDot ?? dot, _renderedIsLight, watts, dot, isLightTheme)
+            ShouldRerender(_renderedNumber, _renderedDot ?? dot, _renderedIsLight, number, dot, isLightTheme)
             || _renderedDot is null;
         if (iconChanged)
         {
-            RenderIcon(watts, dot, isLightTheme);
+            RenderIcon(number, dot, isLightTheme);
         }
 
         var tooltip = ClampTooltip(snapshot.Tooltip);
@@ -166,12 +166,12 @@ public sealed class TrayIconService : ITrayIconService
             : Color.FromArgb(238, 244, 239);
 
     /// <summary>
-    /// Re-render the icon only when the displayed watts, the efficiency dot colour, or the
+    /// Re-render the icon only when the displayed number, the efficiency dot colour, or the
     /// system/taskbar theme change (a theme flip changes the number's contrast colour).
     /// </summary>
     internal static bool ShouldRerender(
-        int prevWatts, TrayDot prevDot, bool prevIsLight, int newWatts, TrayDot newDot, bool newIsLight) =>
-        prevWatts != newWatts || prevDot != newDot || prevIsLight != newIsLight;
+        int prevNumber, TrayDot prevDot, bool prevIsLight, int newNumber, TrayDot newDot, bool newIsLight) =>
+        prevNumber != newNumber || prevDot != newDot || prevIsLight != newIsLight;
 
     /// <summary>
     /// Detects whether the system/taskbar theme is light. The tray sits on the taskbar, which follows
@@ -253,15 +253,15 @@ public sealed class TrayIconService : ITrayIconService
     }
 
     /// <summary>
-    /// Renders the watt number + efficiency dot into a fresh 32x32 transparent icon and swaps it in,
+    /// Renders the number + efficiency dot into a fresh 32x32 transparent icon and swaps it in,
     /// freeing the previous GDI handle.
     /// </summary>
-    private void RenderIcon(int watts, TrayDot dot, bool isLightTheme)
+    private void RenderIcon(int number, TrayDot dot, bool isLightTheme)
     {
         DisposeIcon();
-        _icon = DotIconRenderer.Render(watts, dot, isLightTheme, out _iconHandle);
+        _icon = DotIconRenderer.Render(number, dot, isLightTheme, out _iconHandle);
         _renderedDot = dot;
-        _renderedWatts = watts;
+        _renderedNumber = number;
         _renderedIsLight = isLightTheme;
     }
 
@@ -292,7 +292,7 @@ public sealed class TrayIconService : ITrayIconService
         };
 
     /// <summary>
-    /// Renders the tray icon as a 32x32 transparent bitmap: the battery discharge watts as the large,
+    /// Renders the tray icon as a 32x32 transparent bitmap: the memory usage percent as the large,
     /// bold, theme-coloured main number, with a small efficiency-coloured dot at the top-right
     /// (the superscript / "x²" exponent position). Returns a managed <see cref="Icon"/> clone that
     /// owns its data (safe to Dispose); <paramref name="handle"/> is the raw HICON the caller must
@@ -304,7 +304,7 @@ public sealed class TrayIconService : ITrayIconService
         private static readonly Color Yellow = Color.FromArgb(0xE0, 0xA8, 0x16);
         private static readonly Color Red = Color.FromArgb(0xE0, 0x43, 0x43);
 
-        public static Icon Render(int watts, TrayDot dot, bool isLightTheme, out nint handle)
+        public static Icon Render(int number, TrayDot dot, bool isLightTheme, out nint handle)
         {
             const int size = 32;
             using var bmp = new Bitmap(size, size);
@@ -314,7 +314,7 @@ public sealed class TrayIconService : ITrayIconService
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             g.Clear(Color.Transparent);
 
-            DrawNumber(g, size, Math.Clamp(watts, 0, 99), isLightTheme);
+            DrawNumber(g, size, Math.Clamp(number, 0, 99), isLightTheme);
             DrawEfficiencyDot(g, size, dot);
 
             // Clone creates a managed Icon that owns its data; the raw HICON is returned so the
@@ -326,9 +326,9 @@ public sealed class TrayIconService : ITrayIconService
         // The number is the main element: bold, theme-contrast colour, sized to fill the canvas and
         // shrunk for two digits so it stays legible. Drawn slightly left/low to leave the top-right
         // corner for the dot.
-        private static void DrawNumber(Graphics g, int size, int watts, bool isLightTheme)
+        private static void DrawNumber(Graphics g, int size, int number, bool isLightTheme)
         {
-            var text = watts.ToString();
+            var text = number.ToString();
             var emSize = text.Length >= 2 ? 19f : 24f;
             using var font = new Font("Segoe UI", emSize, FontStyle.Bold, GraphicsUnit.Pixel);
             using var brush = new SolidBrush(SelectStrokeColor(isLightTheme));

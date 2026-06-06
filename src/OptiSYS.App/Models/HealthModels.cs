@@ -16,8 +16,8 @@ public sealed class TraySnapshot
     /// <summary>Optimization score 0-100 shown as the tray icon number.</summary>
     public int Score { get; init; } = 100;
 
-    /// <summary>Integer watts of battery discharge — the main tray number (0 on AC).</summary>
-    public int DischargeWatts { get; init; }
+    /// <summary>The main tray number — memory usage percent (rounded, clamped 0-99).</summary>
+    public int DisplayNumber { get; init; }
 
     public string Tooltip { get; init; } = "optiSYS";
     public string BatteryPresetLabel { get; init; } = "Recommended";

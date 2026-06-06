@@ -92,6 +92,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         ConfigureAutostartBackend();
         _battery.Updated += OnBatteryUpdated;
         _automation.StateChanged += OnAutomationStateChanged;
+        _automation.MemorySampled += OnMemorySampled;
         _powerSourceMonitor.PowerSourceChanged += OnPowerSourceChanged;
         RefreshTraySnapshot();
     }
@@ -152,6 +153,7 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
 
         _battery.Updated -= OnBatteryUpdated;
         _automation.StateChanged -= OnAutomationStateChanged;
+        _automation.MemorySampled -= OnMemorySampled;
         _powerSourceMonitor.PowerSourceChanged -= OnPowerSourceChanged;
         _powerSourceMonitor.Stop();
         _adaptiveEcoQos.Dispose();
@@ -166,6 +168,10 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
 
     private void OnAutomationStateChanged() => RefreshTraySnapshot();
 
+    // The memory-% number rides the watcher's sampling cadence so it never sits stale between the
+    // sparse battery/automation events (no dedicated timer is added for this).
+    private void OnMemorySampled() => RefreshTraySnapshot();
+
     private void RefreshTraySnapshot()
     {
         var memory = _memory.CurrentInfo;
@@ -175,15 +181,15 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         var score = _scoreCalculator.Evaluate(memory, battery, _automation.TotalFreedBytes);
         var preset = _settings.BatteryPreset == BatteryPreset.Saver ? "Saver" : "Recommended";
 
-        // Icon number is the battery discharge in watts (0 on AC); tooltip is memory usage only.
-        var watts = TrayHealthEvaluator.DischargeWatts(battery);
-        var tooltip = TrayHealthEvaluator.MemoryTooltip(memory);
+        // Icon number is memory usage percent; tooltip carries battery draw + efficiency.
+        var number = TrayHealthEvaluator.MemoryDisplayNumber(memory);
+        var tooltip = TrayHealthEvaluator.BatteryTooltip(battery, health);
 
         _tray.Update(new TraySnapshot
         {
             HealthState = health,
             Score = score,
-            DischargeWatts = watts,
+            DisplayNumber = number,
             Tooltip = tooltip,
             BatteryPresetLabel = preset,
             AutomationPaused = _settings.AutomationPaused,

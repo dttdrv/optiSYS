@@ -68,6 +68,72 @@ public class AppRuntimeCoordinatorTests
     }
 
     [Fact]
+    public async Task RefreshTraySnapshot_SetsNumberToMemoryPercent_AndTooltipToBatteryEfficiency()
+    {
+        var battery = new Mock<IBatteryInfoService>();
+        var memory = new Mock<IMemoryInfoService>();
+        var powerMonitor = new Mock<IPowerSourceMonitor>();
+        var automation = new Mock<IQuietAutomationService>();
+        var tray = new Mock<ITrayIconService>();
+        var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
+        var settings = new Settings();
+
+        memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
+        // 1000 total, 700 used -> 70% memory usage = the tray number.
+        memory.Setup(m => m.CurrentInfo).Returns(new MemoryInfo { TotalPhysicalBytes = 1000, AvailablePhysicalBytes = 300 });
+        battery.Setup(b => b.CurrentInfo).Returns(new BatteryInfo { PowerSource = PowerSource.Battery, ChargePercent = 70, DrainRateMilliwatts = -12000 });
+        automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.GetActiveBatteryStatuses()).Returns([]);
+
+        TraySnapshot? pushed = null;
+        tray.Setup(t => t.Update(It.IsAny<TraySnapshot>())).Callback<TraySnapshot>(s => pushed = s);
+
+        var coordinator = new AppRuntimeCoordinator(
+            battery.Object, memory.Object, powerMonitor.Object, automation.Object, tray.Object,
+            startup.Object, taskScheduler.Object, settings, adaptiveEcoQos.Object, engine.Object);
+
+        await coordinator.StartAsync();
+
+        Assert.NotNull(pushed);
+        Assert.Equal(70, pushed!.DisplayNumber);            // memory %, not discharge watts
+        Assert.Equal("12 W draw • Normal", pushed.Tooltip); // 70% on battery (no preset active) -> Normal
+    }
+
+    [Fact]
+    public async Task MemorySampled_RefreshesTraySnapshot()
+    {
+        var battery = new Mock<IBatteryInfoService>();
+        var memory = new Mock<IMemoryInfoService>();
+        var powerMonitor = new Mock<IPowerSourceMonitor>();
+        var automation = new Mock<IQuietAutomationService>();
+        var tray = new Mock<ITrayIconService>();
+        var startup = new Mock<IStartupRegistrationService>();
+        var taskScheduler = new Mock<ITaskSchedulerService>();
+        var adaptiveEcoQos = new Mock<IAdaptiveEcoQosController>();
+        var engine = new Mock<IOptimizationEngine>();
+        var settings = new Settings();
+
+        memory.Setup(m => m.WarmUpAsync()).Returns(Task.CompletedTask);
+        memory.Setup(m => m.CurrentInfo).Returns(new MemoryInfo { TotalPhysicalBytes = 1000, AvailablePhysicalBytes = 500 });
+        battery.Setup(b => b.CurrentInfo).Returns(new BatteryInfo { PowerSource = PowerSource.Ac });
+        automation.Setup(a => a.StartAsync()).Returns(Task.CompletedTask);
+        automation.Setup(a => a.GetActiveBatteryStatuses()).Returns([]);
+
+        var coordinator = new AppRuntimeCoordinator(
+            battery.Object, memory.Object, powerMonitor.Object, automation.Object, tray.Object,
+            startup.Object, taskScheduler.Object, settings, adaptiveEcoQos.Object, engine.Object);
+
+        await coordinator.StartAsync();   // one refresh at startup
+
+        automation.Raise(a => a.MemorySampled += null);   // watcher tick
+
+        tray.Verify(t => t.Update(It.IsAny<TraySnapshot>()), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task StartAsync_WhenAlreadyOnBattery_ActivatesBatteryCategoryOnce_AtStartup()
     {
         // Boot while already on battery: no AC->DC transition ever fires, so the category must be
@@ -422,6 +488,7 @@ public class AppRuntimeCoordinatorTests
 
 #pragma warning disable CS0067
         public event Action? StateChanged;
+        public event Action? MemorySampled;
 #pragma warning restore CS0067
 
         public string LastActivity => string.Empty;

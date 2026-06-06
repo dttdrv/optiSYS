@@ -39,20 +39,20 @@ public sealed class TrayIconServiceTests
 
     [Theory]
     [InlineData(20, TrayDot.Green, false, 20, TrayDot.Green, false, false)]  // nothing changed -> no re-render
-    [InlineData(20, TrayDot.Green, false, 21, TrayDot.Green, false, true)]   // watts changed -> re-render
+    [InlineData(20, TrayDot.Green, false, 21, TrayDot.Green, false, true)]   // number changed -> re-render
     [InlineData(20, TrayDot.Green, false, 20, TrayDot.Yellow, false, true)]  // colour changed -> re-render
     [InlineData(20, TrayDot.Green, false, 21, TrayDot.Red, false, true)]     // both changed -> re-render
     [InlineData(20, TrayDot.Green, false, 20, TrayDot.Green, true, true)]    // theme flipped -> re-render
-    public void ShouldRerender_IsTrue_OnlyWhenWattsDotOrThemeChanges(
-        int prevWatts,
+    public void ShouldRerender_IsTrue_OnlyWhenNumberDotOrThemeChanges(
+        int prevNumber,
         TrayDot prevDot,
         bool prevIsLight,
-        int newWatts,
+        int newNumber,
         TrayDot newDot,
         bool newIsLight,
         bool expected)
     {
-        TrayIconService.ShouldRerender(prevWatts, prevDot, prevIsLight, newWatts, newDot, newIsLight)
+        TrayIconService.ShouldRerender(prevNumber, prevDot, prevIsLight, newNumber, newDot, newIsLight)
             .Should().Be(expected);
     }
 
@@ -61,9 +61,9 @@ public sealed class TrayIconServiceTests
     [InlineData(42, TrayDot.Yellow, false)]
     [InlineData(0, TrayDot.Red, true)]
     [InlineData(99, TrayDot.Green, false)]
-    public void DotIconRenderer_Render_ReturnsNonNull32x32Icon(int watts, TrayDot dot, bool isLightTheme)
+    public void DotIconRenderer_Render_ReturnsNonNull32x32Icon(int number, TrayDot dot, bool isLightTheme)
     {
-        using var icon = TrayIconService.DotIconRenderer.Render(watts, dot, isLightTheme, out var handle);
+        using var icon = TrayIconService.DotIconRenderer.Render(number, dot, isLightTheme, out var handle);
 
         icon.Should().NotBeNull();
         icon.Width.Should().Be(32);

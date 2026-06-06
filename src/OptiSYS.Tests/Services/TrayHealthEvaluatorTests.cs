@@ -18,6 +18,24 @@ public class TrayHealthEvaluatorTests
         Assert.Equal(dot, TrayHealthEvaluator.DotFor(state));
     }
 
+    [Theory]
+    [InlineData(616L, 62)]  // 1000 total, 616 used -> 61.6% -> rounds to 62
+    [InlineData(0L, 0)]
+    [InlineData(994L, 99)]  // 99.4% -> rounds to 99
+    [InlineData(1000L, 99)] // 100% -> clamped to two digits (99)
+    public void MemoryDisplayNumber_RoundsAndClampsUsagePercent(long usedBytes, int expected)
+    {
+        var memory = MemoryAtUsedBytes(usedBytes);
+
+        Assert.Equal(expected, TrayHealthEvaluator.MemoryDisplayNumber(memory));
+    }
+
+    [Fact]
+    public void MemoryDisplayNumber_NullMemory_IsZero()
+    {
+        Assert.Equal(0, TrayHealthEvaluator.MemoryDisplayNumber(null));
+    }
+
     [Fact]
     public void DischargeWatts_OnBattery_RoundsMagnitudeOfSignedMilliwatts()
     {
@@ -52,20 +70,36 @@ public class TrayHealthEvaluatorTests
     }
 
     [Theory]
-    [InlineData(616L, "Memory: 62%")]  // 1000 total, 616 used -> 61.6% -> rounds to 62
-    [InlineData(0L, "Memory: 0%")]
-    [InlineData(994L, "Memory: 99%")]  // 99.4% -> rounds to 99
-    public void MemoryTooltip_FormatsRoundedUsagePercent(long usedBytes, string expected)
+    [InlineData(OverallHealthState.Great, "Great")]
+    [InlineData(OverallHealthState.Good, "Good")]
+    [InlineData(OverallHealthState.Normal, "Normal")]
+    [InlineData(OverallHealthState.NotGood, "Poor")]
+    [InlineData(OverallHealthState.Bad, "Poor")]
+    public void EfficiencyLabel_MapsHealthStateToShortLabel(OverallHealthState state, string expected)
     {
-        var memory = MemoryAtUsedBytes(usedBytes);
-
-        Assert.Equal(expected, TrayHealthEvaluator.MemoryTooltip(memory));
+        Assert.Equal(expected, TrayHealthEvaluator.EfficiencyLabel(state));
     }
 
     [Fact]
-    public void MemoryTooltip_NullMemory_ReadsZeroPercent()
+    public void BatteryTooltip_OnBattery_ShowsDrawWattsAndEfficiency()
     {
-        Assert.Equal("Memory: 0%", TrayHealthEvaluator.MemoryTooltip(null));
+        var battery = new BatteryInfo { PowerSource = PowerSource.Battery, DrainRateMilliwatts = -12000 };
+
+        Assert.Equal("12 W draw • Good", TrayHealthEvaluator.BatteryTooltip(battery, OverallHealthState.Good));
+    }
+
+    [Fact]
+    public void BatteryTooltip_OnAc_ShowsOnAcAndEfficiency()
+    {
+        var battery = new BatteryInfo { PowerSource = PowerSource.Ac, DrainRateMilliwatts = 42000 };
+
+        Assert.Equal("On AC • Great", TrayHealthEvaluator.BatteryTooltip(battery, OverallHealthState.Great));
+    }
+
+    [Fact]
+    public void BatteryTooltip_NullBattery_ReadsAsAc()
+    {
+        Assert.Equal("On AC • Normal", TrayHealthEvaluator.BatteryTooltip(null, OverallHealthState.Normal));
     }
 
     private static MemoryInfo MemoryAtUsedBytes(long usedBytes)

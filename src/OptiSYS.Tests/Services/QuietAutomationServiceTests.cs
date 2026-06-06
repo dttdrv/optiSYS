@@ -305,6 +305,35 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task TimerTick_RaisesMemorySampled_ForTrayRefresh()
+    {
+        // The tray's memory-% number rides the watcher's cadence: each evaluated sample raises
+        // MemorySampled so the coordinator can re-render without a dedicated timer.
+        var settings = new Settings { MemoryThresholdPercent = 80 };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        // Below threshold so no cleanup runs — proves the signal fires on a plain sample.
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
+        {
+            TotalPhysicalBytes = 100,
+            AvailablePhysicalBytes = 50,
+        });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        var sampled = 0;
+        service.MemorySampled += () => Interlocked.Increment(ref sampled);
+
+        timer.Tick();
+        await service.LastEvaluationForTests;
+
+        Assert.Equal(1, sampled);
+    }
+
+    [Fact]
     public async Task Dispose_RestoresBackgroundMemoryPriority()
     {
         // The watcher lowers background-process memory priority across the session; on teardown we
