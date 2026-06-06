@@ -179,6 +179,17 @@ begin
   LaunchButton.OnClick := @LaunchButtonClick;
 end;
 
+{ All wizard pages are disabled, but Inno still SHOWS the Ready page — DisableReadyPage is
+  ignored when no earlier page was shown — and InitializeWizard hid the Next button, so the
+  wizard would otherwise park on Ready forever waiting for a click. Auto-advance it: invoking
+  the Next handler directly works on a hidden button (it is a handler call, not a UI hit-test).
+  This is what makes the installer actually auto-install immediately on launch. }
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID = wpReady then
+    WizardForm.NextButton.OnClick(nil);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
