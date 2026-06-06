@@ -31,6 +31,7 @@ public sealed class TrayIconService : ITrayIconService
     private TraySnapshot _snapshot = new();
     private TrayDot? _renderedDot;
     private int _renderedWatts = -1;
+    private bool _renderedIsLight;
     private string _lastTooltip = string.Empty;
 
     public void Initialize(nint windowHandle)
@@ -43,7 +44,7 @@ public sealed class TrayIconService : ITrayIconService
         try
         {
             _windowHandle = windowHandle;
-            RenderIcon(_snapshot.DischargeWatts, TrayHealthEvaluator.DotFor(_snapshot.HealthState));
+            RenderIcon(_snapshot.DischargeWatts, TrayHealthEvaluator.DotFor(_snapshot.HealthState), IsLightSystemTheme());
 
             // Subclass the window so it receives the WM_TRAYICON callbacks (left-click = open,
             // right-click = context menu). Same subclass id used by Dispose's RemoveWindowSubclass.
@@ -74,13 +75,18 @@ public sealed class TrayIconService : ITrayIconService
 
         _snapshot = snapshot;
 
-        // Re-render only when the displayed number OR the efficiency dot colour changes.
+        // Re-render when the displayed number, the efficiency dot colour, OR the system/taskbar theme
+        // changes — the last guards against a stale, wrong-coloured number after a theme flip with no
+        // watts/dot change (notably on AC where watts is pinned 0).
         var dot = TrayHealthEvaluator.DotFor(snapshot.HealthState);
         var watts = snapshot.DischargeWatts;
-        var iconChanged = ShouldRerender(_renderedWatts, _renderedDot ?? dot, watts, dot) || _renderedDot is null;
+        var isLightTheme = IsLightSystemTheme();
+        var iconChanged =
+            ShouldRerender(_renderedWatts, _renderedDot ?? dot, _renderedIsLight, watts, dot, isLightTheme)
+            || _renderedDot is null;
         if (iconChanged)
         {
-            RenderIcon(watts, dot);
+            RenderIcon(watts, dot, isLightTheme);
         }
 
         var tooltip = ClampTooltip(snapshot.Tooltip);
@@ -159,22 +165,26 @@ public sealed class TrayIconService : ITrayIconService
             ? Color.FromArgb(29, 33, 36)
             : Color.FromArgb(238, 244, 239);
 
-    /// <summary>Re-render the icon only when the displayed watts or the efficiency dot colour change.</summary>
-    internal static bool ShouldRerender(int prevWatts, TrayDot prevDot, int newWatts, TrayDot newDot) =>
-        prevWatts != newWatts || prevDot != newDot;
+    /// <summary>
+    /// Re-render the icon only when the displayed watts, the efficiency dot colour, or the
+    /// system/taskbar theme change (a theme flip changes the number's contrast colour).
+    /// </summary>
+    internal static bool ShouldRerender(
+        int prevWatts, TrayDot prevDot, bool prevIsLight, int newWatts, TrayDot newDot, bool newIsLight) =>
+        prevWatts != newWatts || prevDot != newDot || prevIsLight != newIsLight;
 
     /// <summary>
-    /// Detects whether the taskbar (system) theme is light. The tray runs without a XAML element, so
-    /// it reads the OS background colour directly — and defaults to dark (light number) when detection
-    /// is uncertain, since taskbars are usually dark.
+    /// Detects whether the system/taskbar theme is light. The tray sits on the taskbar, which follows
+    /// SYSTEM mode (SystemUsesLightTheme), not app-mode — so it reads that registry value directly and
+    /// defaults to dark (light number) when detection is uncertain, since taskbars are usually dark.
     /// </summary>
     private static bool IsLightSystemTheme()
     {
         try
         {
-            var bg = new Windows.UI.ViewManagement.UISettings()
-                .GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
-            return bg.R >= 128; // light background => dark text needed
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("SystemUsesLightTheme") is int v && v == 1; // DWORD: 1 = light
         }
         catch
         {
@@ -246,12 +256,13 @@ public sealed class TrayIconService : ITrayIconService
     /// Renders the watt number + efficiency dot into a fresh 32x32 transparent icon and swaps it in,
     /// freeing the previous GDI handle.
     /// </summary>
-    private void RenderIcon(int watts, TrayDot dot)
+    private void RenderIcon(int watts, TrayDot dot, bool isLightTheme)
     {
         DisposeIcon();
-        _icon = DotIconRenderer.Render(watts, dot, IsLightSystemTheme(), out _iconHandle);
+        _icon = DotIconRenderer.Render(watts, dot, isLightTheme, out _iconHandle);
         _renderedDot = dot;
         _renderedWatts = watts;
+        _renderedIsLight = isLightTheme;
     }
 
     private void DisposeIcon()

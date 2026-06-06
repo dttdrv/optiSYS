@@ -79,6 +79,21 @@ public class WindowsNativeBridgeDiagnosticsTests
     }
 
     [Fact]
+    public void GetBatteryInfo_OnUnknownRateSentinel_DegradesToZero()
+    {
+        // BATTERY_UNKNOWN_RATE (0x80000000 == int.MinValue) is returned with NTSTATUS SUCCESS when the
+        // instantaneous rate is unavailable; passing it through would overflow Math.Abs at the consumers.
+        // The bridge must treat the sentinel as 0 (unavailable).
+        var log = new RecordingLog();
+        using var bridge = new WindowsNativeBridge(log, batteryRate: () => (int.MinValue, 0u));
+
+        var ok = bridge.GetBatteryInfo(out var info);
+
+        Assert.True(ok);
+        Assert.Equal(0, info.DrainRateMilliwatts);
+    }
+
+    [Fact]
     public void GetBatteryInfo_OnFailedRateRead_DegradesToZero_AndLogsNtStatus()
     {
         // A non-zero NTSTATUS means the rate is unavailable: the bridge degrades DrainRateMilliwatts

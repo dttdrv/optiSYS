@@ -14,6 +14,10 @@ public sealed class WindowsNativeBridge : INativeBridge
     private volatile bool _disposed;
 #pragma warning restore CS0414
 
+    // SYSTEM_BATTERY_STATE.Rate sentinel for "instantaneous rate unavailable" (returned with NTSTATUS
+    // SUCCESS). 0x80000000 == int.MinValue; passing it to Math.Abs at the consumers would overflow.
+    private const int BATTERY_UNKNOWN_RATE = unchecked((int)0x80000000);
+
     private readonly IDiagnosticLog _log;
     private readonly Func<int> _lastError;
     private readonly Func<(int? rate, uint status)> _batteryRate;
@@ -97,15 +101,22 @@ public sealed class WindowsNativeBridge : INativeBridge
             : status.BatteryLifePercent;
 
         // Present drain rate (signed mW); degrade to 0 + log the NTSTATUS when the read is unavailable.
+        // BATTERY_UNKNOWN_RATE (0x80000000 == int.MinValue) is returned with NTSTATUS SUCCESS when the
+        // instantaneous rate is unavailable — treat it as 0 here so Math.Abs at the consumers (tray,
+        // health score, drain display) never overflows.
         var (rate, ntStatus) = _batteryRate();
-        if (rate is { } mw)
+        if (rate is { } mw && mw != BATTERY_UNKNOWN_RATE)
         {
             info.DrainRateMilliwatts = mw;
+        }
+        else if (rate is null)
+        {
+            info.DrainRateMilliwatts = 0;
+            LogNtStatusFailure("ReadBatteryRate", ntStatus);
         }
         else
         {
             info.DrainRateMilliwatts = 0;
-            LogNtStatusFailure("ReadBatteryRate", ntStatus);
         }
 
         info.EstimatedTimeRemainingSeconds = status.BatteryLifeTime == -1 ? 0 : status.BatteryLifeTime;

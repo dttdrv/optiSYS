@@ -46,6 +46,9 @@ DisableFinishedPage=yes
 ; code 5). Run the installer elevated (one UAC at start) so it can terminate the elevated instance,
 ; replace files, and provision the logon task in a single elevation. Still a per-user install into
 ; %LOCALAPPDATA%, and it still auto-runs (all pages disabled) once elevation is granted.
+; INVARIANT: assumes the logged-in user is a local admin (same-user UAC consent) — the single-user
+; target. A standard user elevating with a *different* admin's credentials would resolve {localappdata}
+; and the logon-task SID to that admin's profile, misrouting the install.
 PrivilegesRequired=admin
 CloseApplications=yes
 CloseApplicationsFilter={#AppExeName}

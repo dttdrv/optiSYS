@@ -61,6 +61,10 @@ internal static partial class NativeMethods
 
     private const uint POWER_INFORMATION_LEVEL_SYSTEM_BATTERY_STATE = 5;
 
+    // SYSTEM_BATTERY_STATE.Rate is this sentinel (0x80000000 == int.MinValue) with NTSTATUS SUCCESS
+    // when the instantaneous rate is unavailable. It is NOT a real drain value; treat it as "unknown".
+    private const int BATTERY_UNKNOWN_RATE = unchecked((int)0x80000000);
+
     [DllImport("powrprof.dll")]
     private static extern uint CallNtPowerInformation(
         uint InformationLevel,
@@ -103,7 +107,11 @@ internal static partial class NativeMethods
             out var state,
             (uint)Marshal.SizeOf<SYSTEM_BATTERY_STATE>());
 
-        return status == 0 ? state.Rate : null;
+        // Map the BATTERY_UNKNOWN_RATE sentinel to null (defense-in-depth alongside the bridge guard)
+        // so a non-zero NTSTATUS and an unavailable rate both degrade to "unknown".
+        if (status != 0 || state.Rate == BATTERY_UNKNOWN_RATE)
+            return null;
+        return state.Rate;
     }
 
     // ── ntdll.dll ─────────────────────────────────────────────────────

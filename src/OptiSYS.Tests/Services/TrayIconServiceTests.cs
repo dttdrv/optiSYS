@@ -38,18 +38,22 @@ public sealed class TrayIconServiceTests
     }
 
     [Theory]
-    [InlineData(20, TrayDot.Green, 20, TrayDot.Green, false)]  // nothing changed -> no re-render
-    [InlineData(20, TrayDot.Green, 21, TrayDot.Green, true)]   // watts changed -> re-render
-    [InlineData(20, TrayDot.Green, 20, TrayDot.Yellow, true)]  // colour changed -> re-render
-    [InlineData(20, TrayDot.Green, 21, TrayDot.Red, true)]     // both changed -> re-render
-    public void ShouldRerender_IsTrue_OnlyWhenWattsOrDotChanges(
+    [InlineData(20, TrayDot.Green, false, 20, TrayDot.Green, false, false)]  // nothing changed -> no re-render
+    [InlineData(20, TrayDot.Green, false, 21, TrayDot.Green, false, true)]   // watts changed -> re-render
+    [InlineData(20, TrayDot.Green, false, 20, TrayDot.Yellow, false, true)]  // colour changed -> re-render
+    [InlineData(20, TrayDot.Green, false, 21, TrayDot.Red, false, true)]     // both changed -> re-render
+    [InlineData(20, TrayDot.Green, false, 20, TrayDot.Green, true, true)]    // theme flipped -> re-render
+    public void ShouldRerender_IsTrue_OnlyWhenWattsDotOrThemeChanges(
         int prevWatts,
         TrayDot prevDot,
+        bool prevIsLight,
         int newWatts,
         TrayDot newDot,
+        bool newIsLight,
         bool expected)
     {
-        TrayIconService.ShouldRerender(prevWatts, prevDot, newWatts, newDot).Should().Be(expected);
+        TrayIconService.ShouldRerender(prevWatts, prevDot, prevIsLight, newWatts, newDot, newIsLight)
+            .Should().Be(expected);
     }
 
     [Theory]
