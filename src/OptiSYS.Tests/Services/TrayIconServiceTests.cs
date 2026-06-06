@@ -1,3 +1,4 @@
+using System.Drawing;
 using FluentAssertions;
 using OptiSYS.Services;
 using Xunit;
@@ -34,6 +35,36 @@ public sealed class TrayIconServiceTests
         color.G.Should().Be((byte)expectedGreen);
         color.B.Should().Be((byte)expectedBlue);
         color.A.Should().Be(255);
+    }
+
+    [Theory]
+    [InlineData(20, TrayDot.Green, 20, TrayDot.Green, false)]  // nothing changed -> no re-render
+    [InlineData(20, TrayDot.Green, 21, TrayDot.Green, true)]   // watts changed -> re-render
+    [InlineData(20, TrayDot.Green, 20, TrayDot.Yellow, true)]  // colour changed -> re-render
+    [InlineData(20, TrayDot.Green, 21, TrayDot.Red, true)]     // both changed -> re-render
+    public void ShouldRerender_IsTrue_OnlyWhenWattsOrDotChanges(
+        int prevWatts,
+        TrayDot prevDot,
+        int newWatts,
+        TrayDot newDot,
+        bool expected)
+    {
+        TrayIconService.ShouldRerender(prevWatts, prevDot, newWatts, newDot).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(7, TrayDot.Green, true)]
+    [InlineData(42, TrayDot.Yellow, false)]
+    [InlineData(0, TrayDot.Red, true)]
+    [InlineData(99, TrayDot.Green, false)]
+    public void DotIconRenderer_Render_ReturnsNonNull32x32Icon(int watts, TrayDot dot, bool isLightTheme)
+    {
+        using var icon = TrayIconService.DotIconRenderer.Render(watts, dot, isLightTheme, out var handle);
+
+        icon.Should().NotBeNull();
+        icon.Width.Should().Be(32);
+        icon.Height.Should().Be(32);
+        handle.Should().NotBe(nint.Zero);
     }
 
     private static nint PackNotifyIconLParam(uint iconId, uint eventId) =>

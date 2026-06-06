@@ -54,6 +54,58 @@ internal static partial class NativeMethods
     [DllImport("powrprof.dll")]
     internal static extern int PowerUnregisterFromEffectivePowerModeNotifications(IntPtr registrationHandle);
 
+    // ── Battery rate (CallNtPowerInformation / SystemBatteryState) ─────
+    // CallNtPowerInformation returns an NTSTATUS (0 == STATUS_SUCCESS), NOT a Win32 last-error.
+    // SystemBatteryState (info level 5) fills SYSTEM_BATTERY_STATE whose Rate is the present drain
+    // in milliwatts: negative while discharging, positive while charging on most adapters.
+
+    private const uint POWER_INFORMATION_LEVEL_SYSTEM_BATTERY_STATE = 5;
+
+    [DllImport("powrprof.dll")]
+    private static extern uint CallNtPowerInformation(
+        uint InformationLevel,
+        IntPtr lpInputBuffer,
+        uint nInputBufferSize,
+        out SYSTEM_BATTERY_STATE lpOutputBuffer,
+        uint nOutputBufferSize);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SYSTEM_BATTERY_STATE
+    {
+        [MarshalAs(UnmanagedType.I1)] public bool AcOnLine;
+        [MarshalAs(UnmanagedType.I1)] public bool BatteryPresent;
+        [MarshalAs(UnmanagedType.I1)] public bool Charging;
+        [MarshalAs(UnmanagedType.I1)] public bool Discharging;
+        public byte Spare1_0;
+        public byte Spare1_1;
+        public byte Spare1_2;
+        public byte Tag;
+        public uint MaxCapacity;
+        public uint RemainingCapacity;
+        public int Rate;
+        public uint EstimatedTime;
+        public uint DefaultAlert1;
+        public uint DefaultAlert2;
+    }
+
+    /// <summary>
+    /// Reads the present battery rate (milliwatts, signed: negative while discharging). Returns the
+    /// signed <c>Rate</c> on success, or <see langword="null"/> when the NTSTATUS is non-zero so the
+    /// caller can log the failure and degrade. <paramref name="status"/> carries the NTSTATUS for the
+    /// caller's diagnostic log.
+    /// </summary>
+    internal static int? ReadBatteryRateMilliwatts(out uint status)
+    {
+        status = CallNtPowerInformation(
+            POWER_INFORMATION_LEVEL_SYSTEM_BATTERY_STATE,
+            IntPtr.Zero,
+            0,
+            out var state,
+            (uint)Marshal.SizeOf<SYSTEM_BATTERY_STATE>());
+
+        return status == 0 ? state.Rate : null;
+    }
+
     // ── ntdll.dll ─────────────────────────────────────────────────────
 
     [LibraryImport("ntdll.dll")]

@@ -16,13 +16,29 @@ public static class TrayHealthEvaluator
         _ => TrayDot.Red,
     };
 
-    /// <summary>Tooltip efficiency word matching the dot color.</summary>
-    public static string EfficiencyLabel(OverallHealthState state) => DotFor(state) switch
+    /// <summary>
+    /// The integer watts of battery discharge shown as the tray number: <c>round(|rate| / 1000)</c>
+    /// on battery, <c>0</c> on AC (the SYSTEM_BATTERY_STATE rate is positive while charging, so it is
+    /// gated on the power source to never read a charge rate as load). Clamped to two digits
+    /// (>= 100 shows 99) so the number stays legible at icon size.
+    /// </summary>
+    public static int DischargeWatts(BatteryInfo? battery)
     {
-        TrayDot.Green => "Good",
-        TrayDot.Yellow => "Normal",
-        _ => "Bad",
-    };
+        if (battery?.IsOnBattery != true)
+        {
+            return 0;
+        }
+
+        var watts = (int)Math.Round(Math.Abs(battery.DrainRateMilliwatts) / 1000.0, MidpointRounding.AwayFromZero);
+        return Math.Min(watts, 99);
+    }
+
+    /// <summary>Tray tooltip: memory usage only, e.g. <c>"Memory: 62%"</c> (rounded).</summary>
+    public static string MemoryTooltip(MemoryInfo? memory)
+    {
+        var percent = (int)Math.Round(memory?.UsagePercent ?? 0, MidpointRounding.AwayFromZero);
+        return $"Memory: {percent}%";
+    }
 
     public static OverallHealthState Evaluate(
         MemoryInfo? memoryInfo,

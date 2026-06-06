@@ -175,16 +175,15 @@ public sealed class AppRuntimeCoordinator : IAppRuntimeCoordinator
         var score = _scoreCalculator.Evaluate(memory, battery, _automation.TotalFreedBytes);
         var preset = _settings.BatteryPreset == BatteryPreset.Saver ? "Saver" : "Recommended";
 
-        // Tooltip shows only the efficiency level (Good/Normal/Bad) — battery/memory are surfaced by
-        // the OS already. Same health state that colours the dot.
-        var tooltip = _settings.AutomationPaused
-            ? "optiSYS — Paused"
-            : $"optiSYS — Efficiency: {TrayHealthEvaluator.EfficiencyLabel(health)}";
+        // Icon number is the battery discharge in watts (0 on AC); tooltip is memory usage only.
+        var watts = TrayHealthEvaluator.DischargeWatts(battery);
+        var tooltip = TrayHealthEvaluator.MemoryTooltip(memory);
 
         _tray.Update(new TraySnapshot
         {
             HealthState = health,
             Score = score,
+            DischargeWatts = watts,
             Tooltip = tooltip,
             BatteryPresetLabel = preset,
             AutomationPaused = _settings.AutomationPaused,

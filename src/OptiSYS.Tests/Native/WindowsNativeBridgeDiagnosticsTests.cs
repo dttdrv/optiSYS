@@ -62,4 +62,39 @@ public class WindowsNativeBridgeDiagnosticsTests
         Assert.False(ok);
         Assert.Contains(log.Entries, e => e.category == "native" && e.message.Contains("SetEcoQos"));
     }
+
+    [Fact]
+    public void GetBatteryInfo_OnSuccessfulRateRead_PopulatesDrainRateMilliwatts()
+    {
+        // The battery-rate read is injected so the seam is unit-testable without a real laptop
+        // battery: a successful read (NTSTATUS 0) flows the signed Rate straight to DrainRateMilliwatts.
+        var log = new RecordingLog();
+        using var bridge = new WindowsNativeBridge(log, batteryRate: () => (-15000, 0u));
+
+        var ok = bridge.GetBatteryInfo(out var info);
+
+        Assert.True(ok);
+        Assert.Equal(-15000, info.DrainRateMilliwatts);
+        Assert.DoesNotContain(log.Entries, e => e.message.Contains("ReadBatteryRate"));
+    }
+
+    [Fact]
+    public void GetBatteryInfo_OnFailedRateRead_DegradesToZero_AndLogsNtStatus()
+    {
+        // A non-zero NTSTATUS means the rate is unavailable: the bridge degrades DrainRateMilliwatts
+        // to 0 (so the rest of the snapshot is still usable) and logs the NTSTATUS for diagnosis.
+        var log = new RecordingLog();
+        const uint ntStatus = 0xC0000001; // STATUS_UNSUCCESSFUL
+        using var bridge = new WindowsNativeBridge(log, batteryRate: () => (null, ntStatus));
+
+        var ok = bridge.GetBatteryInfo(out var info);
+
+        Assert.True(ok);
+        Assert.Equal(0, info.DrainRateMilliwatts);
+        var entry = Assert.Single(log.Entries);
+        Assert.Equal("native", entry.category);
+        Assert.Contains("ReadBatteryRate", entry.message);
+        // NTSTATUS surfaced in hex so STATUS_* codes are recognisable in the field log.
+        Assert.Contains("C0000001", entry.message, StringComparison.OrdinalIgnoreCase);
+    }
 }

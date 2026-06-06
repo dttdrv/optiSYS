@@ -30,6 +30,7 @@ public sealed class TrayIconService : ITrayIconService
     private bool _initialized;
     private TraySnapshot _snapshot = new();
     private TrayDot? _renderedDot;
+    private int _renderedWatts = -1;
     private string _lastTooltip = string.Empty;
 
     public void Initialize(nint windowHandle)
@@ -42,7 +43,7 @@ public sealed class TrayIconService : ITrayIconService
         try
         {
             _windowHandle = windowHandle;
-            RenderDotIcon(TrayHealthEvaluator.DotFor(_snapshot.HealthState));
+            RenderIcon(_snapshot.DischargeWatts, TrayHealthEvaluator.DotFor(_snapshot.HealthState));
 
             // Subclass the window so it receives the WM_TRAYICON callbacks (left-click = open,
             // right-click = context menu). Same subclass id used by Dispose's RemoveWindowSubclass.
@@ -73,12 +74,13 @@ public sealed class TrayIconService : ITrayIconService
 
         _snapshot = snapshot;
 
-        // The dot colour is theme-independent; re-render only when the health state's dot changes.
+        // Re-render only when the displayed number OR the efficiency dot colour changes.
         var dot = TrayHealthEvaluator.DotFor(snapshot.HealthState);
-        var iconChanged = _renderedDot != dot;
+        var watts = snapshot.DischargeWatts;
+        var iconChanged = ShouldRerender(_renderedWatts, _renderedDot ?? dot, watts, dot) || _renderedDot is null;
         if (iconChanged)
         {
-            RenderDotIcon(dot);
+            RenderIcon(watts, dot);
         }
 
         var tooltip = ClampTooltip(snapshot.Tooltip);
@@ -157,6 +159,29 @@ public sealed class TrayIconService : ITrayIconService
             ? Color.FromArgb(29, 33, 36)
             : Color.FromArgb(238, 244, 239);
 
+    /// <summary>Re-render the icon only when the displayed watts or the efficiency dot colour change.</summary>
+    internal static bool ShouldRerender(int prevWatts, TrayDot prevDot, int newWatts, TrayDot newDot) =>
+        prevWatts != newWatts || prevDot != newDot;
+
+    /// <summary>
+    /// Detects whether the taskbar (system) theme is light. The tray runs without a XAML element, so
+    /// it reads the OS background colour directly — and defaults to dark (light number) when detection
+    /// is uncertain, since taskbars are usually dark.
+    /// </summary>
+    private static bool IsLightSystemTheme()
+    {
+        try
+        {
+            var bg = new Windows.UI.ViewManagement.UISettings()
+                .GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
+            return bg.R >= 128; // light background => dark text needed
+        }
+        catch
+        {
+            return false; // uncertain => assume dark taskbar (light number)
+        }
+    }
+
     private static bool TryNotifyIcon(uint message, ref NOTIFYICONDATA data, string action)
     {
         if (Shell_NotifyIcon(message, ref data))
@@ -218,14 +243,15 @@ public sealed class TrayIconService : ITrayIconService
     }
 
     /// <summary>
-    /// Renders the health dot into a fresh 32x32 transparent icon and swaps it in, freeing the
-    /// previous GDI handle.
+    /// Renders the watt number + efficiency dot into a fresh 32x32 transparent icon and swaps it in,
+    /// freeing the previous GDI handle.
     /// </summary>
-    private void RenderDotIcon(TrayDot dot)
+    private void RenderIcon(int watts, TrayDot dot)
     {
         DisposeIcon();
-        _icon = DotIconRenderer.Render(dot, out _iconHandle);
+        _icon = DotIconRenderer.Render(watts, dot, IsLightSystemTheme(), out _iconHandle);
         _renderedDot = dot;
+        _renderedWatts = watts;
     }
 
     private void DisposeIcon()
@@ -255,9 +281,11 @@ public sealed class TrayIconService : ITrayIconService
         };
 
     /// <summary>
-    /// Renders the 3-state health dot as a 32x32 transparent icon (filled circle). Returns a managed
-    /// <see cref="Icon"/> clone that owns its data (safe to Dispose); <paramref name="handle"/> is
-    /// the raw HICON the caller must DestroyIcon.
+    /// Renders the tray icon as a 32x32 transparent bitmap: the battery discharge watts as the large,
+    /// bold, theme-coloured main number, with a small efficiency-coloured dot at the top-right
+    /// (the superscript / "x²" exponent position). Returns a managed <see cref="Icon"/> clone that
+    /// owns its data (safe to Dispose); <paramref name="handle"/> is the raw HICON the caller must
+    /// DestroyIcon.
     /// </summary>
     internal static class DotIconRenderer
     {
@@ -265,15 +293,47 @@ public sealed class TrayIconService : ITrayIconService
         private static readonly Color Yellow = Color.FromArgb(0xE0, 0xA8, 0x16);
         private static readonly Color Red = Color.FromArgb(0xE0, 0x43, 0x43);
 
-        public static Icon Render(TrayDot dot, out nint handle)
+        public static Icon Render(int watts, TrayDot dot, bool isLightTheme, out nint handle)
         {
             const int size = 32;
             using var bmp = new Bitmap(size, size);
             using var g = Graphics.FromImage(bmp);
 
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             g.Clear(Color.Transparent);
 
+            DrawNumber(g, size, Math.Clamp(watts, 0, 99), isLightTheme);
+            DrawEfficiencyDot(g, size, dot);
+
+            // Clone creates a managed Icon that owns its data; the raw HICON is returned so the
+            // caller can DestroyIcon it once the clone is in use, preventing GDI handle leaks.
+            handle = bmp.GetHicon();
+            return (Icon)Icon.FromHandle(handle).Clone();
+        }
+
+        // The number is the main element: bold, theme-contrast colour, sized to fill the canvas and
+        // shrunk for two digits so it stays legible. Drawn slightly left/low to leave the top-right
+        // corner for the dot.
+        private static void DrawNumber(Graphics g, int size, int watts, bool isLightTheme)
+        {
+            var text = watts.ToString();
+            var emSize = text.Length >= 2 ? 19f : 24f;
+            using var font = new Font("Segoe UI", emSize, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var brush = new SolidBrush(SelectStrokeColor(isLightTheme));
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Center,
+                LineAlignment = StringAlignment.Center,
+            };
+
+            // Reserve the top-right for the dot by shifting the text box left and down a touch.
+            var box = new RectangleF(-2f, 2f, size - 2f, size - 2f);
+            g.DrawString(text, font, brush, box, format);
+        }
+
+        private static void DrawEfficiencyDot(Graphics g, int size, TrayDot dot)
+        {
             var color = dot switch
             {
                 TrayDot.Green => Green,
@@ -282,13 +342,8 @@ public sealed class TrayIconService : ITrayIconService
             };
             using var brush = new SolidBrush(color);
 
-            const int pad = 6; // ~20px dot centred in the 32px canvas
-            g.FillEllipse(brush, pad, pad, size - 2 * pad, size - 2 * pad);
-
-            // Clone creates a managed Icon that owns its data; the raw HICON is returned so the
-            // caller can DestroyIcon it once the clone is in use, preventing GDI handle leaks.
-            handle = bmp.GetHicon();
-            return (Icon)Icon.FromHandle(handle).Clone();
+            const int diameter = 12;
+            g.FillEllipse(brush, size - diameter, 0, diameter, diameter);
         }
     }
 

@@ -16,6 +16,7 @@ public sealed class WindowsNativeBridge : INativeBridge
 
     private readonly IDiagnosticLog _log;
     private readonly Func<int> _lastError;
+    private readonly Func<(int? rate, uint status)> _batteryRate;
 
     /// <param name="log">
     /// Diagnostic sink for Win32 failures captured at the bridge boundary. Defaults to a no-op so
@@ -25,10 +26,25 @@ public sealed class WindowsNativeBridge : INativeBridge
     /// Reader for the calling thread's Win32 last-error, injectable so the failure-logging seam is
     /// unit-testable without a real failing P/Invoke. Defaults to <see cref="Marshal.GetLastPInvokeError"/>.
     /// </param>
-    public WindowsNativeBridge(IDiagnosticLog? log = null, Func<int>? lastError = null)
+    /// <param name="batteryRate">
+    /// Reader for the present battery rate (mW, signed) paired with the NTSTATUS, injectable so the
+    /// rate read is unit-testable without a real battery. Returns a null rate when the NTSTATUS is
+    /// non-zero. Defaults to the documented <c>CallNtPowerInformation(SystemBatteryState)</c> read.
+    /// </param>
+    public WindowsNativeBridge(
+        IDiagnosticLog? log = null,
+        Func<int>? lastError = null,
+        Func<(int? rate, uint status)>? batteryRate = null)
     {
         _log = log ?? NullDiagnosticLog.Instance;
         _lastError = lastError ?? Marshal.GetLastPInvokeError;
+        _batteryRate = batteryRate ?? ReadBatteryRate;
+    }
+
+    private static (int? rate, uint status) ReadBatteryRate()
+    {
+        var rate = NativeMethods.ReadBatteryRateMilliwatts(out var status);
+        return (rate, status);
     }
 
     // Capture the Win32 last-error (set by the immediately-preceding failing P/Invoke) and route the
@@ -36,6 +52,11 @@ public sealed class WindowsNativeBridge : INativeBridge
     // returned false/null/zero — nothing between the failing call and here may clobber the last error.
     internal void LogWin32Failure(string operation, int processId) =>
         _log.Write("warn", "native", $"{operation} failed (pid {processId}): Win32 error {_lastError()}");
+
+    // Log a native call that reports an NTSTATUS (not a Win32 last-error) — e.g. CallNtPowerInformation.
+    // The status is surfaced in hex so STATUS_* codes (0xC0000001 etc.) are recognisable in the log.
+    internal void LogNtStatusFailure(string operation, uint ntStatus) =>
+        _log.Write("warn", "native", $"{operation} failed: NTSTATUS 0x{ntStatus:X8}");
 
     // ── Windows API P/Invoke declarations ────────────────────────────
 
@@ -74,7 +95,19 @@ public sealed class WindowsNativeBridge : INativeBridge
         info.ChargePercent = status.BatteryLifePercent is 255 or > 100
             ? (byte)0
             : status.BatteryLifePercent;
-        info.DrainRateMilliwatts = 0;
+
+        // Present drain rate (signed mW); degrade to 0 + log the NTSTATUS when the read is unavailable.
+        var (rate, ntStatus) = _batteryRate();
+        if (rate is { } mw)
+        {
+            info.DrainRateMilliwatts = mw;
+        }
+        else
+        {
+            info.DrainRateMilliwatts = 0;
+            LogNtStatusFailure("ReadBatteryRate", ntStatus);
+        }
+
         info.EstimatedTimeRemainingSeconds = status.BatteryLifeTime == -1 ? 0 : status.BatteryLifeTime;
 
         return true;
