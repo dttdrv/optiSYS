@@ -263,7 +263,7 @@ public sealed class WindowsNativeBridge : INativeBridge
     public uint GetProcessMemoryPriority(int processId)
     {
         var handle = NativeMethods.OpenProcess(
-            NativeMethods.PROCESS_QUERY_INFORMATION, false, (uint)processId);
+            NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
         if (handle == IntPtr.Zero) { LogWin32Failure("GetProcessMemoryPriority/OpenProcess", processId); return 0; }
         try
         {

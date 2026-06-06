@@ -253,6 +253,34 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task RunMemoryCleanupAsync_Manual_PassesTargetZero_SoFullRequestedLevelRuns()
+    {
+        // Manual "Optimize now" must pass targetThresholdPercent: 0 so OptimizeAll skips the trim-only
+        // early-exits and runs the user's selected level in full (Max's deep steps included). The
+        // watcher path stays pressure-gated (covered by TimerTick_WhenMemoryAboveThreshold).
+        var settings = new Settings { MemoryThresholdPercent = 75, OptimizationLevel = OptimizationLevel.Aggressive };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        optimizer.Setup(o => o.OptimizeAll(
+                It.IsAny<OptimizationLevel>(), It.IsAny<int>(), It.IsAny<int>(),
+                It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<bool>()))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 10 });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        await service.RunMemoryCleanupAsync();
+
+        optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 0, false, 0, true), Times.Once);   // target == 0
+        optimizer.Verify(o => o.OptimizeAll(
+            It.IsAny<OptimizationLevel>(), It.IsAny<int>(),
+            It.Is<int>(t => t != 0), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
     public async Task TimerTick_HintsBackgroundMemoryPriorityEveryCycle()
     {
         var settings = new Settings { MemoryThresholdPercent = 80 };

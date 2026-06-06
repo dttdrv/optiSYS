@@ -117,7 +117,11 @@ internal static partial class NativeMethods
 
     // ── Process memory priority ───────────────────────────────────────
 
-    internal const int ProcessMemoryPriority = 0x27;
+    // Documented PROCESS_INFORMATION_CLASS::ProcessMemoryPriority is the FIRST entry = 0, used by the
+    // public Get/SetProcessInformation. Do NOT use 0x27 (39): that is the undocumented
+    // NtSetInformationProcess::ProcessPagePriority ordinal — a different enum — and passing it makes
+    // Get/SetProcessInformation reject every call with ERROR_INVALID_PARAMETER (87).
+    internal const int ProcessMemoryPriority = 0;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct MEMORY_PRIORITY_INFORMATION

@@ -1,6 +1,7 @@
 using Moq;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Native;
 using OptiSYS.Core.Services;
 using Xunit;
 
@@ -8,6 +9,129 @@ namespace OptiSYS.Tests.Services;
 
 public class MemoryOptimizerTests
 {
+    // Fake over the system-memory seam: records every memory-list command and models available
+    // physical as a counter that each command lifts by a fixed reclaim, so a deeper pass (more
+    // commands) yields a larger before→after delta — exactly what OptimizeAll's FreedBytes reports.
+    private sealed class FakeSystemOps : IMemorySystemOps
+    {
+        private long _available;
+        private readonly long _reclaimPerCommand;
+        public List<NativeMethods.MemoryListCommand> Commands { get; } = new();
+
+        public FakeSystemOps(long initialAvailable, long reclaimPerCommand)
+        {
+            _available = initialAvailable;
+            _reclaimPerCommand = reclaimPerCommand;
+        }
+
+        public long AvailablePhysicalBytes() => _available;
+
+        public bool RunMemoryListCommand(NativeMethods.MemoryListCommand command)
+        {
+            Commands.Add(command);
+            _available += _reclaimPerCommand;
+            return true;
+        }
+    }
+
+    private static Mock<IMemoryInfoService> MemoryInfo(long totalBytes, long compressedBytes = 0)
+    {
+        var mock = new Mock<IMemoryInfoService>();
+        mock.Setup(m => m.GetCurrentMemoryInfo()).Returns(new MemoryInfo
+        {
+            TotalPhysicalBytes = totalBytes,
+            CompressedBytes = compressedBytes,
+        });
+        return mock;
+    }
+
+    private static Mock<INativeBridge> EmptyProcessBridge()
+    {
+        var native = new Mock<INativeBridge>();
+        native.Setup(n => n.GetForegroundProcessId()).Returns(0);
+        native.Setup(n => n.GetProcessList()).Returns([]);   // no trim candidates → trimmedBytes == 0
+        return native;
+    }
+
+    private static readonly NativeMethods.MemoryListCommand SystemEmpty =
+        NativeMethods.MemoryListCommand.MemoryEmptyWorkingSets;
+    private static readonly NativeMethods.MemoryListCommand StandbyPurge =
+        NativeMethods.MemoryListCommand.MemoryPurgeStandbyList;
+    private static readonly NativeMethods.MemoryListCommand LowPriorityPurge =
+        NativeMethods.MemoryListCommand.MemoryPurgeLowPriorityStandbyList;
+
+    [Fact]
+    public void OptimizeAll_TargetZero_AggressiveRunsDeepSteps_BalancedDoesNot_AndFreesMore()
+    {
+        const long total = 100_000_000;
+        const long perCommand = 10_000_000;   // 10 MB reclaim per system command
+
+        var balancedOps = new FakeSystemOps(initialAvailable: 1_000_000, reclaimPerCommand: perCommand);
+        using var balanced = new MemoryOptimizer(MemoryInfo(total).Object, EmptyProcessBridge().Object, balancedOps);
+        var balancedResult = balanced.OptimizeAll(
+            level: OptimizationLevel.Balanced, targetThresholdPercent: 0,
+            accessedBitsDelayMs: 0, effectivenessTrackingEnabled: false);
+
+        var aggressiveOps = new FakeSystemOps(initialAvailable: 1_000_000, reclaimPerCommand: perCommand);
+        using var aggressive = new MemoryOptimizer(MemoryInfo(total).Object, EmptyProcessBridge().Object, aggressiveOps);
+        var aggressiveResult = aggressive.OptimizeAll(
+            level: OptimizationLevel.Aggressive, targetThresholdPercent: 0,
+            accessedBitsDelayMs: 0, effectivenessTrackingEnabled: false);
+
+        // The deep system steps run ONLY for Aggressive.
+        Assert.DoesNotContain(SystemEmpty, balancedOps.Commands);
+        Assert.DoesNotContain(StandbyPurge, balancedOps.Commands);
+        Assert.Contains(SystemEmpty, aggressiveOps.Commands);
+        Assert.Contains(StandbyPurge, aggressiveOps.Commands);
+
+        Assert.Equal(OptimizationLevel.Aggressive, aggressiveResult.ActualLevelUsed);
+        Assert.Equal(OptimizationLevel.Balanced, balancedResult.ActualLevelUsed);
+
+        // FreedBytes reflects the whole-pass available increase, so the deeper pass frees at least
+        // as much (here strictly more, since it runs the two extra reclaim commands).
+        Assert.True(aggressiveResult.FreedBytes >= balancedResult.FreedBytes);
+        Assert.True(aggressiveResult.FreedBytes > balancedResult.FreedBytes);
+    }
+
+    [Fact]
+    public void OptimizeAll_WithTarget_WhenTrimClearsThreshold_EarlyExitsAtConservative()
+    {
+        const long total = 100_000_000;
+        // Available 80 MB of 100 MB → 20% usage, below the 75% target: the post-trim early-exit fires.
+        var ops = new FakeSystemOps(initialAvailable: 80_000_000, reclaimPerCommand: 10_000_000);
+        using var optimizer = new MemoryOptimizer(MemoryInfo(total).Object, EmptyProcessBridge().Object, ops);
+
+        var result = optimizer.OptimizeAll(
+            level: OptimizationLevel.Aggressive,   // requested Max, but pressure already cleared
+            targetThresholdPercent: 75,
+            accessedBitsDelayMs: 0, effectivenessTrackingEnabled: false);
+
+        Assert.Equal(OptimizationLevel.Conservative, result.ActualLevelUsed);
+        Assert.Empty(ops.Commands);   // no Balanced/Aggressive steps ran — pure trim-only early exit
+        Assert.DoesNotContain(SystemEmpty, ops.Commands);
+        Assert.DoesNotContain(StandbyPurge, ops.Commands);
+    }
+
+    [Fact]
+    public void OptimizeAll_HighCompression_DowngradesAggressiveToBalanced()
+    {
+        const long total = 100_000_000;
+        const long compressed = 20_000_000;   // 20% compressed > 0.15 cap → don't purge (would re-fault)
+        var ops = new FakeSystemOps(initialAvailable: 1_000_000, reclaimPerCommand: 10_000_000);
+        using var optimizer = new MemoryOptimizer(
+            MemoryInfo(total, compressed).Object, EmptyProcessBridge().Object, ops);
+
+        var result = optimizer.OptimizeAll(
+            level: OptimizationLevel.Aggressive, targetThresholdPercent: 0,
+            accessedBitsDelayMs: 0, effectivenessTrackingEnabled: false);
+
+        Assert.Equal(OptimizationLevel.Balanced, result.ActualLevelUsed);
+        Assert.Contains("Level capped (high compression)", result.MethodsUsed);
+        Assert.Contains(LowPriorityPurge, ops.Commands);   // Balanced tier still runs
+        Assert.DoesNotContain(SystemEmpty, ops.Commands);  // Aggressive deep steps suppressed
+        Assert.DoesNotContain(StandbyPurge, ops.Commands);
+    }
+
     [Fact]
     public void TrimProcessWorkingSets_UsesNativeBridgeProcessListAndTrim()
     {

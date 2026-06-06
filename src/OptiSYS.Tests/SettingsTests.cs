@@ -32,6 +32,10 @@ public class SettingsTests
         Assert.False(settings.HasCompletedOnboarding);
         Assert.True(settings.StartWithWindows);
         Assert.Equal(75, settings.MemoryThresholdPercent);
+        // Critical must sit ABOVE the reactive threshold so the reactive branch isn't dead code
+        // (EvaluateMemoryPressureAsync tests >= critical first). 75/90, not the collapsed 75/75.
+        Assert.Equal(90, settings.MemoryCriticalThresholdPercent);
+        Assert.True(settings.MemoryCriticalThresholdPercent > settings.MemoryThresholdPercent);
         Assert.Equal(5, settings.MemoryCheckIntervalSeconds);   // 5s reclaim cadence (matches RAMSpeed)
         Assert.Equal(30, settings.MemoryCooldownSeconds);
         Assert.Equal(OptimizationLevel.Balanced, settings.OptimizationLevel);
@@ -66,6 +70,39 @@ public class SettingsTests
         Assert.Equal(60, settings.MemoryCleanupDurationSeconds);
         Assert.Equal(5, settings.MemoryRepeatPasses);
         Assert.Equal(400, settings.WindowWidth);
+    }
+
+    [Fact]
+    public void Settings_Validate_RepairsCollapsedCriticalThreshold()
+    {
+        // A degenerate on-disk config (both at 75) must self-heal: critical lifts to threshold+10 so
+        // the reactive branch is reachable again, not pinned dead behind the critical branch.
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 75,
+            MemoryCriticalThresholdPercent = 75,
+        };
+
+        settings.Validate();
+
+        Assert.True(settings.MemoryCriticalThresholdPercent > settings.MemoryThresholdPercent);
+        Assert.Equal(85, settings.MemoryCriticalThresholdPercent);
+    }
+
+    [Fact]
+    public void Settings_Validate_CapsRepairedCriticalAt99()
+    {
+        // If the threshold is already very high, the +10 invariant caps at 99 (still > threshold).
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 95,
+            MemoryCriticalThresholdPercent = 90,   // below threshold after clamps → must repair
+        };
+
+        settings.Validate();
+
+        Assert.True(settings.MemoryCriticalThresholdPercent > settings.MemoryThresholdPercent);
+        Assert.Equal(99, settings.MemoryCriticalThresholdPercent);
     }
 
     [Fact]

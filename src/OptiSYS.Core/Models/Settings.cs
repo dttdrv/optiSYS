@@ -166,17 +166,17 @@ public sealed class Settings
         "audiodg", "NVIDIA Display Container"
     ];
 
-    // Memory optimization settings. Baked-in (no UI knobs). DYNAMIC monitoring: a ~2s tick (like
-    // optiRAM) watches continuously and reacts within seconds — but only SAMPLES memory each tick
-    // (cheap); actual reclaim is gated by the 60% threshold + the predictive trend + the cooldown,
-    // so the heavy work fires only under genuine pressure. Cooldown spaces consecutive reclaims.
+    // Memory optimization settings. Baked-in (no UI knobs). DYNAMIC monitoring: a ~5s tick watches
+    // continuously and reacts within seconds — but only SAMPLES memory each tick (cheap); actual
+    // reclaim is gated by the 75% reactive threshold + the predictive trend + the cooldown, so the
+    // heavy work fires only under genuine pressure. Cooldown spaces consecutive reclaims.
     public bool AutoOptimizeMemoryEnabled { get; set; } = true;
     public int MemoryCheckIntervalSeconds { get; set; } = 5;
     public int MemoryThresholdPercent { get; set; } = 75;
     // OOM prevention: at/above this usage %, automatic cleanup escalates to a full (Aggressive)
     // reclaim immediately and bypasses the cooldown, so a fast allocation burst (e.g. many large
     // processes) can't blow through the free-RAM buffer between spaced-out cleanups.
-    public int MemoryCriticalThresholdPercent { get; set; } = 75;
+    public int MemoryCriticalThresholdPercent { get; set; } = 90;
     public int MemoryCooldownSeconds { get; set; } = 30;
     public int MemoryCleanupDurationSeconds { get; set; } = 15;
     public int MemoryRepeatPasses { get; set; } = 2;
@@ -361,6 +361,10 @@ public sealed class Settings
         MemoryCheckIntervalSeconds = Math.Clamp(MemoryCheckIntervalSeconds, 1, 60);
         MemoryThresholdPercent = Math.Clamp(MemoryThresholdPercent, 10, 95);
         MemoryCriticalThresholdPercent = Math.Clamp(MemoryCriticalThresholdPercent, 70, 99);
+        // Invariant: critical must sit strictly above the reactive threshold, else the reactive
+        // branch is dead code (the critical branch is tested first). Repair a degenerate config.
+        if (MemoryCriticalThresholdPercent <= MemoryThresholdPercent)
+            MemoryCriticalThresholdPercent = Math.Min(99, MemoryThresholdPercent + 10);
         MemoryCooldownSeconds = Math.Clamp(MemoryCooldownSeconds, 5, 300);
         MemoryCleanupDurationSeconds = Math.Clamp(MemoryCleanupDurationSeconds, 5, 60);
         MemoryRepeatPasses = Math.Clamp(MemoryRepeatPasses, 1, 5);

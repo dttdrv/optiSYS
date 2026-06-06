@@ -71,10 +71,12 @@ public sealed class MemoryOptimizerDomain : IOptimizationDomain
         {
             // No user-managed exclusion list (matches optiRAM). The optimizer already excludes
             // critical system processes by default; foreground + self are skipped during the trim.
+            // Explicit activation via the engine spine — target 0 so the full requested level runs
+            // (no trim-only early-exit). The watcher path keeps its pressure-gated target separately.
             var result = _optimizer.OptimizeAll(
                 level: _settings.OptimizationLevel,
                 cacheMaxPercent: _settings.CacheMaxPercent,
-                targetThresholdPercent: _settings.MemoryThresholdPercent,
+                targetThresholdPercent: 0,
                 accessedBitsDelayMs: _settings.AccessedBitsDelayMs,
                 effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled);
 

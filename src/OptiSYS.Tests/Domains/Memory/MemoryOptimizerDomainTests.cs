@@ -58,10 +58,13 @@ public class MemoryOptimizerDomainTests
         });
 
         var optimizer = new Mock<IMemoryOptimizer>(MockBehavior.Strict);
+        // Explicit activation via the engine spine passes targetThresholdPercent: 0 so the full
+        // requested level (Aggressive's deep steps included) always runs — no trim-only early-exit.
+        // MemoryThresholdPercent (77) gates only the automatic watcher path, not this explicit Apply.
         optimizer.Setup(o => o.OptimizeAll(
                 OptimizationLevel.Aggressive,
                 12,
-                77,
+                0,
                 false,
                 1500,
                 false))
@@ -83,7 +86,7 @@ public class MemoryOptimizerDomainTests
         optimizer.Verify(o => o.OptimizeAll(
             OptimizationLevel.Aggressive,
             12,
-            77,
+            0,
             false,
             1500,
             false), Times.Once);

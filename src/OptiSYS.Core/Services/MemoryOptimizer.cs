@@ -18,6 +18,10 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 
     private readonly IMemoryInfoService _memoryInfo;
     private readonly INativeBridge? _native;
+    // Seam over the system-wide memory-list commands + live available-physical read (which bypass
+    // INativeBridge). Default is the real native path; tests inject a fake to make OptimizeAll's
+    // escalation/early-exit deterministic. See IMemorySystemOps.
+    private readonly IMemorySystemOps _systemOps;
     private readonly StepEffectivenessTracker _tracker = new();
     // PIDs we lowered to LOW + their captured prior priority, so the hint can be fully reverted.
     private readonly Dictionary<int, uint> _loweredPriorities = new();
@@ -29,9 +33,14 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     public HashSet<string> ExcludedProcesses { get; set; } = new(DefaultExclusions, StringComparer.OrdinalIgnoreCase);
 
     public MemoryOptimizer(IMemoryInfoService memoryInfo, INativeBridge? native = null)
+        : this(memoryInfo, native, new NativeMemorySystemOps()) { }
+
+    // Test seam ctor: inject a fake IMemorySystemOps to drive OptimizeAll deterministically.
+    internal MemoryOptimizer(IMemoryInfoService memoryInfo, INativeBridge? native, IMemorySystemOps systemOps)
     {
         _memoryInfo = memoryInfo;
         _native = native;
+        _systemOps = systemOps;
     }
 
     // Convenience ctor for legacy/standalone use — wraps its own MemoryInfoService,
@@ -146,10 +155,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     public bool PurgeStandbyList()
     {
         ThrowIfDisposed();
-        int command = (int)NativeMethods.MemoryListCommand.MemoryPurgeStandbyList;
-        int result = NativeMethods.NtSetSystemInformation(
-            NativeMethods.SystemMemoryListInformation, ref command, sizeof(int));
-        return result >= 0;
+        return _systemOps.RunMemoryListCommand(NativeMethods.MemoryListCommand.MemoryPurgeStandbyList);
     }
 
     /// <summary>
@@ -261,7 +267,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     private static uint GetProcessMemoryPriorityRaw(int pid)
     {
         var handle = NativeMethods.OpenProcess(
-            NativeMethods.PROCESS_QUERY_INFORMATION, false, (uint)pid);
+            NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)pid);
         if (handle == IntPtr.Zero)
             return 0;
         try { return NativeMethods.GetProcessMemoryPriority(handle); }
@@ -304,37 +310,25 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     public bool PurgeLowPriorityStandby()
     {
         ThrowIfDisposed();
-        int command = (int)NativeMethods.MemoryListCommand.MemoryPurgeLowPriorityStandbyList;
-        int result = NativeMethods.NtSetSystemInformation(
-            NativeMethods.SystemMemoryListInformation, ref command, sizeof(int));
-        return result >= 0;
+        return _systemOps.RunMemoryListCommand(NativeMethods.MemoryListCommand.MemoryPurgeLowPriorityStandbyList);
     }
 
     public bool FlushModifiedList()
     {
         ThrowIfDisposed();
-        int command = (int)NativeMethods.MemoryListCommand.MemoryFlushModifiedList;
-        int result = NativeMethods.NtSetSystemInformation(
-            NativeMethods.SystemMemoryListInformation, ref command, sizeof(int));
-        return result >= 0;
+        return _systemOps.RunMemoryListCommand(NativeMethods.MemoryListCommand.MemoryFlushModifiedList);
     }
 
     public bool CaptureAndResetAccessedBits()
     {
         ThrowIfDisposed();
-        int command = (int)NativeMethods.MemoryListCommand.MemoryCaptureAndResetAccessedBits;
-        int result = NativeMethods.NtSetSystemInformation(
-            NativeMethods.SystemMemoryListInformation, ref command, sizeof(int));
-        return result >= 0;
+        return _systemOps.RunMemoryListCommand(NativeMethods.MemoryListCommand.MemoryCaptureAndResetAccessedBits);
     }
 
     public bool EmptySystemWorkingSets()
     {
         ThrowIfDisposed();
-        int command = (int)NativeMethods.MemoryListCommand.MemoryEmptyWorkingSets;
-        int result = NativeMethods.NtSetSystemInformation(
-            NativeMethods.SystemMemoryListInformation, ref command, sizeof(int));
-        return result >= 0;
+        return _systemOps.RunMemoryListCommand(NativeMethods.MemoryListCommand.MemoryEmptyWorkingSets);
     }
 
     public bool FlushSystemFileCache()
@@ -407,39 +401,45 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         var beforeInfo = _memoryInfo.GetCurrentMemoryInfo();
         var actualLevel = OptimizationLevel.Conservative;
         int processesTrimmed = 0;
+        // Snapshot available physical before any reclaim so FreedBytes can report the real, whole-pass
+        // increase (standby/system-WS reclaim included), not just the working-set-trim sum.
+        long availableBefore = _systemOps.AvailablePhysicalBytes();
+
+        // When no pressure target is given (target == 0), the caller is an explicit "run the requested
+        // level now" — skip the trim-only early-exits so the full requested pipeline always runs.
+        bool pressureGated = targetThresholdPercent > 0;
 
         try
         {
             long trimTarget = 0;
-            if (targetThresholdPercent > 0 && beforeInfo.TotalPhysicalBytes > 0)
+            if (pressureGated && beforeInfo.TotalPhysicalBytes > 0)
                 trimTarget = (long)((double)beforeInfo.TotalPhysicalBytes * (1.0 - targetThresholdPercent / 100.0));
 
             var (trimmed, _, _, earlyExit, trimmedBytes) = TrimProcessWorkingSets(trimTarget);
             processesTrimmed = trimmed;
             methodsUsed.Add(earlyExit ? "Working Set Trim (early exit)" : "Working Set Trim");
 
-            if (targetThresholdPercent > 0 && GetUsagePercentLive() < targetThresholdPercent)
-                return BuildResult(sw, methodsUsed, trimmedBytes, processesTrimmed, actualLevel);
+            if (pressureGated && GetUsagePercentLive(beforeInfo.TotalPhysicalBytes) < targetThresholdPercent)
+                return BuildResult(sw, methodsUsed, ComputeFreed(availableBefore, trimmedBytes), processesTrimmed, actualLevel);
 
+            // Compression cap is a safety, not a pressure gate: an OS already compressing heavily would
+            // just re-fault after a purge, so cap Aggressive→Balanced regardless of how we were called.
             var effectiveLevel = level;
-            if (targetThresholdPercent > 0)
-            {
-                double compressedRatio = beforeInfo.TotalPhysicalBytes > 0
-                    ? (double)beforeInfo.CompressedBytes / beforeInfo.TotalPhysicalBytes
-                    : 0;
+            double compressedRatio = beforeInfo.TotalPhysicalBytes > 0
+                ? (double)beforeInfo.CompressedBytes / beforeInfo.TotalPhysicalBytes
+                : 0;
 
-                if (compressedRatio > 0.15 && effectiveLevel == OptimizationLevel.Aggressive)
-                {
-                    // OS already compressing heavily — purging would just re-fault. Cap to Balanced.
-                    effectiveLevel = OptimizationLevel.Balanced;
-                    methodsUsed.Add("Level capped (high compression)");
-                }
-                else if (compressedRatio < 0.05 && isLowMemory && effectiveLevel < OptimizationLevel.Balanced)
-                {
-                    // Little compression but real low-memory pressure — escalate (ported from optiRAM).
-                    effectiveLevel = OptimizationLevel.Balanced;
-                    methodsUsed.Add("Level raised (low compression + low memory)");
-                }
+            if (compressedRatio > 0.15 && effectiveLevel == OptimizationLevel.Aggressive)
+            {
+                // OS already compressing heavily — purging would just re-fault. Cap to Balanced.
+                effectiveLevel = OptimizationLevel.Balanced;
+                methodsUsed.Add("Level capped (high compression)");
+            }
+            else if (compressedRatio < 0.05 && isLowMemory && effectiveLevel < OptimizationLevel.Balanced)
+            {
+                // Little compression but real low-memory pressure — escalate (ported from optiRAM).
+                effectiveLevel = OptimizationLevel.Balanced;
+                methodsUsed.Add("Level raised (low compression + low memory)");
             }
 
             if (effectiveLevel >= OptimizationLevel.Balanced)
@@ -472,13 +472,13 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                         methodsUsed.Add($"Cache Cap {cacheMaxPercent}%");
                 }
 
-                if (targetThresholdPercent > 0 && GetUsagePercentLive() < targetThresholdPercent)
-                    return BuildResult(sw, methodsUsed, trimmedBytes, processesTrimmed, actualLevel);
+                if (pressureGated && GetUsagePercentLive(beforeInfo.TotalPhysicalBytes) < targetThresholdPercent)
+                    return BuildResult(sw, methodsUsed, ComputeFreed(availableBefore, trimmedBytes), processesTrimmed, actualLevel);
 
                 // Max (Aggressive): full reclaim — system-wide working-set empty + full standby
-                // purge (matching optiRAM). Reached only under sustained pressure: the live
-                // escalation checks above already bailed out when a lighter pass sufficed, and the
-                // threshold + cooldown gate upstream means this fires when it's genuinely needed.
+                // purge (matching optiRAM). When pressure-gated, reached only under sustained pressure
+                // (the live early-exits above bail when a lighter pass sufficed); when called with
+                // target == 0 (explicit "Max"), always runs so the requested level does real work.
                 if (effectiveLevel >= OptimizationLevel.Aggressive)
                 {
                     actualLevel = OptimizationLevel.Aggressive;
@@ -487,7 +487,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 }
             }
 
-            return BuildResult(sw, methodsUsed, trimmedBytes, processesTrimmed, actualLevel);
+            return BuildResult(sw, methodsUsed, ComputeFreed(availableBefore, trimmedBytes), processesTrimmed, actualLevel);
         }
         catch (Exception ex)
         {
@@ -537,24 +537,24 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
         };
     }
 
-    private static ulong GetAvailablePhysicalBytesQuick()
+    private long GetAvailablePhysicalBytesQuick() => _systemOps.AvailablePhysicalBytes();
+
+    // Live usage % derived from the seam's available-physical read against the (stable) total. Used by
+    // OptimizeAll's pressure-gated early-exits; total comes from the pass's beforeInfo snapshot.
+    private int GetUsagePercentLive(long totalPhysicalBytes)
     {
-        var ms = new NativeMethods.MEMORYSTATUSEX
-        {
-            dwLength = (uint)Marshal.SizeOf<NativeMethods.MEMORYSTATUSEX>()
-        };
-        NativeMethods.GlobalMemoryStatusEx(ref ms);
-        return ms.ullAvailPhys;
+        if (totalPhysicalBytes <= 0) return 0;
+        long available = _systemOps.AvailablePhysicalBytes();
+        long used = totalPhysicalBytes - available;
+        return (int)Math.Clamp(used * 100.0 / totalPhysicalBytes, 0, 100);
     }
 
-    private static int GetUsagePercentLive()
+    // Whole-pass reclaim: the increase in available physical (standby/system-WS reclaim included),
+    // but never below the attributable working-set-trim sum so a trim-only pass still reports honestly.
+    private long ComputeFreed(long availableBefore, long trimmedBytes)
     {
-        var ms = new NativeMethods.MEMORYSTATUSEX
-        {
-            dwLength = (uint)Marshal.SizeOf<NativeMethods.MEMORYSTATUSEX>()
-        };
-        NativeMethods.GlobalMemoryStatusEx(ref ms);
-        return (int)ms.dwMemoryLoad;
+        long liveDelta = _systemOps.AvailablePhysicalBytes() - availableBefore;
+        return Math.Max(liveDelta, trimmedBytes);
     }
 
     public void Dispose()

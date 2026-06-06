@@ -306,13 +306,15 @@ public sealed class QuietAutomationService : IQuietAutomationService
             RaiseStateChanged();
             RefreshMemoryExclusions();
 
-            // Automatic cleanup runs at the user's selected mode (Balanced or Max) — the full
-            // optiRAM-parity pipeline, with adaptive escalation bailing early when a lighter pass
-            // suffices. Gated by the threshold + cooldown so the heavy steps fire only under pressure.
+            // Automatic (watcher) cleanup stays pressure-gated: it passes the reactive threshold as
+            // the target so the adaptive early-exits bail when a lighter pass already drops below it.
+            // Manual / explicit "Optimize now" passes target 0 so the early-exits are skipped and the
+            // user's selected level (incl. Max's deep system-WS empty + standby purge) always runs.
+            var target = triggeredByThreshold ? _settings.MemoryThresholdPercent : 0;
             var result = await Task.Run(() => _optimizer.OptimizeAll(
                 level: forceLevel ?? _settings.OptimizationLevel,
                 cacheMaxPercent: 0,
-                targetThresholdPercent: _settings.MemoryThresholdPercent,
+                targetThresholdPercent: target,
                 accessedBitsDelayMs: 0,
                 effectivenessTrackingEnabled: _settings.EffectivenessTrackingEnabled)).ConfigureAwait(false);
 
