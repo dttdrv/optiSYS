@@ -28,11 +28,15 @@ public sealed partial class MainWindow : Window
     private readonly IStartupRegistrationService _startup;
     private readonly DispatcherQueueTimer _refreshTimer;
     private readonly ThemeManager _theme;
+    private readonly IEffectivePowerModeProvider _effectivePowerMode;
 
     private bool _allowExit;
     private bool _initializing = true;
     private bool _suppressAutoToggle;
     private OptiSYS.Core.Services.OnboardingState? _onboarding;
+    // App icon, loaded from the shipped PNG. The custom title bar no longer shows it (Windows apps
+    // don't put their icon in the window's top-left content), but onboarding still reuses it.
+    private Microsoft.UI.Xaml.Media.ImageSource? _appIcon;
 
     public MainWindow()
     {
@@ -42,16 +46,26 @@ public sealed partial class MainWindow : Window
         _automation = AppHost.Services.GetRequiredService<IQuietAutomationService>();
         _tray = AppHost.Services.GetRequiredService<ITrayIconService>();
         _startup = AppHost.Services.GetRequiredService<IStartupRegistrationService>();
+        _effectivePowerMode = AppHost.Services.GetRequiredService<IEffectivePowerModeProvider>();
 
         InitializeComponent();
-        AppVersionText.Text = $"Version {GetDisplayVersion()}";
+        AppVersionText.Text = GetDisplayVersion();
 
-        _theme = new ThemeManager(this, ShellRoot, GetAppWindow, _settings);
+        _theme = new ThemeManager(this, ShellRoot, GetAppWindow, _settings, _effectivePowerMode);
 
         ConfigureTitleBar();
         _theme.ApplyThemeMode();
+        // Re-apply caption-button colours AFTER the theme is resolved, so dark mode gets light
+        // buttons (ConfigureTitleBar's earlier call ran before RequestedTheme was set, which left the
+        // min/max/close glyphs dark-on-dark).
+        _theme.UpdateTitleBarButtonsColors();
         _theme.ApplyBackdrop();
         _theme.ApplyAccentColor();
+
+        // Re-apply the backdrop when the effective power mode changes so it follows Windows: the
+        // translucent backdrop is dropped in battery saver and restored when leaving it. The provider
+        // raises Changed off the UI thread, so the handler marshals back.
+        _effectivePowerMode.Changed += OnEffectivePowerModeChanged;
         ConfigureAppWindow();
         HookTray();
         HookRuntimeEvents();
@@ -117,7 +131,7 @@ public sealed partial class MainWindow : Window
         if (_settings.HasCompletedOnboarding) return;
 
         _onboarding = new OptiSYS.Core.Services.OnboardingState();
-        OnboardingIcon.Source = TitleBarIcon.Source; // reuse the already-loaded app icon
+        OnboardingIcon.Source = _appIcon; // reuse the already-loaded app icon
         BuildOnboardingDots();
         RenderOnboardingStep();
         OnboardingOverlay.Visibility = Visibility.Visible;
@@ -301,12 +315,13 @@ public sealed partial class MainWindow : Window
                     appWindow.SetIcon(icoPath);
                 }
 
-                // Load the in-window title-bar icon from the file (NOT ms-appx): this build strips
-                // resources.pri, so ms-appx:///Assets/... fails to resolve and the icon stays blank.
+                // Load the app icon from the file (NOT ms-appx): this build strips resources.pri, so
+                // ms-appx:///Assets/... fails to resolve. The custom title bar no longer displays it;
+                // it's kept only as the onboarding overlay's icon source.
                 var pngPath = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.png");
                 if (System.IO.File.Exists(pngPath))
                 {
-                    TitleBarIcon.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(pngPath));
+                    _appIcon = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(pngPath));
                 }
 
                 if (AppWindowTitleBar.IsCustomizationSupported())
@@ -483,6 +498,23 @@ public sealed partial class MainWindow : Window
             _settings.SelectedNavItem = tag;
             _settings.SaveDebounced();
         }
+    }
+
+    /// <summary>
+    /// Keep the Dashboard scroll body's top inset exactly equal to the fixed header's height, so the
+    /// first card rests flush under the header at any font scale / DPI. The XAML margin is only the
+    /// pre-measure estimate; this corrects it on first layout (and any later header resize).
+    /// </summary>
+    private void OnDashboardHeaderSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (DashboardBody is not null)
+            DashboardBody.Margin = new Thickness(0, e.NewSize.Height, 0, DashboardBody.Margin.Bottom);
+    }
+
+    private void OnEffectivePowerModeChanged()
+    {
+        // The provider raises this off the UI thread; marshal back before touching SystemBackdrop.
+        DispatcherQueue.TryEnqueue(() => _theme.ApplyBackdrop());
     }
 
     // Row offsets for the single sliding accent indicator, in the nav container's coordinate space.
@@ -810,6 +842,9 @@ private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
         _tray.ToggleAutomationRequested -= OnTrayToggleAutomationRequested;
         _tray.ExitRequested -= OnTrayExitRequested;
         _tray.Dispose();
+        // The power-mode provider is a DI singleton that outlives this window; unsubscribe so the
+        // closed window isn't pinned and no backdrop refresh runs against a torn-down dispatcher.
+        _effectivePowerMode.Changed -= OnEffectivePowerModeChanged;
     }
 
     private void PersistWindowPlacement(AppWindow appWindow)

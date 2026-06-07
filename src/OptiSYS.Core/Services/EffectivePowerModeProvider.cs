@@ -26,6 +26,8 @@ public sealed class EffectivePowerModeProvider : IEffectivePowerModeProvider
 
     public EffectivePowerMode Current => (EffectivePowerMode)_current;
 
+    public event Action? Changed;
+
     public void Start()
     {
         lock (_gate)
@@ -83,9 +85,15 @@ public sealed class EffectivePowerModeProvider : IEffectivePowerModeProvider
     // an unrecognized value degrades to Unknown rather than mis-classifying.
     private void OnModeChanged(int mode, IntPtr context)
     {
-        _current = Enum.IsDefined(typeof(EffectivePowerMode), mode) && mode >= 0
+        var newMode = Enum.IsDefined(typeof(EffectivePowerMode), mode) && mode >= 0
             ? mode
             : (int)EffectivePowerMode.Unknown;
+
+        if (newMode == _current)
+            return;
+
+        _current = newMode;
+        Changed?.Invoke();
     }
 
     public void Dispose()

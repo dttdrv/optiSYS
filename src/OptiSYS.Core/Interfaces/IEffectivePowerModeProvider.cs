@@ -30,6 +30,10 @@ public interface IEffectivePowerModeProvider : IDisposable
     /// when no signal is available.</summary>
     EffectivePowerMode Current { get; }
 
+    /// <summary>Raised when <see cref="Current"/> changes. Invoked on an arbitrary thread (the OS
+    /// notification callback) — subscribers that touch UI must marshal to the UI thread.</summary>
+    event Action? Changed;
+
     /// <summary>Begins listening for effective-power-mode changes. No-op / degrades to
     /// <see cref="EffectivePowerMode.Unknown"/> when the OS API is unavailable.</summary>
     void Start();

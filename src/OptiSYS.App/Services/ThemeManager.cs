@@ -3,6 +3,7 @@ using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
 
 namespace OptiSYS.Services;
@@ -19,13 +20,16 @@ internal sealed class ThemeManager
     private readonly FrameworkElement _root;
     private readonly Func<AppWindow?> _appWindow;
     private readonly Settings _settings;
+    private readonly IEffectivePowerModeProvider? _powerMode;
 
-    public ThemeManager(Window window, FrameworkElement root, Func<AppWindow?> appWindow, Settings settings)
+    public ThemeManager(Window window, FrameworkElement root, Func<AppWindow?> appWindow, Settings settings,
+        IEffectivePowerModeProvider? powerMode = null)
     {
         _window = window;
         _root = root;
         _appWindow = appWindow;
         _settings = settings;
+        _powerMode = powerMode;
     }
 
     public void ApplyThemeMode()
@@ -49,19 +53,39 @@ internal sealed class ThemeManager
     {
         try
         {
-            _window.SystemBackdrop = _settings.BackdropType switch
-            {
-                "Mica" => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.Base },
-                "MicaAlt" => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt },
-                "Acrylic" => new DesktopAcrylicBackdrop(),
-                _ => null
-            };
+            // Match Windows: in battery saver the OS disables transparency effects, so use no
+            // backdrop (re-applied when the user leaves battery saver). Otherwise apply the configured
+            // backdrop.
+            SystemBackdrop? backdrop =
+                _powerMode?.Current == EffectivePowerMode.BatterySaver
+                    ? null
+                    : _settings.BackdropType switch
+                    {
+                        "Mica" => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.Base },
+                        "MicaAlt" => new MicaBackdrop { Kind = Microsoft.UI.Composition.SystemBackdrops.MicaKind.BaseAlt },
+                        "Acrylic" => new DesktopAcrylicBackdrop(),
+                        _ => null
+                    };
+
+            _window.SystemBackdrop = backdrop;
+            UpdateBackdropFallback(backdrop is null);
         }
         catch (Exception ex)
         {
             StartupLog.WriteException("ApplyBackdrop failure, falling back to None", ex);
             _window.SystemBackdrop = null;
+            UpdateBackdropFallback(true);
         }
+    }
+
+    // When there is no translucent backdrop (battery saver, "None", an elevated window that DWM
+    // denies the backdrop, or a failure), the window's transparent regions (sidebar + title bar)
+    // read near-black. Show a theme-grey fallback layer behind them so the sidebar looks intentional;
+    // hide it when a backdrop is active so the backdrop shows through.
+    private void UpdateBackdropFallback(bool show)
+    {
+        if (_root?.FindName("BackdropFallback") is FrameworkElement fb)
+            fb.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public void ApplyAccentColor()

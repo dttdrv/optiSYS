@@ -97,6 +97,12 @@
             <RowDefinition Height="*" />    <!-- Main Content -->
         </Grid.RowDefinitions>
 
+        <!-- Backdrop fallback: a theme-grey layer behind everything, shown only when there is no
+             translucent system backdrop (battery saver / elevated window / "None") so the sidebar +
+             title bar don't read near-black. Toggled by ThemeManager.ApplyBackdrop. -->
+        <Border x:Name="BackdropFallback" Grid.Row="0" Grid.RowSpan="2"
+                Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}" Visibility="Collapsed" />
+
         <!-- Custom Title Bar -->
         <Grid x:Name="AppTitleBar" Height="36" Grid.Row="0" Background="Transparent" VerticalAlignment="Top">
             <Grid.ColumnDefinitions>
@@ -105,10 +111,10 @@
                 <ColumnDefinition Width="140" /> <!-- Caption buttons padding -->
             </Grid.ColumnDefinitions>
 
-            <StackPanel Orientation="Horizontal" Grid.Column="0" VerticalAlignment="Center" Margin="16,0,0,0" Spacing="8">
-                <Image x:Name="TitleBarIcon" Width="18" Height="18" VerticalAlignment="Center" />
-                <TextBlock Text="optiSYS" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-            </StackPanel>
+            <!-- Intentionally empty: Windows apps don't render their icon/title in the window's
+                 top-left content. This strip stays the draggable region (SetTitleBar); the system
+                 caption buttons sit at the right. Branding lives in the sidebar footer. -->
+
         </Grid>
 
         <!-- Compatibility TextBlocks required by tests -->
@@ -123,7 +129,7 @@
             </Grid.ColumnDefinitions>
 
             <!-- Sidebar -->
-            <Grid Grid.Column="0" Background="Transparent" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+            <Grid Grid.Column="0" Background="Transparent">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
@@ -132,7 +138,7 @@
                 <!-- Navigation Links. The single shared accent indicator (NavIndicator) overlays
                      the item list and slides between rows via its TranslateTransform.Y (animated in
                      code on selection change). The items themselves no longer carry per-item pills. -->
-                <Grid Grid.Row="0" Margin="8,16,8,0">
+                <Grid Grid.Row="0" Margin="8,4,8,0">
                     <!-- 3px accent selection pill, 16px tall, left edge. Y is set/animated in code. -->
                     <Border x:Name="NavIndicator" Width="3" Height="16"
                             Background="{ThemeResource SystemAccentColorBrush}" CornerRadius="1.5"
@@ -164,43 +170,65 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- About (bottom-left): version + author + repo, minimal. -->
-                <StackPanel Grid.Row="1" Margin="12,0,12,14" Spacing="1">
+                <!-- About (bottom-left): brand wordmark + compact author/repo links. The person icon
+                     links to the author's site; the GitHub icon + accent dot + version are a single
+                     hyperlink to the repo. -->
+                <StackPanel Grid.Row="1" Margin="12,0,12,14" Spacing="2">
                     <TextBlock Text="optiSYS" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" />
-                    <TextBlock x:Name="AppVersionText" Text="Version 0.3.5" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Margin="0,2,0,0">
-                        <Hyperlink NavigateUri="https://dttdrv.xyz" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="None">Deyan Todorov</Hyperlink>
-                    </TextBlock>
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}">
-                        <Hyperlink NavigateUri="https://github.com/dttdrv/optiSYS" Foreground="{ThemeResource SystemAccentColorBrush}" UnderlineStyle="None">GitHub</Hyperlink>
-                    </TextBlock>
+                    <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                        <HyperlinkButton NavigateUri="https://dttdrv.xyz" Padding="4,2" MinWidth="0" MinHeight="0"
+                                         ToolTipService.ToolTip="Deyan Todorov" AutomationProperties.Name="Deyan Todorov">
+                            <FontIcon Glyph="&#xE77B;" FontSize="15" Foreground="{ThemeResource SystemAccentColorBrush}" />
+                        </HyperlinkButton>
+                        <HyperlinkButton NavigateUri="https://github.com/dttdrv/optiSYS" Padding="4,2" MinWidth="0" MinHeight="0"
+                                         ToolTipService.ToolTip="optiSYS on GitHub" AutomationProperties.Name="optiSYS on GitHub">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Path Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center"
+                                      Fill="{ThemeResource SystemAccentColorBrush}"
+                                      Data="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+                                <TextBlock Text="&#x2022;" FontSize="14" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="AppVersionText" Text="1.0.0-alpha.1" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </HyperlinkButton>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
 
             <!-- Main Content Area — inset panel with a rounded top-left corner, so the acrylic
                  sidebar + title bar read as one continuous frame around it (Codex / VS Code look). -->
-            <Border Grid.Column="1" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" CornerRadius="8,0,0,0">
+            <Border Grid.Column="1" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" CornerRadius="8,0,0,8">
             <Grid Padding="28,24,28,24">
                 
                 <!-- ==================== DASHBOARD TAB ==================== -->
-                <ScrollViewer x:Name="DashboardGrid" Visibility="Visible" VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
-                    <StackPanel Spacing="16" Margin="0,0,0,16">
-                        <!-- Dashboard header row with manual-optimize + pause actions -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="System Dashboard" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Button x:Name="ManualTrimButton" Style="{StaticResource AccentButtonStyle}" Click="OnManualTrimClick" Width="40" Height="40" Padding="0" CornerRadius="4" VerticalAlignment="Center" ToolTipService.ToolTip="Optimize now" AutomationProperties.Name="Optimize now">
-                                    <FontIcon Glyph="&#xE768;" FontSize="16" />
-                                </Button>
-                                <Button x:Name="PauseToggleButton" Click="OnToggleProtectionClick" Width="40" Height="40" Padding="0" CornerRadius="4" VerticalAlignment="Center" ToolTipService.ToolTip="Pause optimization" AutomationProperties.Name="Pause optimization">
-                                    <FontIcon x:Name="PauseToggleIcon" Glyph="&#xE769;" FontSize="16" />
-                                </Button>
-                            </StackPanel>
-                        </Grid>
+                <Grid x:Name="DashboardGrid" Visibility="Visible">
+
+                    <!-- Fixed header band: declared FIRST so the title + action buttons come first in
+                         tab / Narrator order, and raised with Canvas.ZIndex so it still paints ON TOP
+                         of the scroller. Its opaque base fill matches the content panel, so scrolled
+                         content disappears cleanly under it; the right margin leaves the scrollbar
+                         gutter free. Its height drives the body's top inset from code-behind
+                         (OnDashboardHeaderSizeChanged), so there is no hardcoded clearance to drift. -->
+                    <Grid x:Name="DashboardHeader" Canvas.ZIndex="1" VerticalAlignment="Top"
+                          Margin="0,0,12,0" Padding="0,0,0,16"
+                          Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                          SizeChanged="OnDashboardHeaderSizeChanged">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="System Dashboard" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button x:Name="ManualTrimButton" Style="{StaticResource AccentButtonStyle}" Click="OnManualTrimClick" Width="40" Height="40" Padding="0" CornerRadius="4" VerticalAlignment="Center" ToolTipService.ToolTip="Optimize now" AutomationProperties.Name="Optimize now">
+                                <FontIcon Glyph="&#xE768;" FontSize="16" />
+                            </Button>
+                            <Button x:Name="PauseToggleButton" Click="OnToggleProtectionClick" Width="40" Height="40" Padding="0" CornerRadius="4" VerticalAlignment="Center" ToolTipService.ToolTip="Pause optimization" AutomationProperties.Name="Pause optimization">
+                                <FontIcon x:Name="PauseToggleIcon" Glyph="&#xE769;" FontSize="16" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
+                        <StackPanel x:Name="DashboardBody" Spacing="16" Margin="0,56,0,16">
 
                         <!-- Live Telemetry Card Row -->
                         <Grid ColumnSpacing="16">
@@ -325,8 +353,9 @@
                             </StackPanel>
                         </Border>
 
-                    </StackPanel>
-                </ScrollViewer>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
 
 
                 <!-- ==================== SETTINGS TAB ==================== -->

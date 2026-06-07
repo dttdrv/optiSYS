@@ -1,10 +1,12 @@
 ; optiSYS Setup — Inno Setup 6 (https://jrsoftware.org/isinfo.php)
 ;
-; Chrome-style minimal installer: run -> UAC (admin) -> installs immediately in a small window
-; showing only the app icon + a progress bar. On completion the same window shows a
-; "Pin to desktop" checkbox and a centered "Launch optiSYS" button. No welcome page, no feature
-; questions, no directory/component selection. All on-brand feature setup happens in the app's
-; WinUI first run, not here.
+; Compact auto-installer: run -> UAC (admin, once) -> a small window shows the app icon + a progress
+; bar and installs immediately with NO clicks, then launches the app. How the no-click install works
+; (verified against a throwaway lowest-privilege test harness): every wizard page is disabled, but Inno still surfaces
+; the Ready page when no earlier page was shown. Calling NextButton.OnClick directly from
+; CurPageChanged is ignored (the wizard is mid-transition), so we defer the click one message-loop
+; tick with a Windows timer; the Next button is moved off-screen rather than hidden, because a hidden
+; Next button ignores OnClick. All on-brand feature setup happens in the app's WinUI first run.
 ;
 ; Build the payload, then compile:
 ;   dotnet publish src\OptiSYS.App -c Release -r win-x64 --self-contained true -o installer\publish\release-win-x64
@@ -14,7 +16,7 @@
 #define AppPublisher "Deyan Todorov"
 #define AppExeName "OptiSYS.exe"
 #ifndef AppVersion
-  #define AppVersion "0.9.0"
+  #define AppVersion "1.0.0-alpha.1"
 #endif
 #ifndef PublishDir
   #define PublishDir "..\installer\publish\release-win-x64"
@@ -35,7 +37,8 @@ UninstallDisplayIcon={app}\{#AppExeName}
 UninstallDisplayName={#AppName} — System Optimizer
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Chrome-style: no pages at all. Jump straight to installing; we drive a custom minimal finish.
+; No pages: the wizard is driven straight to install (see [Code]); a compact custom window shows
+; only the icon + progress.
 DisableWelcomePage=yes
 DisableProgramGroupPage=yes
 DisableDirPage=yes
@@ -50,16 +53,19 @@ DisableFinishedPage=yes
 ; target. A standard user elevating with a *different* admin's credentials would resolve {localappdata}
 ; and the logon-task SID to that admin's profile, misrouting the install.
 PrivilegesRequired=admin
-CloseApplications=yes
-CloseApplicationsFilter={#AppExeName}
+; Always write a setup log to %TEMP% ("Setup Log YYYY-MM-DD #NNN.txt") so any install issue leaves
+; hard evidence to diagnose from.
+SetupLogging=yes
+; We terminate the running (elevated) app ourselves in InitializeSetup, so keep Inno's restart
+; manager out of it — CloseApplications=yes would otherwise surface a "close applications" page that
+; would stall the unattended install.
+CloseApplications=no
 RestartApplications=no
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 MinVersion=10.0.17763
 SetupIconFile={#AssetDir}\SetupIcon.ico
-; Inno 6 loads PNG natively into WizardSmallBitmapImage; we reparent that to show the app icon
-; in the compact window body (see [Code]).
 WizardSmallImageFile={#AssetDir}\wizard-small.png
 OutputDir={#OutputDir}
 OutputBaseFilename=optiSYS-{#AppVersion}-setup
@@ -69,11 +75,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Excludes: "*.pdb"; Flags: ignoreversion recursesubdirs createallsubdirs
-; The app icon shown in the installer window (extracted from the published assets at runtime).
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
-; Desktop shortcut is created on demand from the custom finish checkbox (see [Code]); no Task here.
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"
 
 [UninstallRun]
 Filename: "taskkill"; Parameters: "/F /IM {#AppExeName}"; Flags: runhidden waituntilterminated; RunOnceId: "TerminateApp"
@@ -85,9 +90,12 @@ Type: filesandordirs; Name: "{localappdata}\optiSYS"
 
 [Code]
 var
+  gTimer: LongWord;
+  gArmed: Boolean;
   TitleLabel: TNewStaticText;
-  PinCheckBox: TNewCheckBox;
-  LaunchButton: TNewButton;
+
+function SetTimer(hWnd, nIDEvent, uElapse, lpTimerFunc: LongWord): LongWord; external 'SetTimer@user32.dll stdcall';
+function KillTimer(hWnd, uIDEvent: LongWord): LongWord; external 'KillTimer@user32.dll stdcall';
 
 function InitializeSetup(): Boolean;
 var
@@ -101,47 +109,40 @@ begin
   Result := True;
 end;
 
-procedure DoLaunch();
-var
-  ResultCode: Integer;
+{ Deferred Next click — runs on the next message-loop tick, after CurPageChanged returns and the
+  page has settled, so the click actually advances the wizard. }
+procedure ClickNextTimer(H, Msg, IDEvent, Time: LongWord);
 begin
-  // Create the desktop shortcut if requested, then launch the app.
-  if PinCheckBox.Checked then
-    CreateShellLink(
-      ExpandConstant('{autodesktop}\{#AppName}.lnk'),
-      '', ExpandConstant('{app}\{#AppExeName}'), '',
-      ExpandConstant('{app}'), '', 0, SW_SHOWNORMAL);
-
-  ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
-end;
-
-procedure LaunchButtonClick(Sender: TObject);
-begin
-  DoLaunch();
-  WizardForm.Close;
+  KillTimer(0, gTimer);
+  gTimer := 0;
+  WizardForm.NextButton.OnClick(WizardForm.NextButton);
 end;
 
 procedure InitializeWizard();
 begin
-  // Shrink the wizard to a compact, chrome-light window: hide the standard header, bevels and
-  // navigation buttons so only our icon + progress (and later the finish controls) are visible.
+  // Compact, chrome-light window: hide the standard header, bevels and Back/Cancel buttons so only
+  // the app icon + progress show. The Next button is NOT hidden (a hidden Next button ignores
+  // OnClick); it is moved off the visible client area so the auto-advance still works.
   WizardForm.Caption := '{#AppName} Setup';
-  WizardForm.ClientWidth := ScaleX(380);
-  WizardForm.ClientHeight := ScaleY(220);
+  WizardForm.ClientWidth := ScaleX(360);
+  WizardForm.ClientHeight := ScaleY(210);
   WizardForm.Position := poScreenCenter;
 
   WizardForm.MainPanel.Visible := False;
   WizardForm.Bevel.Visible := False;
   WizardForm.BackButton.Visible := False;
-  WizardForm.NextButton.Visible := False;
   WizardForm.CancelButton.Visible := False;
   WizardForm.OuterNotebook.Visible := False;
+  WizardForm.NextButton.Top := ScaleY(600);
 
-  // App icon: reuse Inno's natively-loaded small bitmap (from WizardSmallImageFile), reparented
-  // and centered near the top of the compact window.
+  // App icon: reuse Inno's natively-loaded small bitmap (from WizardSmallImageFile), reparented and
+  // centered near the top of the compact window.
   WizardForm.WizardSmallBitmapImage.Parent := WizardForm;
+  // Blend the icon's transparent margin into the form: Inno's TBitmapImage composites alpha over its
+  // BackColor, which (defaulting to white) otherwise shows as a white box around the icon.
+  WizardForm.WizardSmallBitmapImage.BackColor := WizardForm.Color;
   WizardForm.WizardSmallBitmapImage.Left := (WizardForm.ClientWidth - WizardForm.WizardSmallBitmapImage.Width) div 2;
-  WizardForm.WizardSmallBitmapImage.Top := ScaleY(24);
+  WizardForm.WizardSmallBitmapImage.Top := ScaleY(22);
   WizardForm.WizardSmallBitmapImage.Visible := True;
 
   TitleLabel := TNewStaticText.Create(WizardForm);
@@ -149,45 +150,28 @@ begin
   TitleLabel.Caption := 'Installing {#AppName}…';
   TitleLabel.Font.Size := 11;
   TitleLabel.AutoSize := True;
-  TitleLabel.Top := ScaleY(86);
+  TitleLabel.Top := ScaleY(126);
   TitleLabel.Left := (WizardForm.ClientWidth - TitleLabel.Width) div 2;
 
-  // Reparent the progress bar onto the form, centered.
   WizardForm.ProgressGauge.Parent := WizardForm;
-  WizardForm.ProgressGauge.Width := ScaleX(300);
+  WizardForm.ProgressGauge.Width := ScaleX(280);
   WizardForm.ProgressGauge.Left := (WizardForm.ClientWidth - WizardForm.ProgressGauge.Width) div 2;
-  WizardForm.ProgressGauge.Top := ScaleY(120);
+  WizardForm.ProgressGauge.Top := ScaleY(158);
   WizardForm.ProgressGauge.Visible := True;
-
-  // Finish controls — hidden until install completes.
-  PinCheckBox := TNewCheckBox.Create(WizardForm);
-  PinCheckBox.Parent := WizardForm;
-  PinCheckBox.Caption := 'Pin to desktop';
-  PinCheckBox.Width := ScaleX(160);
-  PinCheckBox.Top := ScaleY(118);
-  PinCheckBox.Left := (WizardForm.ClientWidth - PinCheckBox.Width) div 2;
-  PinCheckBox.Visible := False;
-
-  LaunchButton := TNewButton.Create(WizardForm);
-  LaunchButton.Parent := WizardForm;
-  LaunchButton.Caption := 'Launch {#AppName}';
-  LaunchButton.Width := ScaleX(150);
-  LaunchButton.Height := ScaleY(30);
-  LaunchButton.Top := ScaleY(150);
-  LaunchButton.Left := (WizardForm.ClientWidth - LaunchButton.Width) div 2;
-  LaunchButton.Visible := False;
-  LaunchButton.OnClick := @LaunchButtonClick;
 end;
 
-{ All wizard pages are disabled, but Inno still SHOWS the Ready page — DisableReadyPage is
-  ignored when no earlier page was shown — and InitializeWizard hid the Next button, so the
-  wizard would otherwise park on Ready forever waiting for a click. Auto-advance it: invoking
-  the Next handler directly works on a hidden button (it is a handler call, not a UI hit-test).
-  This is what makes the installer actually auto-install immediately on launch. }
+{ All wizard pages are disabled, but Inno still surfaces the Ready page (DisableReadyPage is ignored
+  when no earlier page was shown). Calling NextButton.OnClick directly here is ignored (mid-
+  transition), so defer it one message-loop tick via a timer. This auto-starts the install with no
+  click (verified end-to-end against a lowest-privilege test harness). gArmed latches so the click
+  that drives wpReady -> install can never re-enter and schedule a second click on a later page. }
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurPageID = wpReady then
-    WizardForm.NextButton.OnClick(nil);
+  if (not gArmed) and ((CurPageID = wpReady) or (CurPageID = wpPreparing)) then
+  begin
+    gArmed := True;
+    gTimer := SetTimer(0, 0, 50, CreateCallback(@ClickNextTimer));
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -195,27 +179,14 @@ var
   ResultCode: Integer;
 begin
   if CurStep = ssPostInstall then
-  begin
-    // The installer is already elevated, so provision the silent elevated logon task directly (no
-    // second UAC): the app's --provision-elevation branch registers the HighestAvailable logon
-    // task, flips UseTaskScheduler on, and exits without a window. From the next logon the app
-    // launches elevated silently.
+    // Already elevated: provision the silent elevated logon task directly (no second UAC). The app's
+    // --provision-elevation branch registers the HighestAvailable logon task, flips UseTaskScheduler
+    // on, and exits without a window. From the next logon the app launches elevated silently.
     ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '--provision-elevation', '',
       SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
 
   if CurStep = ssDone then
-  begin
-    // Swap progress for the finish controls in the same window.
-    if TitleLabel <> nil then TitleLabel.Caption := '{#AppName} is ready.';
-    if WizardForm.ProgressGauge <> nil then WizardForm.ProgressGauge.Visible := False;
-    if PinCheckBox <> nil then PinCheckBox.Visible := True;
-    if LaunchButton <> nil then LaunchButton.Visible := True;
-
-    // Auto-launch so the app always opens after install (the Launch button stays as a manual
-    // backup). Default the desktop shortcut on, since the auto-launch fires before the user
-    // toggles the checkbox.
-    if PinCheckBox <> nil then PinCheckBox.Checked := True;
-    DoLaunch();
-  end;
+    // Launch the app once install completes (Finished page disabled; the compact window closes and
+    // the app opens). The desktop + start-menu shortcuts are created by the [Icons] section.
+    ShellExec('open', ExpandConstant('{app}\{#AppExeName}'), '', '', SW_SHOWNORMAL, ewNoWait, ResultCode);
 end;

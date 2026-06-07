@@ -44,14 +44,16 @@ public class MainWindowSmokeTests
     }
 
     [Theory]
-    [InlineData("DashboardGrid")]
-    [InlineData("SettingsGrid")]
-    public void MainWindow_HasPageContainers(string fieldName)
+    [InlineData("DashboardGrid", typeof(Grid))]
+    [InlineData("SettingsGrid", typeof(ScrollViewer))]
+    public void MainWindow_HasPageContainers(string fieldName, Type expectedType)
     {
         var field = typeof(OptiSYS.MainWindow).GetField(
             fieldName, BindingFlags.NonPublic | BindingFlags.Instance);
 
         Assert.NotNull(field);
-        Assert.Equal(typeof(ScrollViewer), field!.FieldType);
+        // Dashboard is a Grid (sticky header over a scroller); Settings is a ScrollViewer. Both are
+        // toggled by Visibility in SwitchToPage. Pin the exact types so a structural regression fails.
+        Assert.Equal(expectedType, field!.FieldType);
     }
 }

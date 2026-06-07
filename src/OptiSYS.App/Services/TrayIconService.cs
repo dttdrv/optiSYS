@@ -329,13 +329,18 @@ public sealed class TrayIconService : ITrayIconService
         private static void DrawNumber(Graphics g, int size, int number, bool isLightTheme)
         {
             var text = number.ToString();
-            var emSize = text.Length >= 2 ? 19f : 24f;
+            // Enlarged to fill the tray glyph (like the OptiRAM / RAMSpeed counters). A 32px icon can
+            // only hold two digits up to ~22px beside the corner dot (measured "99" width); one digit
+            // goes larger.
+            var emSize = text.Length >= 2 ? 22f : 28f;
             using var font = new Font("Segoe UI", emSize, FontStyle.Bold, GraphicsUnit.Pixel);
             using var brush = new SolidBrush(SelectStrokeColor(isLightTheme));
             using var format = new StringFormat
             {
                 Alignment = StringAlignment.Center,
                 LineAlignment = StringAlignment.Center,
+                // Never wrap/clip a 2-digit value at the box edge — render it whole within the canvas.
+                FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.NoClip,
             };
 
             // Reserve the top-right for the dot by shifting the text box left and down a touch.
@@ -353,7 +358,8 @@ public sealed class TrayIconService : ITrayIconService
             };
             using var brush = new SolidBrush(color);
 
-            const int diameter = 12;
+            // Smaller corner dot (was 12) so the enlarged number has more room before they touch.
+            const int diameter = 10;
             g.FillEllipse(brush, size - diameter, 0, diameter, diameter);
         }
     }
