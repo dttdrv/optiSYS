@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/logo.png" width="120" alt="optiSYS" />
+<img src="assets/logo.png" width="120" alt="optiSYS" />
 
 # optiSYS
 
@@ -24,11 +24,11 @@ to be unnoticeable, non-degrading, and fully reversible.
 
 <div align="center">
 
-<img src="docs/assets/screenshot-dashboard.png" width="85%" alt="optiSYS dashboard" />
+<img src="assets/screenshot-dashboard.png" width="85%" alt="optiSYS dashboard" />
 
 <br /><br />
 
-<img src="docs/assets/screenshot-settings.png" width="85%" alt="optiSYS settings" />
+<img src="assets/screenshot-settings.png" width="85%" alt="optiSYS settings" />
 
 </div>
 
@@ -80,12 +80,6 @@ Requires the .NET 9 SDK on Windows (x64).
 dotnet build src/OptiSYS.sln -c Debug
 dotnet test  src/OptiSYS.sln -c Debug
 dotnet run   --project src/OptiSYS.App
-```
-
-Building the installer additionally requires [Inno Setup 6](https://jrsoftware.org/isdl.php):
-
-```
-powershell -ExecutionPolicy Bypass -File installer/build-installer.ps1
 ```
 
 ## Requirements

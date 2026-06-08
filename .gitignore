@@ -57,6 +57,11 @@ ramspeed/
 optisys-core-zig/
 portable/
 
+# Kept local only — not published to the public GitHub repo (build scripts, design docs, project guide)
+/installer/
+/docs/
+CLAUDE.md
+
 # Zig build artifacts
 zig-out/
 zig-cache/
