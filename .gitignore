@@ -55,6 +55,7 @@ optibat/
 optiram/
 ramspeed/
 optisys-core-zig/
+portable/
 
 # Zig build artifacts
 zig-out/
