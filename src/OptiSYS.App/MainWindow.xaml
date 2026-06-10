@@ -242,11 +242,11 @@
                                 <StackPanel Spacing="16">
                                     <Grid>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon Glyph="&#xE964;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE964;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Memory" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
                                         </StackPanel>
                                         <StackPanel x:Name="MemoryPausedIndicator" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
-                                            <FontIcon Glyph="&#xE769;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE769;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Paused" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
@@ -267,19 +267,19 @@
                                         </Grid.RowDefinitions>
 
                                         <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xE753;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE753;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             <TextBlock Text="Cached &amp; Standby" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <TextBlock x:Name="MemoryCachedText" Grid.Row="0" Grid.Column="1" Text="-- GB" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                                         <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xE902;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE902;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             <TextBlock Text="Active Processes" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <TextBlock x:Name="MemoryProcessesText" Grid.Row="1" Grid.Column="1" Text="--" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
 
                                         <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xEA99;" FontSize="12" Foreground="{ThemeResource SystemAccentColorBrush}" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xEA99;" FontSize="12" Foreground="{ThemeResource SystemAccentColorBrush}" />
                                             <TextBlock Text="Freed this session" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <TextBlock x:Name="MemoryClearedText" Grid.Row="2" Grid.Column="1" Text="0 MB" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
@@ -292,7 +292,7 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="Mode" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                        <ComboBox x:Name="OptimizationLevelComboBox" Grid.Column="1" MinWidth="140" VerticalAlignment="Center" SelectionChanged="OnSettingsChanged">
+                                        <ComboBox x:Name="OptimizationLevelComboBox" Grid.Column="1" MinWidth="140" VerticalAlignment="Center" SelectionChanged="OnSettingsChanged" AutomationProperties.Name="Memory optimization mode">
                                             <ComboBoxItem Content="Balanced" />
                                             <ComboBoxItem Content="Max" />
                                         </ComboBox>
@@ -305,11 +305,11 @@
                                 <StackPanel Spacing="16">
                                     <Grid>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <FontIcon x:Name="PowerIcon" Glyph="&#xE83F;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" x:Name="PowerIcon" Glyph="&#xE83F;" FontSize="16" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Efficiency" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Center" />
                                         </StackPanel>
                                         <StackPanel x:Name="EfficiencyPausedIndicator" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" VerticalAlignment="Center" Visibility="Collapsed">
-                                            <FontIcon Glyph="&#xE769;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE769;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                             <TextBlock Text="Paused" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Grid>
@@ -329,13 +329,13 @@
                                         </Grid.RowDefinitions>
                                         
                                         <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xEC4E;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xEC4E;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             <TextBlock Text="Power Drain Rate" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <TextBlock x:Name="BatteryDrainText" Grid.Row="0" Grid.Column="1" Text="N/A" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         
                                         <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xEC92;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xEC92;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                             <TextBlock Text="Estimated Remaining" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                         </StackPanel>
                                         <TextBlock x:Name="BatteryRemainingText" Grid.Row="1" Grid.Column="1" Text="N/A" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -349,7 +349,7 @@
                         <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="Memory Usage History" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <controls:HistoryChartControl x:Name="MemoryHistoryChart" />
+                                <controls:HistoryChartControl x:Name="MemoryHistoryChart" AutomationProperties.Name="Memory usage history chart" />
                             </StackPanel>
                         </Border>
 
@@ -374,12 +374,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="Automatic optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Keeps your PC fast and efficient in the background — frees memory under pressure and reduces Wi-Fi latency. Fully automatic and reversible; nothing to configure." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
+                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" AutomationProperties.Name="Automatic optimization" />
                             </Grid>
                         </Border>
 
@@ -393,12 +393,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE7F4;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE7F4;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="Start optiSYS with Windows" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Automatically launch in the background when logging into Windows." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="StartWithWindowsToggle" Grid.Column="2" IsOn="True" Toggled="OnStartWithWindowsToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
+                                <ToggleSwitch x:Name="StartWithWindowsToggle" Grid.Column="2" IsOn="True" Toggled="OnStartWithWindowsToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" AutomationProperties.Name="Start optiSYS with Windows" />
                             </Grid>
                         </Border>
 
@@ -410,12 +410,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE70F;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE70F;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="Minimize to System Tray" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Closing the app window keeps it running in the taskbar tray." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
+                                <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" AutomationProperties.Name="Minimize to system tray" />
                             </Grid>
                         </Border>
 
