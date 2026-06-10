@@ -118,12 +118,29 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 
         processInfos.Sort((a, b) => b.workingSet.CompareTo(a.workingSet));
 
+        // Heat gate: trimming a process that is actively executing is counterproductive — it
+        // re-faults its working set straight back, costing CPU, I/O, and battery for nothing.
+        // Two CPU samples around a short dwell identify the hot candidates so the trim only
+        // touches genuinely idle memory. No bridge (legacy path) -> no gate.
+        var hotPids = _native is null
+            ? []
+            : IdentifyHotPids(
+                processInfos.Select(p => p.pid).ToList(),
+                _native.GetProcessCpuTime,
+                Thread.Sleep);
+
         int trimmed = 0, failed = 0;
         long freedBytes = 0;
         bool earlyExit = false;
 
         foreach (var (pid, _) in processInfos)
         {
+            if (hotPids.Contains(pid))
+            {
+                skipped++;
+                continue;
+            }
+
             try
             {
                 var freed = TrimOne(pid);
@@ -156,6 +173,44 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     {
         ThrowIfDisposed();
         return _systemOps.RunMemoryListCommand(NativeMethods.MemoryListCommand.MemoryPurgeStandbyList);
+    }
+
+    // "Hot" = burned at least this share of one core during the dwell — clearly executing, well
+    // above measurement noise on a 200ms window (10ms of CPU). Below it, pages are cold enough
+    // that trimming sticks.
+    private const double HotCorePercentDuringDwell = 5.0;
+    private static readonly TimeSpan HeatDwell = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>
+    /// Identify candidates actively burning CPU right now: sample each pid's total CPU time,
+    /// dwell briefly, sample again. Unreadable CPU (null) is never hot — the gate must not act
+    /// on a guess. The sampling functions are injected so the decision is unit-testable without
+    /// real processes or a real sleep.
+    /// </summary>
+    internal static HashSet<int> IdentifyHotPids(
+        IReadOnlyList<int> pids, Func<int, TimeSpan?> cpuTimeOf, Action<TimeSpan> dwell)
+    {
+        var before = new Dictionary<int, TimeSpan>(pids.Count);
+        foreach (var pid in pids)
+        {
+            if (cpuTimeOf(pid) is { } cpu)
+                before[pid] = cpu;
+        }
+
+        dwell(HeatDwell);
+
+        var hot = new HashSet<int>();
+        foreach (var pid in pids)
+        {
+            if (before.TryGetValue(pid, out var first) && cpuTimeOf(pid) is { } second)
+            {
+                var burnPercent = (second - first).TotalMilliseconds / HeatDwell.TotalMilliseconds * 100.0;
+                if (burnPercent >= HotCorePercentDuringDwell)
+                    hot.Add(pid);
+            }
+        }
+
+        return hot;
     }
 
     /// <summary>

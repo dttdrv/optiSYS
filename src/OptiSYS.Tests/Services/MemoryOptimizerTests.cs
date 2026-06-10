@@ -174,6 +174,62 @@ public class MemoryOptimizerTests
     }
 
     [Fact]
+    public void IdentifyHotPids_FlagsOnlyProcessesBurningDuringTheDwell()
+    {
+        // pid 1 burns 50ms across the dwell (25% of a core) -> hot. pid 2 burns 1ms -> cold.
+        // pid 3 is unreadable -> never hot (the gate must not act on a guess).
+        var calls = new Dictionary<int, int>();
+        TimeSpan? CpuOf(int pid)
+        {
+            var n = calls[pid] = calls.GetValueOrDefault(pid) + 1;
+            return pid switch
+            {
+                1 => TimeSpan.FromMilliseconds(n == 1 ? 0 : 50),
+                2 => TimeSpan.FromMilliseconds(n == 1 ? 0 : 1),
+                _ => null,
+            };
+        }
+
+        var dwelled = TimeSpan.Zero;
+        var hot = MemoryOptimizer.IdentifyHotPids([1, 2, 3], CpuOf, d => dwelled = d);
+
+        Assert.Contains(1, hot);
+        Assert.DoesNotContain(2, hot);
+        Assert.DoesNotContain(3, hot);
+        Assert.True(dwelled > TimeSpan.Zero);   // the dwell really separates the two samples
+    }
+
+    [Fact]
+    public void TrimProcessWorkingSets_SkipsHotProcesses_AndTrimsColdOnes()
+    {
+        // Trimming a process that is actively executing is counterproductive — it re-faults its
+        // working set straight back. The heat gate skips it; the idle one is trimmed as before.
+        var memoryInfo = new Mock<IMemoryInfoService>();
+        var native = new Mock<INativeBridge>();
+        native.Setup(n => n.GetForegroundProcessId()).Returns(7);
+        native.Setup(n => n.GetProcessList()).Returns([
+            new NativeProcessInfo { ProcessId = 42, ProcessName = "cold", WorkingSetBytes = 64L * 1024 * 1024 },
+            new NativeProcessInfo { ProcessId = 44, ProcessName = "hot", WorkingSetBytes = 64L * 1024 * 1024 },
+        ]);
+        native.SetupSequence(n => n.GetProcessCpuTime(42))
+            .Returns(TimeSpan.Zero).Returns(TimeSpan.Zero);                      // idle through the dwell
+        native.SetupSequence(n => n.GetProcessCpuTime(44))
+            .Returns(TimeSpan.Zero).Returns(TimeSpan.FromMilliseconds(40));     // 20% of a core
+        native.Setup(n => n.TrimProcessWorkingSet(42)).Returns(50L * 1024 * 1024);
+
+        using var optimizer = new MemoryOptimizer(memoryInfo.Object, native.Object)
+        {
+            ExcludedProcesses = [],
+        };
+
+        var result = optimizer.TrimProcessWorkingSets();
+
+        Assert.Equal(1, result.trimmed);
+        native.Verify(n => n.TrimProcessWorkingSet(42), Times.Once);
+        native.Verify(n => n.TrimProcessWorkingSet(44), Times.Never);
+    }
+
+    [Fact]
     public void HintBackgroundMemoryPriority_CapturesPriorValue_AndRestoreRestoresIt()
     {
         // OneDrive is on the curated background allowlist; we capture its prior memory priority
