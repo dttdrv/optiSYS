@@ -191,7 +191,6 @@ public sealed class Settings
     public int SelfWorkingSetCapMB { get; set; } = 100;
     public int CacheMaxPercent { get; set; } = 0; // 0 = disabled
     public int HysteresisGap { get; set; } = 10;
-    public int TrendWindowSize { get; set; } = 10;
     public int PredictiveLeadSeconds { get; set; } = 15;
     // Commit-ratio floor for the pre-emptive trim: usage% counts reclaimable cache, commit does
     // not — so the predictor only fires when commit demand exceeds this gate (genuine pressure).
@@ -393,7 +392,6 @@ public sealed class Settings
         CacheMaxPercent = Math.Clamp(CacheMaxPercent, 0, 75);
         SelfWorkingSetCapMB = Math.Clamp(SelfWorkingSetCapMB, 0, 512);
         HysteresisGap = Math.Clamp(HysteresisGap, 5, 30);
-        TrendWindowSize = Math.Clamp(TrendWindowSize, 5, 60);
         PredictiveLeadSeconds = Math.Clamp(PredictiveLeadSeconds, 5, 120);
         CommitRatioTrigger = double.IsFinite(CommitRatioTrigger)
             ? Math.Clamp(CommitRatioTrigger, 0.30, 0.95)

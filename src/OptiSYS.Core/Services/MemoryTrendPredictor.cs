@@ -3,8 +3,12 @@ namespace OptiSYS.Core.Services;
 /// <summary>
 /// Predicts imminent memory pressure so a gentle, background-only Conservative trim can fire
 /// <em>before</em> the reactive usage threshold is crossed — smoothing the experience without
-/// ever acting during normal use. Ported from optiRAM's OLS-slope + armed/hysteresis trigger,
-/// with one added safety gate: a commit-ratio floor.
+/// ever acting during normal use. The trend estimate is Holt double exponential smoothing
+/// (level + per-second trend), which discounts old samples exponentially: a burst that starts
+/// after a long flat period is seen within two or three ticks, where a windowed least-squares
+/// fit would average the burst against minutes of stale flat samples and miss the breach.
+/// O(1) state — no sample window is stored — and the per-second trend makes irregular sampling
+/// cadences safe.
 ///
 /// <para>
 /// <b>Why the commit gate matters.</b> <c>UsagePercent</c> counts standby cache as "used", so a
@@ -18,39 +22,79 @@ namespace OptiSYS.Core.Services;
 /// </summary>
 public sealed class MemoryTrendPredictor
 {
-    private readonly int _trendWindow;
+    // Smoothing factors: alpha tracks the level, beta the trend. 0.5/0.5 reacts within two or
+    // three watcher ticks while still halving single-tick noise; on exactly linear input the
+    // trend converges to the true slope immediately, so the fire timing is deterministic.
+    private const double Alpha = 0.5;
+    private const double Beta = 0.5;
+
+    // A trend needs at least two intervals (three observations) before it is trusted — one
+    // interval is a delta, not a trend, and firing on it would be a hair trigger on noise.
+    private const int MinObservations = 3;
+
     private readonly int _predictiveLeadSeconds;
     private readonly int _hysteresisGap;
     private readonly double _commitTrigger;
     private readonly Func<DateTime> _utcNow;
 
-    private readonly Queue<(DateTime time, double usage)> _history = new();
+    private double _level;
+    private double _trendPerSecond;
+    private DateTime _lastObservedAt;
+    private int _observations;
     private bool _armed = true;
 
     public MemoryTrendPredictor(
-        int trendWindow = 10,
         int predictiveLeadSeconds = 15,
         int hysteresisGap = 10,
         double commitTrigger = 0.65,
         Func<DateTime>? utcNow = null)
     {
-        _trendWindow = Math.Max(3, trendWindow);
         _predictiveLeadSeconds = Math.Max(1, predictiveLeadSeconds);
         _hysteresisGap = Math.Max(1, hysteresisGap);
         _commitTrigger = commitTrigger;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
+    /// <summary>Current trend estimate in usage-percent per second (exposed for tests).</summary>
+    internal double TrendPerSecond => _trendPerSecond;
+
     /// <summary>
-    /// Feed the latest sample into the trend window. Must be called every monitoring tick (even
-    /// while a cleanup cooldown is active) so the slope stays accurate. <paramref name="usagePercent"/>
-    /// is 0–100.
+    /// Feed the latest sample. Must be called every monitoring tick (even while a cleanup
+    /// cooldown is active) so the trend stays accurate. <paramref name="usagePercent"/> is 0–100.
     /// </summary>
     public void Observe(double usagePercent)
     {
-        _history.Enqueue((_utcNow(), usagePercent));
-        while (_history.Count > _trendWindow)
-            _history.Dequeue();
+        var now = _utcNow();
+
+        if (_observations == 0)
+        {
+            _level = usagePercent;
+            _trendPerSecond = 0;
+        }
+        else
+        {
+            var dt = (now - _lastObservedAt).TotalSeconds;
+            if (dt <= 0)
+                return;   // same-instant duplicate: no information, keep the state untouched
+
+            if (_observations == 1)
+            {
+                // Initialize the trend from the first real interval so linear input converges
+                // to the exact slope immediately instead of warming up from zero.
+                _trendPerSecond = (usagePercent - _level) / dt;
+                _level = usagePercent;
+            }
+            else
+            {
+                var forecast = _level + _trendPerSecond * dt;
+                var newLevel = Alpha * usagePercent + (1 - Alpha) * forecast;
+                _trendPerSecond = Beta * ((newLevel - _level) / dt) + (1 - Beta) * _trendPerSecond;
+                _level = newLevel;
+            }
+        }
+
+        _lastObservedAt = now;
+        _observations++;
     }
 
     /// <summary>
@@ -69,47 +113,15 @@ public sealed class MemoryTrendPredictor
         if (commitRatio <= _commitTrigger)
             return false;
 
-        var slopePerSecond = ComputeUsageSlopePerSecond();
-        if (slopePerSecond <= 0)
+        if (_observations < MinObservations || _trendPerSecond <= 0)
             return false;
 
-        var projected = usagePercent + slopePerSecond * _predictiveLeadSeconds;
+        var projected = usagePercent + _trendPerSecond * _predictiveLeadSeconds;
         if (projected < thresholdPercent)
             return false;
 
         _armed = false; // fire once; re-arms only after pressure clears
         return true;
-    }
-
-    /// <summary>
-    /// Ordinary-least-squares slope of usage% over the sampled window, in percent-per-second.
-    /// Positive ⇒ usage rising. Needs ≥3 samples; returns 0 otherwise or on a degenerate fit.
-    /// </summary>
-    internal double ComputeUsageSlopePerSecond()
-    {
-        if (_history.Count < 3)
-            return 0;
-
-        var samples = _history.ToArray();
-        var t0 = samples[0].time;
-        int n = samples.Length;
-        double sumT = 0, sumU = 0, sumTU = 0, sumT2 = 0;
-
-        for (int i = 0; i < n; i++)
-        {
-            double t = (samples[i].time - t0).TotalSeconds;
-            double u = samples[i].usage;
-            sumT += t;
-            sumU += u;
-            sumTU += t * u;
-            sumT2 += t * t;
-        }
-
-        double denominator = n * sumT2 - sumT * sumT;
-        if (Math.Abs(denominator) < 0.0001)
-            return 0;
-
-        return (n * sumTU - sumT * sumU) / denominator;
     }
 
     /// <summary>

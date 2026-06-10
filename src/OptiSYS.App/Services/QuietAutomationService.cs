@@ -102,7 +102,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
     // Single place the predictor is constructed: wires the user-configurable trend knobs from
     // Settings (defaults match the predictor's own ctor defaults, so default config is unchanged).
     private static MemoryTrendPredictor BuildPredictor(Settings settings, Func<DateTime>? utcNow) =>
-        new(settings.TrendWindowSize, settings.PredictiveLeadSeconds, settings.HysteresisGap,
+        new(settings.PredictiveLeadSeconds, settings.HysteresisGap,
             settings.CommitRatioTrigger, utcNow: utcNow);
 
     public Task StartAsync()

@@ -14,11 +14,11 @@ public class MemoryTrendPredictorTests
     private const double LowCommit = 0.40;
 
     // A controllable clock: the closure captures `t`, so advancing it moves "now".
-    private static (MemoryTrendPredictor predictor, Action<int> advance) Build(int window = 10)
+    private static (MemoryTrendPredictor predictor, Action<int> advance) Build()
     {
         var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var predictor = new MemoryTrendPredictor(
-            trendWindow: window, predictiveLeadSeconds: 15, hysteresisGap: 10,
+            predictiveLeadSeconds: 15, hysteresisGap: 10,
             commitTrigger: 0.65, utcNow: () => t);
         return (predictor, seconds => t = t.AddSeconds(seconds));
     }
@@ -85,6 +85,28 @@ public class MemoryTrendPredictorTests
         Assert.False(p.ShouldPreemptivelyTrim(46, HighCommit, Threshold));  // one-shot: still disarmed
         Assert.False(p.ShouldPreemptivelyTrim(55, HighCommit, Threshold));  // ≥ threshold: false, but re-arms
         Assert.True(p.ShouldPreemptivelyTrim(45, HighCommit, Threshold));   // re-armed → fires again
+    }
+
+    [Fact]
+    public void Fires_WhenASharpRiseFollowsALongFlatPeriod_StaleSamplesMustNotDiluteTheTrend()
+    {
+        // The realistic OOM shape: memory sits flat for minutes, then a burst starts. A windowed
+        // OLS fit averages the burst against the stale flat samples (slope ~0.15 %/s here) and
+        // misses the breach; exponential trend tracking discounts the old samples and sees the
+        // ~1 %/s burst in two ticks. Threshold 80, lead 40s: 60% + trend*40 must breach.
+        var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var p = new MemoryTrendPredictor(
+            predictiveLeadSeconds: 40, hysteresisGap: 10, commitTrigger: 0.65, utcNow: () => t);
+
+        for (var i = 0; i < 8; i++)
+        {
+            p.Observe(40);
+            t = t.AddSeconds(10);
+        }
+        p.Observe(50); t = t.AddSeconds(10);   // the burst begins
+        p.Observe(60);
+
+        Assert.True(p.ShouldPreemptivelyTrim(60, HighCommit, thresholdPercent: 80));
     }
 
     [Fact]

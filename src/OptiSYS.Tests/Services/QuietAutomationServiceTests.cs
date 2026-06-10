@@ -302,7 +302,6 @@ public sealed class QuietAutomationServiceTests
         // must equal the predictor's hardcoded ctor defaults, otherwise a default install would see
         // different predictive behaviour after wiring. This pins that invariant.
         var settings = new Settings();
-        Assert.Equal(10, settings.TrendWindowSize);
         Assert.Equal(15, settings.PredictiveLeadSeconds);
         Assert.Equal(10, settings.HysteresisGap);
         Assert.Equal(0.65, settings.CommitRatioTrigger);
@@ -371,7 +370,6 @@ public sealed class QuietAutomationServiceTests
             MemoryThresholdPercent = 80,
             MemoryCriticalThresholdPercent = 95,
             MemoryCooldownSeconds = 15,
-            TrendWindowSize = 10,
             PredictiveLeadSeconds = 40,    // non-default (default is 15)
             HysteresisGap = 10,
         };
