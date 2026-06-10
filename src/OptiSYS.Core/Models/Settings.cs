@@ -191,6 +191,9 @@ public sealed class Settings
     public int HysteresisGap { get; set; } = 10;
     public int TrendWindowSize { get; set; } = 10;
     public int PredictiveLeadSeconds { get; set; } = 15;
+    // Commit-ratio floor for the pre-emptive trim: usage% counts reclaimable cache, commit does
+    // not — so the predictor only fires when commit demand exceeds this gate (genuine pressure).
+    public double CommitRatioTrigger { get; set; } = 0.65;
     public int AccessedBitsDelayMs { get; set; } = 2000;
     public bool EffectivenessTrackingEnabled { get; set; } = true;
     public bool ScheduledOptimizeEnabled { get; set; } = false;
@@ -380,6 +383,9 @@ public sealed class Settings
         HysteresisGap = Math.Clamp(HysteresisGap, 5, 30);
         TrendWindowSize = Math.Clamp(TrendWindowSize, 5, 60);
         PredictiveLeadSeconds = Math.Clamp(PredictiveLeadSeconds, 5, 120);
+        CommitRatioTrigger = double.IsFinite(CommitRatioTrigger)
+            ? Math.Clamp(CommitRatioTrigger, 0.30, 0.95)
+            : 0.65;
         AccessedBitsDelayMs = Math.Clamp(AccessedBitsDelayMs, 500, 5000);
         ScheduledOptimizeIntervalMinutes = Math.Clamp(ScheduledOptimizeIntervalMinutes, 1, 1440);
         HistoryMaxItems = Math.Clamp(HistoryMaxItems, 1, 500);

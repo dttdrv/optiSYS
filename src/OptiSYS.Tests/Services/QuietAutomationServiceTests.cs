@@ -200,6 +200,55 @@ public sealed class QuietAutomationServiceTests
         Assert.Equal(10, settings.TrendWindowSize);
         Assert.Equal(15, settings.PredictiveLeadSeconds);
         Assert.Equal(10, settings.HysteresisGap);
+        Assert.Equal(0.65, settings.CommitRatioTrigger);
+    }
+
+    [Fact]
+    public async Task BuildsPredictorFromSettingsKnobs_NonDefaultCommitGateChangesFireDecision()
+    {
+        // Proves the commit-ratio gate reaches the predictor the service builds. The projection
+        // passes either way (lead wiring is pinned by the test above): slope 0.5 %/s at usage 70,
+        // lead 40 -> 70 + 0.5*40 = 90 >= 80. The discriminator is the commit gate at ratio 0.50:
+        //   default gate 0.65 -> 0.50 <= 0.65 -> would NOT fire
+        //   wired   gate 0.30 -> 0.50 >  0.30 -> fires
+        // So a pre-emptive cleanup on the third tick is observable ONLY if CommitRatioTrigger
+        // was wired from Settings into the predictor.
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 80,
+            MemoryCriticalThresholdPercent = 95,
+            MemoryCooldownSeconds = 15,
+            PredictiveLeadSeconds = 40,
+            CommitRatioTrigger = 0.30,     // non-default (default is 0.65)
+        };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        // Rising 60 -> 65 -> 70 over 20s => slope exactly 0.5 %/s; commit demand only 0.50.
+        memory.SetupSequence(m => m.GetCurrentMemoryInfo())
+            .Returns(Mem(60, commitRatio: 0.50))
+            .Returns(Mem(65, commitRatio: 0.50))
+            .Returns(Mem(70, commitRatio: 0.50));
+
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Balanced, 0, 80, false, 0, true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 5 });
+
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var service = new QuietAutomationService(
+            settings, Mock.Of<IBatteryInfoService>(), memory.Object, optimizer.Object,
+            Mock.Of<IOptimizationEngine>(), timer, utcNow: () => now);
+        await service.StartAsync();
+
+        timer.Tick(); await service.LastEvaluationForTests;            // 60 @ t0  (<3 samples)
+        now = now.AddSeconds(10);
+        timer.Tick(); await service.LastEvaluationForTests;            // 65 @ t10 (2 samples)
+        now = now.AddSeconds(10);
+        timer.Tick(); await service.LastEvaluationForTests;            // 70 @ t20 -> fire (gate 0.30)
+
+        await WaitForAssertionAsync(() =>
+            optimizer.Verify(o => o.OptimizeAll(
+                OptimizationLevel.Balanced, 0, 80, false, 0, true), Times.Once));
     }
 
     [Fact]

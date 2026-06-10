@@ -61,7 +61,8 @@ public class SettingsTests
             MemoryThresholdPercent = 150,
             MemoryCleanupDurationSeconds = 999,
             MemoryRepeatPasses = 99,
-            WindowWidth = 50
+            WindowWidth = 50,
+            CommitRatioTrigger = 1.5
         };
         settings.Validate();
 
@@ -70,6 +71,19 @@ public class SettingsTests
         Assert.Equal(60, settings.MemoryCleanupDurationSeconds);
         Assert.Equal(5, settings.MemoryRepeatPasses);
         Assert.Equal(400, settings.WindowWidth);
+        Assert.Equal(0.95, settings.CommitRatioTrigger);
+    }
+
+    [Fact]
+    public void Settings_Validate_RepairsNonFiniteCommitRatioTrigger()
+    {
+        // A corrupted on-disk double (NaN survives JSON round-trips) must fall back to the
+        // default rather than poisoning every predictor comparison.
+        var settings = new Settings { CommitRatioTrigger = double.NaN };
+
+        settings.Validate();
+
+        Assert.Equal(0.65, settings.CommitRatioTrigger);
     }
 
     [Fact]
