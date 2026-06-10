@@ -358,6 +358,10 @@ public sealed class TrayIconService : ITrayIconService
                 LineAlignment = StringAlignment.Center,
                 // Never wrap/clip a 2-digit value at the box edge — render it whole within the canvas.
                 FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.NoClip,
+                // NoClip alone is not enough: DrawString into a layout RECTANGLE character-trims
+                // text that doesn't fit the layout width (GDI+ pads measurements past the 30px
+                // box at this size), which dropped the second digit. None disables that.
+                Trimming = StringTrimming.None,
             };
 
             // Reserve the top-right for the dot by shifting the text box left and down a touch.

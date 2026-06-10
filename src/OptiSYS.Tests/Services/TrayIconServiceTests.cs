@@ -71,6 +71,44 @@ public sealed class TrayIconServiceTests
         handle.Should().NotBe(nint.Zero);
     }
 
+    [Fact]
+    public void DotIconRenderer_TwoDigitNumbers_RenderBothDigits()
+    {
+        // Regression guard (introduced in 7bec12b): GDI+ DrawString into a layout RECTANGLE
+        // character-trims text that doesn't fit the layout width — NoClip does not prevent
+        // layout-time trimming — so "60" rendered as just "6". A two-digit render's ink must be
+        // meaningfully wider than a one-digit render's.
+        var oneDigitInk = NumberInkWidth(9);
+        var twoDigitInk = NumberInkWidth(99);
+
+        twoDigitInk.Should().BeGreaterThanOrEqualTo((int)(oneDigitInk * 1.5),
+            $"'99' (ink {twoDigitInk}px) must render both digits, not get trimmed to one (ink {oneDigitInk}px)");
+    }
+
+    // Horizontal extent of the number's stroke pixels on the dark-theme icon: the stroke is
+    // near-white (R 238), while the green efficiency dot (R 46) is excluded by the red gate.
+    private static int NumberInkWidth(int number)
+    {
+        using var icon = TrayIconService.DotIconRenderer.Render(number, TrayDot.Green, isLightTheme: false, out _);
+        using var bmp = icon.ToBitmap();
+
+        int min = bmp.Width, max = -1;
+        for (var x = 0; x < bmp.Width; x++)
+        {
+            for (var y = 0; y < bmp.Height; y++)
+            {
+                var pixel = bmp.GetPixel(x, y);
+                if (pixel.A > 128 && pixel.R > 200)
+                {
+                    if (x < min) min = x;
+                    if (x > max) max = x;
+                }
+            }
+        }
+
+        return Math.Max(0, max - min + 1);
+    }
+
     [Theory]
     [InlineData(0x0016u, 1ul, true)]   // WM_ENDSESSION, end committed -> record clean exit
     [InlineData(0x0016u, 0ul, false)]  // WM_ENDSESSION, end cancelled -> session continues
