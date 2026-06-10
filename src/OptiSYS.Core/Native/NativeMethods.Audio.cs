@@ -11,9 +11,11 @@ namespace OptiSYS.Core.Native;
 internal static partial class NativeMethods
 {
     /// <summary>
-    /// Best-effort: process ids with an active audio session on the default render endpoint.
+    /// Best-effort: process ids with an ACTIVE audio session on the default render endpoint.
     /// Empty on any failure (no audio device, COM error) — callers degrade to the static
-    /// exclusion lists, which already cover browsers and conferencing apps.
+    /// exclusion lists, which already cover browsers and conferencing apps. Known limit: a
+    /// PAUSED player prefetching its next segment reads as non-audible (its session is idle);
+    /// the exposure is bounded — hints release within one sweep of playback resuming.
     /// </summary>
     internal static IReadOnlyCollection<int> GetAudibleProcessIds()
     {

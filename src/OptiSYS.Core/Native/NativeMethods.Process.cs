@@ -175,17 +175,24 @@ internal static partial class NativeMethods
 
             var counts = new Dictionary<int, long>();
             var offset = 0;
-            while (true)
+            // Bounds-guarded walk: the kernel returns well-formed data, but an out-of-bounds
+            // Marshal read raises an AccessViolationException that a managed catch does NOT
+            // swallow — so every offset is validated against the allocation before it is read.
+            while (offset >= 0 && offset <= size - ProcessEntryHeaderBytes)
             {
                 var entry = buffer + offset;
                 var nextOffset = Marshal.ReadInt32(entry, 0);
                 var threadCount = Marshal.ReadInt32(entry, 4);
                 var pid = (int)Marshal.ReadIntPtr(entry, 80);
 
-                if (pid > 4)
+                if (pid > 4 && threadCount >= 0)
                 {
+                    // Clamp the thread walk to what actually fits inside the buffer.
+                    var maxThreads = (size - offset - ProcessEntryHeaderBytes) / ThreadEntryBytes;
+                    var safeThreads = Math.Min(threadCount, maxThreads);
+
                     long switches = 0;
-                    for (var t = 0; t < threadCount; t++)
+                    for (var t = 0; t < safeThreads; t++)
                     {
                         var thread = entry + ProcessEntryHeaderBytes + t * ThreadEntryBytes;
                         switches += (uint)Marshal.ReadInt32(thread, ThreadContextSwitchesOffset);
@@ -194,12 +201,44 @@ internal static partial class NativeMethods
                     counts[pid] = switches;
                 }
 
-                if (nextOffset == 0)
+                if (nextOffset <= 0)
                     break;
                 offset += nextOffset;
             }
 
             return counts;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    // ── Parent process id ─────────────────────────────────────────────
+
+    private const int ProcessBasicInformationClass = 0;
+    private const int ProcessBasicInformationBytes = 48;          // x64 PROCESS_BASIC_INFORMATION
+    private const int InheritedFromUniqueProcessIdOffset = 40;
+
+    [LibraryImport("ntdll.dll")]
+    internal static partial int NtQueryInformationProcess(
+        IntPtr processHandle, int processInformationClass, IntPtr processInformation,
+        int processInformationLength, out int returnLength);
+
+    /// <summary>Parent pid via PROCESS_BASIC_INFORMATION; null when it can't be read.</summary>
+    internal static int? GetParentProcessId(IntPtr hProcess)
+    {
+        var buffer = Marshal.AllocHGlobal(ProcessBasicInformationBytes);
+        try
+        {
+            return NtQueryInformationProcess(
+                hProcess, ProcessBasicInformationClass, buffer, ProcessBasicInformationBytes, out _) == 0
+                ? (int)Marshal.ReadIntPtr(buffer, InheritedFromUniqueProcessIdOffset)
+                : null;
         }
         catch
         {

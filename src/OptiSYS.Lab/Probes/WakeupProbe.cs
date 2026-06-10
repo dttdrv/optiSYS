@@ -137,7 +137,9 @@ public sealed class WakeupProbe : ILabProbe
             }
 
             var offset = 0;
-            while (true)
+            // Bounds-guarded like the production walk: out-of-bounds Marshal reads raise
+            // AccessViolationException, which a managed catch does not swallow.
+            while (offset >= 0 && offset <= size - ProcessEntryHeaderBytes)
             {
                 var entry = buffer + offset;
                 var nextOffset = Marshal.ReadInt32(entry, 0);
@@ -150,8 +152,11 @@ public sealed class WakeupProbe : ILabProbe
                     ? Marshal.PtrToStringUni(nameBuffer, nameLength / 2)
                     : (pid == 0 ? "Idle" : "System");
 
+                var maxThreads = (size - offset - ProcessEntryHeaderBytes) / ThreadEntryBytes;
+                var safeThreads = Math.Min(Math.Max(0, threadCount), maxThreads);
+
                 long switches = 0;
-                for (var t = 0; t < threadCount; t++)
+                for (var t = 0; t < safeThreads; t++)
                 {
                     var thread = entry + ProcessEntryHeaderBytes + t * ThreadEntryBytes;
                     switches += (uint)Marshal.ReadInt32(thread, ThreadContextSwitchesOffset);
@@ -160,7 +165,7 @@ public sealed class WakeupProbe : ILabProbe
                 if (pid > 0)
                     snapshot[pid] = (name, switches);
 
-                if (nextOffset == 0)
+                if (nextOffset <= 0)
                     break;
                 offset += nextOffset;
             }

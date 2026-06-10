@@ -197,6 +197,15 @@ public sealed class WindowsNativeBridge : INativeBridge
     public IReadOnlyDictionary<int, long>? GetProcessContextSwitchCounts() =>
         NativeMethods.GetProcessContextSwitchCounts();
 
+    public int? GetParentProcessId(int processId)
+    {
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        if (handle == IntPtr.Zero) return null;
+        try { return NativeMethods.GetParentProcessId(handle); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
     public bool GetMemoryInfo(out Interfaces.NativeMemoryInfo info)
     {
         info = default;

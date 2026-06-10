@@ -6,8 +6,10 @@ namespace OptiSYS.Core.Services;
 /// threshold AND a flat-or-falling Holt trend; from the second consecutive calm sample the tick
 /// doubles toward the cap (~4x fewer wakeups in steady state), and the first non-calm sample
 /// snaps it back to base on that very tick. The cap stays modest on purpose: a worst-case
-/// allocation burst is seen within one stretched tick, where the critical-escalation path
-/// reclaims immediately and bypasses the cooldown. Pure and clock-free.
+/// allocation burst goes unseen for at most one full stretched tick (20s), after which the
+/// critical-escalation path reclaims immediately, bypassing the cooldown — on the first
+/// critical tick of an episode (a disarmed escalation falls to the cooldown-spaced reactive
+/// path, by design). Pure and clock-free.
 /// </summary>
 public sealed class WatcherCadencePolicy
 {

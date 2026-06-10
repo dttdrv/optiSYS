@@ -137,7 +137,21 @@ public sealed class EcoQosDomain : IOptimizationDomain
             _wakeupTracker.Observe(wakeupSamples, now);
         }
 
-        var stormers = _wakeupTracker.CurrentStormers;
+        // Stormers serving the foreground are exempt from storm quieting entirely: an IPC
+        // broker (third-party IME host, overlay, launcher agent) can legitimately storm while
+        // the foreground app synchronously waits on its replies, and slowing it would be felt
+        // as foreground latency — the one thing this domain must never cause. Resolved lazily:
+        // one parent-pid query per stormer (stormers are a handful), null parent = unknown =
+        // not exempt.
+        var stormers = new HashSet<int>(_wakeupTracker.CurrentStormers);
+        if (foregroundPid > 0 && stormers.Count > 0)
+        {
+            var foregroundParent = _native.GetParentProcessId((int)foregroundPid);
+            stormers.RemoveWhere(pid =>
+                pid == foregroundParent ||
+                _native.GetParentProcessId(pid) == (int)foregroundPid);
+        }
+
         var audible = _native.GetAudibleProcessIds();
         var desired = widenToAllCandidates
             ? new HashSet<uint>(candidates.Where(pid => !audible.Contains((int)pid)))

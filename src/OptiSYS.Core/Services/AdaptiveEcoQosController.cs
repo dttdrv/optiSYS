@@ -189,6 +189,11 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
         if (_powerMode is { } pm && EffectivePowerModeDecision.IsHighPerformance(pm.Current))
         {
             try { _domain.Suspend(); } catch { }
+            // INVARIANT: reporting DidWork pins the sweep gap at 1 for the whole stand-down,
+            // which is what makes re-engagement immediate after the user leaves the mode (the
+            // mode flip is NOT a cadence change-signal). The ticks themselves are a property
+            // read plus an empty-set release — do not "optimize" this to a stretching outcome
+            // without also making the mode flip force a sweep.
             _cadence.RecordSweepOutcome(didWork: true);
             return EcoQosCadencePolicy.Outcome.DidWork;
         }

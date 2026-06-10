@@ -61,7 +61,7 @@ public class EcoQosDomainTests
         domain.Reconcile(widenToAllCandidates: widened);
     }
 
-    /// <summary>Make a pid look like a sustained burner: 5% of one core per elapsed second.</summary>
+    /// <summary>Add CPU time to a pid; +0.5s before a default 10s Sweep reads as 5% of a core.</summary>
     private void Burn(int pid, double seconds) =>
         _cpuSeconds[pid] = _cpuSeconds.GetValueOrDefault(pid) + seconds;
 
@@ -404,6 +404,64 @@ public class EcoQosDomainTests
         Sweep(domain);
 
         native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+        native.Verify(n => n.SetTimerResolution(It.IsAny<bool>(), 1001), Times.Never);
+    }
+
+    [Fact]
+    public void Reconcile_StormerServingTheForeground_IsExemptFromStormQuieting()
+    {
+        // An IPC broker (third-party IME host, overlay, launcher agent) can legitimately storm
+        // while the foreground app synchronously waits on its replies — quieting it would be
+        // felt as foreground latency, the one thing this domain must never cause. Stormers in
+        // the foreground's process family (its parent or a direct child) are exempt.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "fg-broker"));
+        native.Setup(n => n.GetParentProcessId(1001)).Returns(1000);   // child of the foreground
+        var domain = Domain(native);
+
+        domain.Reconcile();
+        _switchCounts[1001] += 4_000;   // storming, near-zero CPU
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+        native.Verify(n => n.SetTimerResolution(It.IsAny<bool>(), 1001), Times.Never);
+    }
+
+    [Fact]
+    public void Reconcile_StormerThatStaysADrainer_DropsOnlyTheTimerHint_WhenTheStormCalms()
+    {
+        // The documented split: the timer hint follows STORMER status exactly, even when the
+        // process remains EcoQoS-throttled as a CPU drainer.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "busy-and-chatty"));
+        var domain = Domain(native);
+
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        _switchCounts[1001] += 4_000;   // drainer AND stormer
+        Sweep(domain);                  // both hints applied
+
+        // CPU burn continues; the wakeup storm is over.
+        Burn(1001, 0.5); Sweep(domain);
+        Burn(1001, 0.5); Sweep(domain);
+        Burn(1001, 0.5); Sweep(domain);
+        Burn(1001, 0.5); Sweep(domain);
+        Burn(1001, 0.5); Sweep(domain);
+
+        native.Verify(n => n.SetTimerResolution(false, 1001), Times.Once);   // storm hint released
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Never);           // drainer stays throttled
+    }
+
+    [Fact]
+    public void Reconcile_Widened_QuietCandidateGetsEcoQosOnly_NeverTheTimerHint()
+    {
+        // The idle deep-saver relaxes the EVIDENCE gate, not the storm gate: every candidate
+        // gets EcoQoS while the user is away, but the timer-coalescing hint still requires
+        // classified wakeup pressure.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "quiet"));
+        var domain = Domain(native);
+
+        domain.Reconcile(widenToAllCandidates: true);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
         native.Verify(n => n.SetTimerResolution(It.IsAny<bool>(), 1001), Times.Never);
     }
 

@@ -55,6 +55,23 @@ public sealed class WatcherCadencePolicyTests
     }
 
     [Fact]
+    public void AfterASnapBack_ReStretchingNeedsAFreshCalmStreak()
+    {
+        // The snap must reset the streak, not just the interval: one calm sample after pressure
+        // is not yet evidence of calm.
+        var policy = Policy();
+        policy.Observe(30, 50, 0);
+        policy.Observe(30, 50, 0);                     // stretched to 10s
+        policy.Observe(45, 50, 0);                     // pressure -> snap + streak reset
+
+        policy.Observe(30, 50, 0);                     // calm #1 again
+        Assert.Equal(TimeSpan.FromSeconds(5), policy.Current);
+
+        policy.Observe(30, 50, 0);                     // calm #2 -> stretch resumes
+        Assert.Equal(TimeSpan.FromSeconds(10), policy.Current);
+    }
+
+    [Fact]
     public void RisingTrend_IsNotCalm_EvenWithLowUsage()
     {
         var policy = Policy();

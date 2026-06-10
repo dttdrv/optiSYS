@@ -51,6 +51,11 @@ public interface INativeBridge : IDisposable
     // (NtQuerySystemInformation). Null when the query fails — callers keep their previous
     // classification rather than acting on a guess.
     IReadOnlyDictionary<int, long>? GetProcessContextSwitchCounts();
+
+    // Parent pid of a process, or null when unknown (access denied / exited). Used to exempt
+    // the foreground's process family from storm quieting — an IPC broker serving the
+    // foreground must never be slowed on its behalf.
+    int? GetParentProcessId(int processId);
 }
 
 public struct NativeBatteryInfo

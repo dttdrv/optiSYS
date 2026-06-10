@@ -85,6 +85,20 @@ public sealed class StepEffectivenessTrackerTests
     }
 
     [Fact]
+    public void NegativeReading_CountsAsIneffective_NotAsNegativeYield()
+    {
+        // available-after minus available-before goes negative whenever another process
+        // allocates during the step; the clamp must treat that as "freed nothing", never as a
+        // negative number poisoning the EWMA.
+        var tracker = new StepEffectivenessTracker();
+        tracker.Record("purge", -50 * MB);
+        tracker.Record("purge", -50 * MB);
+        tracker.Record("purge", -50 * MB);
+
+        Assert.True(tracker.ShouldSkip("purge"));
+    }
+
+    [Fact]
     public void Reset_ClearsAllLearning()
     {
         var tracker = new StepEffectivenessTracker();

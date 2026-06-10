@@ -87,8 +87,10 @@ public sealed class WakeupPressureTracker
 
         public void Append(DateTime time, long switches)
         {
-            // The cumulative counter only ever grows for a live process; a decrease means the
-            // pid was reused by a fresh process — restart its history.
+            // A decrease means the pid was reused by a fresh process — or the kernel's per-
+            // thread ULONG counter wrapped on a long-lived noisy process. Both cases restart
+            // the history: one lost sweep of classification is the correct failure mode for
+            // either, so do not make this reset pid-reuse-specific.
             if (_window.Count > 0 && switches < _window.Last().Switches)
                 _window.Clear();
 
