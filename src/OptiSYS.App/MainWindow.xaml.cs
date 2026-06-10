@@ -13,7 +13,6 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace OptiSYS;
@@ -594,148 +593,72 @@ public sealed partial class MainWindow : Window
             memory = _memory.CurrentInfo;
         }
 
-        var battery = _battery.CurrentInfo;
-        var now = DateTime.Now;
-
-        // 1. Update text-based logs for tests compatibility
-        var text = new StringBuilder();
-        text.AppendLine($"time              {now:yyyy-MM-dd HH:mm:ss}");
-        text.AppendLine(_settings.AutomationPaused ? "mode              paused" : "mode              safe optimization");
-        text.AppendLine("policy            memory trim + runtime throttles; no service, registry, device, or power-plan edits");
-        text.AppendLine($"background        {(_settings.MinimizeToTray ? "tray enabled" : "window only")}");
-        text.AppendLine($"memory_auto       {FormatBool(_settings.AutoOptimizeMemoryEnabled)}");
-        text.AppendLine($"battery_auto      {FormatBool(_settings.AutoOptimizeOnBattery)}");
-        text.AppendLine();
-        AppendMemoryText(text, memory);
-        text.AppendLine();
-        AppendBatteryText(text, battery);
-        text.AppendLine();
-        text.AppendLine($"activity          {_automation.LastActivity}");
-        if (_automation.LastActivityAt is { } at)
+        // All derivation/formatting lives in DashboardPresenter (pure, unit-tested); this method
+        // only gathers the inputs and assigns the resulting view to controls. Battery efficiency
+        // profile is fully automatic (recommended on AC <-> saver on battery, driven by
+        // AppRuntimeCoordinator); there is no in-app Profile control to resync.
+        var view = DashboardPresenter.Present(new DashboardState
         {
-            text.AppendLine($"activity_time     {at:yyyy-MM-dd HH:mm:ss zzz}");
-        }
-        StatusText.Text = text.ToString();
-        FooterText.Text = $"last sample {now:HH:mm:ss} // safe runtime optimization only";
+            Memory = memory,
+            Battery = _battery.CurrentInfo,
+            AutomationPaused = _settings.AutomationPaused,
+            MinimizeToTray = _settings.MinimizeToTray,
+            AutoOptimizeMemory = _settings.AutoOptimizeMemoryEnabled,
+            AutoOptimizeOnBattery = _settings.AutoOptimizeOnBattery,
+            LastActivity = _automation.LastActivity,
+            LastActivityAt = _automation.LastActivityAt,
+            TotalFreedBytes = _automation.TotalFreedBytes,
+            Now = DateTime.Now,
+        });
 
-        // Battery efficiency profile is fully automatic now (recommended on AC ↔ saver on battery,
-        // driven by AppRuntimeCoordinator); there is no in-app Profile control to resync.
-
-        // Update Fluent UI dashboard telemetry
-        UpdateDashboardUI(memory, battery);
+        ApplyDashboardView(view);
     }
 
-    private void UpdateDashboardUI(MemoryInfo? memory, BatteryInfo? battery)
+    private void ApplyDashboardView(DashboardView view)
     {
-        // Update paused indicators + pause/resume button affordance
-        var paused = _settings.AutomationPaused;
-        var pausedVisibility = paused ? Visibility.Visible : Visibility.Collapsed;
+        StatusText.Text = view.StatusText;
+        FooterText.Text = view.FooterText;
+
+        // Paused indicators + pause/resume button affordance.
+        var pausedVisibility = view.ShowPausedIndicators ? Visibility.Visible : Visibility.Collapsed;
         MemoryPausedIndicator.Visibility = pausedVisibility;
         EfficiencyPausedIndicator.Visibility = pausedVisibility;
-        PauseToggleIcon.Glyph = paused ? "" : ""; // Play (resume) when paused, Pause when running
-        var pauseTooltip = paused ? "Resume optimization" : "Pause optimization";
-        ToolTipService.SetToolTip(PauseToggleButton, pauseTooltip);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PauseToggleButton, pauseTooltip);
+        PauseToggleIcon.Glyph = view.PauseGlyph;
+        ToolTipService.SetToolTip(PauseToggleButton, view.PauseLabel);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PauseToggleButton, view.PauseLabel);
 
         // Keep the Settings master switch in step with the pause button (guard the programmatic
         // assignment so it doesn't re-enter the Toggled handler).
         _suppressAutoToggle = true;
-        AutomaticOptimizationToggle.IsOn = !paused;
+        AutomaticOptimizationToggle.IsOn = view.AutomationOn;
         _suppressAutoToggle = false;
 
-        // Update Memory Card
-        if (memory is not null && memory.TotalPhysicalBytes > 0)
+        var memory = view.Memory;
+        MemoryPercentText.Text = memory.PercentText;
+        MemoryGBText.Text = memory.DetailText;
+        MemoryProgressBar.Value = memory.ProgressValue;
+        MemoryCachedText.Text = memory.CachedText;
+        MemoryProcessesText.Text = memory.ProcessesText;
+        if (memory.ClearedText is { } cleared)
         {
-            MemoryPercentText.Text = $"{memory.UsagePercent:0}%";
-            MemoryGBText.Text = $"{memory.UsedGB:F1} GB used of {memory.TotalGB:F1} GB";
-            MemoryProgressBar.Value = memory.UsagePercent;
-            MemoryCachedText.Text = $"{memory.StandbyGB:F1} GB";
-            MemoryProcessesText.Text = $"{memory.ProcessCount:N0}";
-            MemoryClearedText.Text = OptiSYS.Core.Models.OptimizationResult.FormatBytesStatic(_automation.TotalFreedBytes);
-
-            MemoryHistoryChart.AddSample(memory.UsagePercent);
+            MemoryClearedText.Text = cleared;
         }
-        else
+        if (memory.HistorySample is { } sample)
         {
-            MemoryPercentText.Text = "--%";
-            MemoryGBText.Text = "Warming up memory telemetry...";
-            MemoryProgressBar.Value = 0;
-            MemoryCachedText.Text = "-- GB";
-            MemoryProcessesText.Text = "--";
+            MemoryHistoryChart.AddSample(sample);
         }
 
-        // Update Battery Card
-        if (battery is not null)
+        var battery = view.Battery;
+        BatteryPercentText.Text = battery.PercentText;
+        BatterySourceText.Text = battery.SourceText;
+        BatteryProgressBar.Value = battery.ProgressValue;
+        if (battery.PowerGlyph is { } glyph)
         {
-            if (battery.IsOnBattery)
-            {
-                BatteryPercentText.Text = $"{battery.ChargePercent}%";
-                BatterySourceText.Text = "Running on battery power";
-                BatteryProgressBar.Value = battery.ChargePercent;
-                PowerIcon.Glyph = "\uE83F"; // Battery
-                BatteryDrainText.Text = battery.DrainRateDisplay;
-                BatteryRemainingText.Text = battery.TimeRemainingDisplay;
-            }
-            else
-            {
-                BatteryPercentText.Text = battery.HasBattery ? $"{battery.ChargePercent}%" : "AC";
-                BatterySourceText.Text = "Connected to power";
-                BatteryProgressBar.Value = battery.HasBattery ? battery.ChargePercent : 100;
-                PowerIcon.Glyph = "\uE72F"; // Plugged In / Power
-                BatteryDrainText.Text = "N/A (charging)";
-                BatteryRemainingText.Text = "N/A (plugged in)";
-            }
+            PowerIcon.Glyph = glyph;
         }
-        else
-        {
-            BatteryPercentText.Text = "--%";
-            BatterySourceText.Text = "Warming up battery telemetry...";
-            BatteryProgressBar.Value = 0;
-            BatteryDrainText.Text = "--";
-            BatteryRemainingText.Text = "--";
-        }
+        BatteryDrainText.Text = battery.DrainText;
+        BatteryRemainingText.Text = battery.RemainingText;
     }
-
-private static void AppendMemoryText(StringBuilder text, MemoryInfo? memory)
-    {
-        text.AppendLine("[memory]");
-        if (memory is null || memory.TotalPhysicalBytes <= 0)
-        {
-            text.AppendLine("state             warming up");
-            return;
-        }
-
-        text.AppendLine($"usage             {memory.UsagePercent:0}%");
-        text.AppendLine($"installed         {memory.TotalDisplay}");
-        text.AppendLine($"used              {memory.UsedDisplay}");
-        text.AppendLine($"available         {memory.AvailableDisplay}");
-        text.AppendLine($"standby_cache     {memory.StandbyGB:0.0} GB");
-        text.AppendLine($"processes         {memory.ProcessCount:N0}");
-    }
-
-    private static void AppendBatteryText(StringBuilder text, BatteryInfo? battery)
-    {
-        text.AppendLine("[power]");
-        if (battery is null)
-        {
-            text.AppendLine("state             warming up");
-            return;
-        }
-
-        text.AppendLine($"source            {FormatPowerSource(battery.PowerSource)}");
-        text.AppendLine($"charge            {(battery.HasBattery ? $"{battery.ChargePercent}%" : "AC")}");
-        text.AppendLine($"remaining         {battery.TimeRemainingDisplay}");
-        text.AppendLine($"drain             {battery.DrainRateDisplay}");
-    }
-
-    private static string FormatPowerSource(PowerSource source) => source switch
-    {
-        PowerSource.Ac => "plugged in",
-        PowerSource.Battery => "on battery",
-        _ => "unknown",
-    };
-
-    private static string FormatBool(bool value) => value ? "on" : "off";
 
     private async void OnManualTrimClick(object sender, RoutedEventArgs e)
     {
