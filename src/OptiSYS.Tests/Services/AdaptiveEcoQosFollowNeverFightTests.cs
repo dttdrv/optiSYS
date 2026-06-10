@@ -57,6 +57,48 @@ public class AdaptiveEcoQosFollowNeverFightTests
         domain.Reconcile();
     }
 
+    [Fact]
+    public void MaintainOnce_AfterLeavingHighPerformanceMode_ReThrottlesOnTheNextTick()
+    {
+        // The hole this pins: a stand-down used to disarm the domain entirely, so one Game Mode
+        // session on battery disabled EcoQoS until the next AC->DC replug. A stand-down is a
+        // SUSPENSION: once the user leaves the high-performance mode, the next tick must sweep
+        // and re-throttle the still-burning drainer.
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var mode = EffectivePowerMode.Balanced;
+
+        var native = new Mock<INativeBridge>();
+        native.Setup(n => n.GetPowerSource()).Returns(PowerSource.Battery);
+        native.Setup(n => n.GetForegroundProcessId()).Returns(1000);
+        native.Setup(n => n.GetProcessList()).Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp") });
+        native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
+        native.Setup(n => n.GetProcessCpuTime(It.IsAny<int>()))
+            .Returns<int>(pid => _cpuSeconds.TryGetValue(pid, out var s) ? TimeSpan.FromSeconds(s) : null);
+        native.Setup(n => n.GetAudibleProcessIds()).Returns([]);
+        _cpuSeconds.TryAdd(1000, 0);
+        _cpuSeconds.TryAdd(1001, 0);
+
+        var provider = new Mock<IEffectivePowerModeProvider>();
+        provider.Setup(p => p.Current).Returns(() => mode);
+
+        var domain = new EcoQosDomain(settings, native.Object, () => _now);
+        var controller = new AdaptiveEcoQosController(domain, native.Object, settings, provider.Object);
+
+        Activate(domain);
+        WarmDrainer(domain);                       // 1001 throttled as a drainer
+        mode = EffectivePowerMode.GameMode;
+        controller.MaintainOnce();                 // stand-down: 1001 released
+        mode = EffectivePowerMode.Balanced;        // user left game mode
+        _cpuSeconds[1001] += 0.5;                  // still burning
+        _now = _now.AddSeconds(10);
+
+        var outcome = controller.MaintainOnce();
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Exactly(2));   // warm-up + re-throttle
+        Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, outcome);
+        controller.Dispose();
+    }
+
     [Theory]
     [InlineData(EffectivePowerMode.HighPerformance)]
     [InlineData(EffectivePowerMode.MaxPerformance)]
@@ -91,9 +133,11 @@ public class AdaptiveEcoQosFollowNeverFightTests
 
         // Reversible stand-down: throttling already applied is released (back to OS-managed).
         // Releasing is real work, so the cadence outcome must be DidWork (stays fast while the
-        // user is in a high-performance mode with throttling still to unwind).
+        // user is in a high-performance mode with throttling still to unwind). The domain stays
+        // ENGAGED — a stand-down is a suspension, not a disarm, so the controller keeps
+        // maintaining and can re-throttle once the user leaves the high-performance mode.
         native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
-        Assert.False(domain.IsActive);
+        Assert.True(domain.IsActive);
         Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, outcome);
         controller.Dispose();
     }

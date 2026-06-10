@@ -215,6 +215,24 @@ public class EcoQosDomainTests
     }
 
     [Fact]
+    public void Suspend_ReleasesThrottles_ButStaysEngaged()
+    {
+        // The "follow, never fight" stand-down: release everything (reversible, back to
+        // OS-managed) but remain engaged, so the maintenance loop can re-throttle once the
+        // user leaves the high-performance mode — without waiting for an AC->DC replug.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
+        var domain = Domain(native);
+        domain.Apply(domain.CaptureBaseline());
+        Burn(1001, 0.5);
+        Sweep(domain);                   // 1001 throttled
+
+        domain.Suspend();
+
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
+        Assert.True(domain.IsActive);
+    }
+
+    [Fact]
     public void Revert_OnFreshInstance_IsNoOp()
     {
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));

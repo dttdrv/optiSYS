@@ -187,14 +187,33 @@ public sealed class EcoQosDomain : IOptimizationDomain
         // Burn histories are kept: on re-apply, known burners re-classify without a cold start.
         lock (_gate)
         {
-            foreach (var pid in _throttledPids)
-            {
-                try { SetEcoQos((int)pid, enable: false); } catch { }
-            }
-
-            _throttledPids.Clear();
+            ReleaseAllLocked();
             _applied = false;
         }
+    }
+
+    /// <summary>
+    /// The "follow, never fight" stand-down: release every throttle (reversible, back to
+    /// OS-managed) but STAY ENGAGED — unlike <see cref="Revert"/>, the maintenance loop keeps
+    /// running and re-throttles drainers once the high-performance mode ends, instead of
+    /// staying dark until the next AC→DC transition.
+    /// </summary>
+    public void Suspend()
+    {
+        lock (_gate)
+        {
+            ReleaseAllLocked();
+        }
+    }
+
+    private void ReleaseAllLocked()
+    {
+        foreach (var pid in _throttledPids)
+        {
+            try { SetEcoQos((int)pid, enable: false); } catch { }
+        }
+
+        _throttledPids.Clear();
     }
 
     public DomainStatus GetStatus() => new()

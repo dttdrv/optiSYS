@@ -184,10 +184,11 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
         // Stand down — release anything we had throttled (reversible, back to OS-managed) and skip
         // reconcile so we never re-throttle background apps the user/OS wants at full speed.
         // Checked every tick (a cheap property read), so the stand-down lands within one tick.
+        // SUSPEND, not revert: the domain stays engaged, so once the user leaves the mode the
+        // next tick re-throttles drainers instead of staying dark until the next AC->DC replug.
         if (_powerMode is { } pm && EffectivePowerModeDecision.IsHighPerformance(pm.Current))
         {
-            // The outer guard already established _domain.IsActive, so there is throttling to release.
-            try { _domain.Revert(_domain.CaptureBaseline()); } catch { }
+            try { _domain.Suspend(); } catch { }
             _cadence.RecordSweepOutcome(didWork: true);
             return EcoQosCadencePolicy.Outcome.DidWork;
         }
