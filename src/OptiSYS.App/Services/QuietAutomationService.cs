@@ -266,9 +266,15 @@ public sealed class QuietAutomationService : IQuietAutomationService
                 {
                     Publish($"Critical memory pressure ({info.UsagePercent:0}%); full reclaim.");
                     var outcome = await RunCleanupCoreAsync(triggeredByThreshold: true, forceLevel: OptimizationLevel.Aggressive).ConfigureAwait(false);
-                    var ranButFreedNothing = outcome is { Success: true } &&
-                        outcome.FreedBytes < EffectiveCriticalFreedFloor(info.TotalPhysicalBytes);
-                    _criticalReclaimArmed = !ranButFreedNothing;
+                    // Only a completed pass carries information: stay armed while it makes real
+                    // headway, disarm when it freed ~nothing. A null (didn't run) or failed outcome
+                    // writes nothing — so an overlapping gate-contended tick can never clobber a
+                    // disarm another tick just recorded.
+                    if (outcome is { Success: true })
+                    {
+                        _criticalReclaimArmed =
+                            outcome.FreedBytes >= EffectiveCriticalFreedFloor(info.TotalPhysicalBytes);
+                    }
                     return;
                 }
             }

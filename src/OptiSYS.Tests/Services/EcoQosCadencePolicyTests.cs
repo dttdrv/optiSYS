@@ -4,65 +4,87 @@ using Xunit;
 namespace OptiSYS.Tests.Services;
 
 /// <summary>
-/// The maintenance cadence backs off only on eligible-but-no-op sweeps (the expensive case: a
-/// full process enumeration that changed nothing). Skipped ticks are cheap eligibility checks
-/// and must stay at the fast cadence so a power flip is picked up within one base interval;
-/// real work snaps the cadence back so bursts of change are tracked closely.
+/// The policy gates the EXPENSIVE full sweep, not the tick: the controller keeps ticking at the
+/// fast base cadence doing only cheap reads, while consecutive no-op sweeps stretch the sweep
+/// gap geometrically (1 -> 2 -> 4 -> 8 -> capped). A change signal (foreground flip) forces an
+/// immediate sweep, real work snaps the gap back, and Reset makes the next eligible tick sweep
+/// at once — so every user-facing transition is still acted on within one base tick.
 /// </summary>
 public sealed class EcoQosCadencePolicyTests
 {
-    private static EcoQosCadencePolicy Policy() =>
-        new(baseInterval: TimeSpan.FromSeconds(6), maxInterval: TimeSpan.FromSeconds(60));
+    private static EcoQosCadencePolicy Policy() => new(maxGapTicks: 10);
 
     [Fact]
-    public void StartsAtTheBaseInterval()
+    public void FirstTick_SweepsImmediately()
     {
-        Assert.Equal(TimeSpan.FromSeconds(6), Policy().Current);
+        Assert.True(Policy().ShouldSweep(changeSignal: false));
     }
 
     [Fact]
-    public void ConsecutiveNoOps_DoubleTheIntervalUpToTheCap()
+    public void ConsecutiveNoOpSweeps_DoubleTheGapUpToTheCap()
     {
         var policy = Policy();
 
-        Assert.Equal(12, policy.Next(EcoQosCadencePolicy.Outcome.NoOp).TotalSeconds);
-        Assert.Equal(24, policy.Next(EcoQosCadencePolicy.Outcome.NoOp).TotalSeconds);
-        Assert.Equal(48, policy.Next(EcoQosCadencePolicy.Outcome.NoOp).TotalSeconds);
-        Assert.Equal(60, policy.Next(EcoQosCadencePolicy.Outcome.NoOp).TotalSeconds);   // capped
-        Assert.Equal(60, policy.Next(EcoQosCadencePolicy.Outcome.NoOp).TotalSeconds);   // stays capped
+        policy.RecordSweepOutcome(didWork: false);
+        Assert.Equal(2, policy.GapTicks);
+        policy.RecordSweepOutcome(didWork: false);
+        Assert.Equal(4, policy.GapTicks);
+        policy.RecordSweepOutcome(didWork: false);
+        Assert.Equal(8, policy.GapTicks);
+        policy.RecordSweepOutcome(didWork: false);
+        Assert.Equal(10, policy.GapTicks);    // capped
+        policy.RecordSweepOutcome(didWork: false);
+        Assert.Equal(10, policy.GapTicks);    // stays capped
     }
 
     [Fact]
-    public void DidWork_SnapsBackToTheBaseInterval()
+    public void WithGapOfTwo_EveryOtherTickSweeps()
     {
         var policy = Policy();
-        policy.Next(EcoQosCadencePolicy.Outcome.NoOp);
-        policy.Next(EcoQosCadencePolicy.Outcome.NoOp);
+        Assert.True(policy.ShouldSweep(false));       // first tick sweeps
+        policy.RecordSweepOutcome(didWork: false);    // no-op -> gap 2
 
-        Assert.Equal(TimeSpan.FromSeconds(6), policy.Next(EcoQosCadencePolicy.Outcome.DidWork));
+        Assert.False(policy.ShouldSweep(false));      // deferred
+        Assert.True(policy.ShouldSweep(false));       // gap reached -> sweep
     }
 
     [Fact]
-    public void Skipped_SnapsBackToTheBaseInterval()
+    public void DidWork_SnapsTheGapBackToOne()
     {
-        // Ineligible ticks never run the sweep — they are a couple of cheap reads — so the
-        // cadence stays fast while skipped and the next eligible state is seen promptly.
         var policy = Policy();
-        policy.Next(EcoQosCadencePolicy.Outcome.NoOp);
-        policy.Next(EcoQosCadencePolicy.Outcome.NoOp);
+        policy.RecordSweepOutcome(didWork: false);
+        policy.RecordSweepOutcome(didWork: false);
+        Assert.Equal(4, policy.GapTicks);
 
-        Assert.Equal(TimeSpan.FromSeconds(6), policy.Next(EcoQosCadencePolicy.Outcome.Skipped));
+        policy.RecordSweepOutcome(didWork: true);
+
+        Assert.Equal(1, policy.GapTicks);
     }
 
     [Fact]
-    public void Reset_RestoresTheBaseInterval()
+    public void ChangeSignal_ForcesAnImmediateSweep_EvenMidGap()
     {
         var policy = Policy();
-        policy.Next(EcoQosCadencePolicy.Outcome.NoOp);
-        policy.Next(EcoQosCadencePolicy.Outcome.NoOp);
+        Assert.True(policy.ShouldSweep(false));
+        policy.RecordSweepOutcome(didWork: false);    // gap 2
+        policy.RecordSweepOutcome(didWork: false);    // gap 4 (simulating later no-ops)
+
+        Assert.False(policy.ShouldSweep(false));      // deferred, mid-gap
+
+        Assert.True(policy.ShouldSweep(changeSignal: true));   // focus flip -> sweep NOW
+        Assert.Equal(1, policy.GapTicks);                      // and the gap is back to fast
+    }
+
+    [Fact]
+    public void Reset_MakesTheNextTickSweepImmediately()
+    {
+        var policy = Policy();
+        Assert.True(policy.ShouldSweep(false));
+        policy.RecordSweepOutcome(didWork: false);    // gap 2; counter mid-stride
 
         policy.Reset();
 
-        Assert.Equal(TimeSpan.FromSeconds(6), policy.Current);
+        Assert.True(policy.ShouldSweep(false));
+        Assert.Equal(1, policy.GapTicks);
     }
 }

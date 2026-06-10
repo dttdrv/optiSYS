@@ -144,4 +144,42 @@ public class AdaptiveEcoQosControllerTests
         Assert.Equal(EcoQosCadencePolicy.Outcome.Skipped, controller.MaintainOnce());
         controller.Dispose();
     }
+
+    [Fact]
+    public void MaintainOnce_AfterANoOpSweep_DefersTheNextSweep_WithoutEnumerating()
+    {
+        // Steady state: a no-op sweep stretches the gap, so the very next tick must stay cheap —
+        // no process enumeration at all, just the eligibility + foreground reads.
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, native) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        controller.MaintainOnce();              // sweep (no-op) -> gap stretches
+        native.Invocations.Clear();
+
+        var outcome = controller.MaintainOnce();
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.SweepDeferred, outcome);
+        native.Verify(n => n.GetProcessList(), Times.Never);
+        controller.Dispose();
+    }
+
+    [Fact]
+    public void MaintainOnce_ForegroundChange_ForcesAnImmediateSweep()
+    {
+        // Focus moved while the sweep gap was stretched: the change signal must force the sweep
+        // on THIS tick (release the new foreground, throttle the old one), not wait out the gap.
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, native) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        controller.MaintainOnce();              // sweep (no-op) -> gap stretches
+        native.Setup(n => n.GetForegroundProcessId()).Returns(1001);   // focus -> bgapp
+
+        var outcome = controller.MaintainOnce();
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, outcome);    // 1001 released, 1000 throttled
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
+        controller.Dispose();
+    }
 }
