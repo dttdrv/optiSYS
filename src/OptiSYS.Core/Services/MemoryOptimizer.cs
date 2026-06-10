@@ -637,55 +637,70 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 }
 
 /// <summary>
-/// Tracks effectiveness of each optimization step to skip ineffective ones.
-/// Ported from optiRAM.
+/// Self-tuning for the cleanup pipeline: learns, per machine and per step, which optimization
+/// steps actually reclaim memory here and skips the ones that don't. Per-step EWMA (alpha 0.5),
+/// active after three samples — the previous 10-samples-inside-30-minutes window never filled at
+/// real automatic-cleanup cadences (a few passes per hour), so the learning was inert in
+/// production. Staleness is handled by explore/exploit instead of a timed forget-everything
+/// reset: every fifth skip runs the step anyway and re-measures, and because alpha 0.5 halves
+/// history, one good fresh sample lifts the EWMA straight back over the floor — a step that
+/// BECAME effective (standby purge once the cache fills) un-skips itself. Pure and clock-free.
 /// </summary>
 public sealed class StepEffectivenessTracker
 {
-    private readonly Dictionary<string, Queue<long>> _history = new();
-    private readonly int _windowSize;
-    private readonly long _minEffectiveBytes;
-    private DateTime _lastResetUtc = DateTime.UtcNow;
-    private static readonly TimeSpan ResetInterval = TimeSpan.FromMinutes(30);
+    private const double Alpha = 0.5;
+    private const int MinSamples = 3;
+    private const int ProbeEverySkips = 5;
 
-    public StepEffectivenessTracker(int windowSize = 10, long minEffectiveBytes = 1_048_576)
+    private sealed class StepStats
     {
-        _windowSize = windowSize;
+        public double EwmaBytes;
+        public int Samples;
+        public int SkipsSinceProbe;
+    }
+
+    private readonly Dictionary<string, StepStats> _steps = new();
+    private readonly long _minEffectiveBytes;
+
+    public StepEffectivenessTracker(long minEffectiveBytes = 1_048_576)
+    {
         _minEffectiveBytes = minEffectiveBytes;
     }
 
     public void Record(string stepName, long freedBytes)
     {
-        MaybeAutoReset();
-        if (!_history.TryGetValue(stepName, out var queue))
+        var clamped = Math.Max(0, freedBytes);
+        if (!_steps.TryGetValue(stepName, out var stats))
         {
-            queue = new Queue<long>();
-            _history[stepName] = queue;
+            stats = new StepStats { EwmaBytes = clamped };
+            _steps[stepName] = stats;
         }
-        queue.Enqueue(Math.Max(0, freedBytes));
-        while (queue.Count > _windowSize)
-            queue.Dequeue();
+        else
+        {
+            stats.EwmaBytes = Alpha * clamped + (1 - Alpha) * stats.EwmaBytes;
+        }
+
+        stats.Samples++;
     }
 
     public bool ShouldSkip(string stepName)
     {
-        MaybeAutoReset();
-        if (!_history.TryGetValue(stepName, out var queue) || queue.Count < _windowSize)
+        if (!_steps.TryGetValue(stepName, out var stats) || stats.Samples < MinSamples)
             return false;
-        return queue.Average() < _minEffectiveBytes;
+        if (stats.EwmaBytes >= _minEffectiveBytes)
+            return false;
+
+        stats.SkipsSinceProbe++;
+        if (stats.SkipsSinceProbe >= ProbeEverySkips)
+        {
+            stats.SkipsSinceProbe = 0;
+            return false;   // explore: run the step and refresh the evidence
+        }
+
+        return true;
     }
 
-    public void Reset()
-    {
-        _history.Clear();
-        _lastResetUtc = DateTime.UtcNow;
-    }
-
-    private void MaybeAutoReset()
-    {
-        if (DateTime.UtcNow - _lastResetUtc >= ResetInterval)
-            Reset();
-    }
+    public void Reset() => _steps.Clear();
 }
 
 internal enum SelfTrimReason
