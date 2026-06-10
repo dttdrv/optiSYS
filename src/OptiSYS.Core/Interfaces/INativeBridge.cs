@@ -34,6 +34,14 @@ public interface INativeBridge : IDisposable
     int GetForegroundProcessId();
     NativeProcessInfo[] GetProcessList();
     bool SetProcessPriority(int processId, ProcessPriorityClass priorityClass);
+
+    // Drain measurement: total CPU time (kernel + user) for a process, or null when it can't be
+    // read (access denied / exited) so the caller treats the sample as unknown.
+    TimeSpan? GetProcessCpuTime(int processId);
+
+    // Process ids with an ACTIVE audio session on the default render endpoint. Best-effort:
+    // empty on failure (no device / COM error) — callers fall back to the static exclusions.
+    IReadOnlyCollection<int> GetAudibleProcessIds();
 }
 
 public struct NativeBatteryInfo

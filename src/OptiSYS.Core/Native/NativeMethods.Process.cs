@@ -123,6 +123,20 @@ internal static partial class NativeMethods
         return SetProcessInformation(hProcess, ProcessPowerThrottling, ptr, (uint)Marshal.SizeOf<PROCESS_POWER_THROTTLING_STATE>());
     }
 
+    // ── Process CPU time (drain measurement) ─────────────────────────
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetProcessTimes(
+        IntPtr hProcess, out long creationTime, out long exitTime, out long kernelTime, out long userTime);
+
+    // Total CPU time (kernel + user). FILETIME's 100ns unit IS the TimeSpan tick, so the sum
+    // converts directly. Null when the query fails (access denied / exited) — "unknown".
+    internal static TimeSpan? GetProcessCpuTime(IntPtr hProcess) =>
+        GetProcessTimes(hProcess, out _, out _, out var kernelTime, out var userTime)
+            ? TimeSpan.FromTicks(kernelTime + userTime)
+            : null;
+
     // ── Foreground window → process id ────────────────────────────────
 
     internal static uint GetForegroundProcessId()

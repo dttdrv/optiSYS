@@ -51,6 +51,11 @@ public sealed class DrainProbe : ILabProbe
         summary.Add("processes sampled", $"{second.Count}");
         summary.Add("background burners (>0.05% core)", $"{background.Count}");
         summary.Add("total background burn", $"{background.Sum(b => b.CorePercent):F1}% of one core");
+        var audible = bridge.GetAudibleProcessIds();
+        summary.Add("audible processes (EcoQoS-exempt)", audible.Count == 0
+            ? "none"
+            : string.Join(", ", audible.Select(pid =>
+                $"{(second.TryGetValue(pid, out var s) ? s.Name : "?")} (pid {pid})")));
         var fgBurn = burns.FirstOrDefault(b => b.Pid == foregroundPid);
         summary.Add("foreground process", fgBurn.Name is { Length: > 0 }
             ? $"{fgBurn.Name} (pid {foregroundPid}) {fgBurn.CorePercent:F1}%"

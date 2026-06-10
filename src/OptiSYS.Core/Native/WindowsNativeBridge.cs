@@ -181,6 +181,17 @@ public sealed class WindowsNativeBridge : INativeBridge
         finally { NativeMethods.CloseHandle(handle); }
     }
 
+    public TimeSpan? GetProcessCpuTime(int processId)
+    {
+        var handle = NativeMethods.OpenProcess(
+            NativeMethods.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)processId);
+        if (handle == IntPtr.Zero) return null;
+        try { return NativeMethods.GetProcessCpuTime(handle); }
+        finally { NativeMethods.CloseHandle(handle); }
+    }
+
+    public IReadOnlyCollection<int> GetAudibleProcessIds() => NativeMethods.GetAudibleProcessIds();
+
     public bool GetMemoryInfo(out Interfaces.NativeMemoryInfo info)
     {
         info = default;
