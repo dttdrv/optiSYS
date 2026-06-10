@@ -60,4 +60,19 @@ public sealed class StartupLogWriterTests : IDisposable
         var next = new StartupLogWriter(_dir, maxBytes: 1_000_000);
         Assert.True(next.PreviousSessionEndedUnexpectedly());
     }
+
+    [Fact]
+    public void MarkCleanExit_WhenThisProcessNeverArmedTheSession_LeavesTheMainSessionsMarkerIntact()
+    {
+        var mainSession = new StartupLogWriter(_dir, maxBytes: 1_000_000);
+        mainSession.BeginSession();   // the long-running app arms its marker
+
+        // A short-lived helper instance (e.g. the --provision-elevation child) exits cleanly
+        // without ever arming a session of its own — it must not disarm the main session.
+        var helperChild = new StartupLogWriter(_dir, maxBytes: 1_000_000);
+        helperChild.MarkCleanExit();
+
+        var next = new StartupLogWriter(_dir, maxBytes: 1_000_000);
+        Assert.True(next.PreviousSessionEndedUnexpectedly());
+    }
 }

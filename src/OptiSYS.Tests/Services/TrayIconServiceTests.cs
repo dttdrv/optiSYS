@@ -71,6 +71,19 @@ public sealed class TrayIconServiceTests
         handle.Should().NotBe(nint.Zero);
     }
 
+    [Theory]
+    [InlineData(0x0016u, 1ul, true)]   // WM_ENDSESSION, end committed -> record clean exit
+    [InlineData(0x0016u, 0ul, false)]  // WM_ENDSESSION, end cancelled -> session continues
+    [InlineData(0x0011u, 1ul, false)]  // WM_QUERYENDSESSION is only the question, not the commit
+    [InlineData(0x0202u, 1ul, false)]  // unrelated message -> ignore
+    public void IsSessionEndCommit_IsTrue_OnlyWhenEndSessionCommitsTheShutdown(
+        uint msg,
+        ulong wParam,
+        bool expected)
+    {
+        TrayIconService.IsSessionEndCommit(msg, (nuint)wParam).Should().Be(expected);
+    }
+
     private static nint PackNotifyIconLParam(uint iconId, uint eventId) =>
         unchecked((nint)(((ulong)iconId << 16) | eventId));
 }

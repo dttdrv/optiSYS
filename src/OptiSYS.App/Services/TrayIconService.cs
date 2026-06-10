@@ -124,6 +124,15 @@ public sealed class TrayIconService : ITrayIconService
 
     private nint WindowSubclassProc(nint hwnd, uint msg, nuint wParam, nint lParam, nuint uIdSubclass, nint dwRefData)
     {
+        if (IsSessionEndCommit(msg, wParam))
+        {
+            // The OS terminates GUI apps after WM_ENDSESSION without running ProcessExit, which
+            // used to flag every reboot/logoff as a crash on the next launch. This subclass is the
+            // app's only WndProc hook, so the clean-exit marker is recorded here.
+            StartupLog.Write("WM_ENDSESSION: OS session ending; marking clean exit");
+            StartupLog.MarkCleanExit();
+        }
+
         if (msg == WM_TRAYICON)
         {
             var eventId = ExtractTrayEventId(lParam);
@@ -159,6 +168,14 @@ public sealed class TrayIconService : ITrayIconService
 
     internal static uint ExtractTrayEventId(nint lParam) =>
         unchecked((uint)(lParam.ToInt64() & 0xFFFF));
+
+    /// <summary>
+    /// True only for WM_ENDSESSION with a non-zero wParam — the OS has committed this
+    /// shutdown/logoff. WM_QUERYENDSESSION (just the question) and a cancelled end (wParam 0)
+    /// must not count: the session keeps running.
+    /// </summary>
+    internal static bool IsSessionEndCommit(uint msg, nuint wParam) =>
+        msg == WM_ENDSESSION && wParam != 0;
 
     internal static Color SelectStrokeColor(bool isLightTheme) =>
         isLightTheme
@@ -416,6 +433,7 @@ public sealed class TrayIconService : ITrayIconService
     private const uint WM_NULL = 0x0000;
     private const uint WM_USER = 0x0400;
     private const uint WM_CONTEXTMENU = 0x007B;
+    private const uint WM_ENDSESSION = 0x0016;
     private const uint WM_LBUTTONUP = 0x0202;
     private const uint WM_RBUTTONUP = 0x0205;
     private const uint WM_TRAYICON = WM_APP + 1;

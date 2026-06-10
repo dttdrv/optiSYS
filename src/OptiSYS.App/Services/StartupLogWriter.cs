@@ -15,6 +15,7 @@ internal sealed class StartupLogWriter
     private readonly string _logPath;
     private readonly string _runningMarkerPath;
     private readonly long _maxBytes;
+    private bool _sessionArmed;
 
     public StartupLogWriter(string directory, long maxBytes)
     {
@@ -56,14 +57,22 @@ internal sealed class StartupLogWriter
         {
             Directory.CreateDirectory(_directory);
             File.WriteAllText(_runningMarkerPath, DateTime.Now.ToString("o"));
+            _sessionArmed = true;
         }
     }
 
-    /// <summary>Clears the running-marker, recording that this session ended cleanly.</summary>
+    /// <summary>
+    /// Clears the running-marker, recording that this session ended cleanly. A no-op unless this
+    /// instance armed the marker via <see cref="BeginSession"/> — short-lived helper instances
+    /// (e.g. the --provision-elevation child) exit cleanly without owning a session and must not
+    /// disarm the main app's crash triage.
+    /// </summary>
     public void MarkCleanExit()
     {
         lock (_gate)
         {
+            if (!_sessionArmed)
+                return;
             try { File.Delete(_runningMarkerPath); } catch { }
         }
     }
