@@ -165,6 +165,26 @@ public class AdaptiveEcoQosControllerTests
     }
 
     [Fact]
+    public void MaintainOnce_AStretchedGap_StillSweepsOnItsOwnWhenTheGapElapses()
+    {
+        // No change signal, no work: after a no-op sweep (gap 2) and one deferred tick, the
+        // gap-elapsing tick must run the enumeration again by itself.
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, native) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        controller.MaintainOnce();              // sweep (no-op) -> gap 2
+        controller.MaintainOnce();              // deferred
+        native.Invocations.Clear();
+
+        var outcome = controller.MaintainOnce();
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.NoOp, outcome);
+        native.Verify(n => n.GetProcessList(), Times.Once);
+        controller.Dispose();
+    }
+
+    [Fact]
     public void MaintainOnce_ForegroundChange_ForcesAnImmediateSweep()
     {
         // Focus moved while the sweep gap was stretched: the change signal must force the sweep
