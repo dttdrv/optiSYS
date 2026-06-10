@@ -489,7 +489,7 @@ public sealed partial class MainWindow : Window
         Microsoft.UI.Xaml.VisualStateManager.GoToState(SettingsBtn, dashboardSelected ? "Unselected" : "Selected", true);
 
         // Slide the single shared accent pill to the selected row (Fluent selection indicator).
-        SlideNavIndicator(dashboardSelected ? NavIndicatorRow0Y : NavIndicatorRow1Y);
+        SlideNavIndicator(NavIndicatorTargetY(dashboardSelected ? DashboardBtn : SettingsBtn));
 
         // Persist the active page so it is restored next launch (skip during init / no-op changes).
         if (!_initializing && _settings.SelectedNavItem != tag)
@@ -516,13 +516,39 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() => _theme.ApplyBackdrop());
     }
 
-    // Row offsets for the single sliding accent indicator, in the nav container's coordinate space.
-    // Layout: StackPanel Spacing=2, each item Height=36 with Margin 0,1 -> 40px pitch; the 16px pill
-    // is centred in the 36px row ((36-16)/2 = 10) above the item's top margin (1).
+    // Pre-layout fallback offsets only: until the tree is arranged (ActualHeight is 0) the live
+    // geometry isn't available, so the first placement uses the values the current XAML produces
+    // (StackPanel Spacing=2, 36px rows with Margin 0,1, 16px pill -> 11 / 51). Every placement
+    // after layout is computed from the buttons' real positions, so sidebar edits can't desync it.
     private const double NavIndicatorRow0Y = 11;   // Dashboard
     private const double NavIndicatorRow1Y = 51;   // Settings
 
     private bool _navIndicatorPlaced;
+
+    /// <summary>
+    /// Target Y for the nav pill, in the nav container's coordinate space: the selected button's
+    /// live layout position with the pill centred in its row. Falls back to the XAML-derived
+    /// constants before the first arrange pass.
+    /// </summary>
+    private double NavIndicatorTargetY(Microsoft.UI.Xaml.Controls.Button target)
+    {
+        if (target.ActualHeight <= 0 || NavIndicator.ActualHeight <= 0 ||
+            NavIndicator.Parent is not UIElement host)
+        {
+            return target == SettingsBtn ? NavIndicatorRow1Y : NavIndicatorRow0Y;
+        }
+
+        var rowTop = target.TransformToVisual(host).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+        return NavGeometry.CenterInRow(rowTop, target.ActualHeight, NavIndicator.ActualHeight);
+    }
+
+    /// <summary>Pure geometry for the sliding nav indicator (unit-tested; no XAML types).</summary>
+    internal static class NavGeometry
+    {
+        /// <summary>Centre the pill in a row; never above the row top when the pill is taller.</summary>
+        public static double CenterInRow(double rowTop, double rowHeight, double indicatorHeight) =>
+            rowTop + Math.Max(0, (rowHeight - indicatorHeight) / 2);
+    }
 
     /// <summary>Slide the shared accent pill to the target row via TranslateTransform.Y
     /// (167ms CubicEase EaseOut). The first placement snaps so the restored page paints correctly;
