@@ -741,6 +741,11 @@ public sealed partial class MainWindow : Window
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         ShowWindow(hwnd, SW_HIDE);
+        // Self-quieting: nobody can see the dashboard, so stop paying for its 1s refresh
+        // (formatting + control updates burned ~1-2% of a core while hidden, measured by the
+        // Lab drain probe). The tray icon stays live through the runtime coordinator's own
+        // update path, which does not ride this timer.
+        _refreshTimer.Stop();
     }
 
     private void RestoreFromTray()
@@ -750,6 +755,9 @@ public sealed partial class MainWindow : Window
         EnsureWindowOnScreen();
         SetForegroundWindow(hwnd);
         Activate();
+        // Catch up instantly (the timer's first tick is a second away), then resume the cadence.
+        RefreshPresentation(forceMemoryPoll: true);
+        _refreshTimer.Start();
     }
 
     /// <summary>Recenter the window if it has drifted off the visible work area, so a restore
