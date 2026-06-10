@@ -15,6 +15,7 @@ var probes = new List<ILabProbe>
     new SystemSnapshotProbe(),
     new WlanProbe(),
     new CpuPerfProbe(load),
+    new DrainProbe(),
 };
 
 var positional = args.Where(a => !a.StartsWith("--", StringComparison.Ordinal)).ToArray();
