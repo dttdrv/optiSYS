@@ -296,6 +296,39 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task Watcher_StretchesItsTick_WhileCalm_AndSnapsBackOnPressure()
+    {
+        // The watcher's own wakeups cost battery: low + flat usage stretches the tick toward
+        // 20s, and the first sample inside the pressure band snaps it back to base immediately.
+        var settings = new Settings { MemoryThresholdPercent = 50, MemoryCheckIntervalSeconds = 5 };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+
+        memory.SetupSequence(m => m.GetCurrentMemoryInfo())
+            .Returns(Mem(20, commitRatio: 0.3))   // calm
+            .Returns(Mem(20, commitRatio: 0.3))   // calm
+            .Returns(Mem(20, commitRatio: 0.3))   // calm
+            .Returns(Mem(45, commitRatio: 0.3));  // inside the 15-point headroom band
+
+        var service = CreateService(settings, timer, memory);
+        await service.StartAsync();
+
+        Assert.Equal(5, timer.NextInterval!().TotalSeconds);
+
+        timer.Tick(); await service.LastEvaluationForTests;   // calm #1: one sample never stretches
+        Assert.Equal(5, timer.NextInterval().TotalSeconds);
+
+        timer.Tick(); await service.LastEvaluationForTests;   // calm #2 -> 10s
+        Assert.Equal(10, timer.NextInterval().TotalSeconds);
+
+        timer.Tick(); await service.LastEvaluationForTests;   // calm #3 -> 20s (cap)
+        Assert.Equal(20, timer.NextInterval().TotalSeconds);
+
+        timer.Tick(); await service.LastEvaluationForTests;   // 45% -> pressure -> snap to base
+        Assert.Equal(5, timer.NextInterval().TotalSeconds);
+    }
+
+    [Fact]
     public void DefaultSettings_MatchPredictorCtorDefaults_SoDefaultConfigIsUnchanged()
     {
         // Wiring the knobs must be behaviour-preserving at default config: the Settings defaults
@@ -673,9 +706,19 @@ public sealed class QuietAutomationServiceTests
     {
         private Action? _tick;
 
+        /// <summary>The adaptive interval source, captured so tests can assert the cadence.</summary>
+        public Func<TimeSpan>? NextInterval { get; private set; }
+
         public IDisposable Start(TimeSpan interval, Action tick)
         {
             _tick = tick;
+            return Mock.Of<IDisposable>();
+        }
+
+        public IDisposable StartAdaptive(Func<TimeSpan> nextInterval, Action tick)
+        {
+            _tick = tick;
+            NextInterval = nextInterval;
             return Mock.Of<IDisposable>();
         }
 

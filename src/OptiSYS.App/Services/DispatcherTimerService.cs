@@ -38,6 +38,34 @@ public sealed class DispatcherTimerService : ITimerService
         return new TimerSubscription(timer);
     }
 
+    public IDisposable StartAdaptive(Func<TimeSpan> nextInterval, Action tick)
+    {
+        ArgumentNullException.ThrowIfNull(nextInterval);
+        ArgumentNullException.ThrowIfNull(tick);
+
+        var timer = new DispatcherTimer { Interval = nextInterval() };
+        timer.Tick += (_, _) =>
+        {
+            try
+            {
+                tick();
+            }
+            catch (Exception ex)
+            {
+                StartupLog.WriteException("DispatcherTimerService.AdaptiveTick", ex);
+                throw;
+            }
+            finally
+            {
+                timer.Interval = nextInterval();
+            }
+        };
+        timer.Start();
+        StartupLog.Write("DispatcherTimerService: Started adaptive timer");
+
+        return new TimerSubscription(timer);
+    }
+
     /// <summary>
     /// Wraps a <see cref="DispatcherTimer"/> as an <see cref="IDisposable"/> so callers get
     /// lifetime-management semantics instead of having to hold the raw timer reference.

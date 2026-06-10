@@ -41,6 +41,8 @@ public sealed class QuietAutomationService : IQuietAutomationService
     // makes real headway; a futile pass disarms it for the rest of the pressure episode (re-armed
     // once usage falls below critical - HysteresisGap). See EvaluateMemoryPressureAsync.
     private bool _criticalReclaimArmed = true;
+    // Adaptive watcher cadence: stretch the tick while calm, snap back on pressure.
+    private readonly WatcherCadencePolicy _watchCadence;
     private int _started;
     private bool _disposed;
 
@@ -95,6 +97,9 @@ public sealed class QuietAutomationService : IQuietAutomationService
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
         _timer = timer ?? throw new ArgumentNullException(nameof(timer));
         _predictor = predictor ?? BuildPredictor(settings, utcNow: null);
+        _watchCadence = new WatcherCadencePolicy(
+            TimeSpan.FromSeconds(Math.Max(1, settings.MemoryCheckIntervalSeconds)),
+            TimeSpan.FromSeconds(20));
 
         ArgumentNullException.ThrowIfNull(battery);
     }
@@ -121,8 +126,11 @@ public sealed class QuietAutomationService : IQuietAutomationService
         RefreshMemoryExclusions();
         if (!_settings.AutomationPaused)
             SetOptionalOptimizations(true);   // Wi-Fi + (admin) services tune-up are part of the AIO set
-        _memoryWatcher = _timer.Start(
-            TimeSpan.FromSeconds(Math.Max(1, _settings.MemoryCheckIntervalSeconds)),
+        // Adaptive tick: the watcher's own wakeups are a battery cost, so the cadence policy
+        // stretches the tick while memory is calm and snaps back to base on the first sign of
+        // pressure (see WatcherCadencePolicy for the safety analysis).
+        _memoryWatcher = _timer.StartAdaptive(
+            () => _watchCadence.Current,
             () => _lastEvaluation = EvaluateMemoryPressureAsync());
         Publish("Safe background optimization started.");
         return Task.CompletedTask;
@@ -249,8 +257,10 @@ public sealed class QuietAutomationService : IQuietAutomationService
                 return;
             }
 
-            // Feed the trend window every cycle (even during cooldown) so the slope stays accurate.
+            // Feed the trend every cycle (even during cooldown) so the slope stays accurate, then
+            // let the cadence policy decide how soon the next sample is worth a wakeup.
             _predictor.Observe(info.UsagePercent);
+            _watchCadence.Observe(info.UsagePercent, _settings.MemoryThresholdPercent, _predictor.TrendPerSecond);
 
             // OOM prevention: at/above the critical mark, reclaim hard immediately at the full
             // (Aggressive) level and bypass the cooldown — a fast allocation burst (e.g. many large

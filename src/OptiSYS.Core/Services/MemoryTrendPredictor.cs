@@ -55,8 +55,9 @@ public sealed class MemoryTrendPredictor
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
-    /// <summary>Current trend estimate in usage-percent per second (exposed for tests).</summary>
-    internal double TrendPerSecond => _trendPerSecond;
+    /// <summary>Current trend estimate in usage-percent per second. Read by the watcher's
+    /// adaptive cadence (a flat trend is half of the "calm" definition) and by tests.</summary>
+    public double TrendPerSecond => _trendPerSecond;
 
     /// <summary>
     /// Feed the latest sample. Must be called every monitoring tick (even while a cleanup

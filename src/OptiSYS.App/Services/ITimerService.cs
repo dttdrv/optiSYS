@@ -19,4 +19,13 @@ public interface ITimerService
     /// </summary>
     /// <returns>Disposable handle — dispose to stop the timer.</returns>
     IDisposable Start(TimeSpan interval, Action tick);
+
+    /// <summary>
+    /// Like <see cref="Start"/>, but the delay before each tick is re-read from
+    /// <paramref name="nextInterval"/> after the previous tick completes — for adaptive
+    /// cadences (e.g. the memory watcher stretching its tick while the system is calm).
+    /// One-shot re-arming also guarantees a slow tick can never overlap the next.
+    /// </summary>
+    /// <returns>Disposable handle — dispose to stop the timer.</returns>
+    IDisposable StartAdaptive(Func<TimeSpan> nextInterval, Action tick);
 }

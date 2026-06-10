@@ -41,6 +41,36 @@ public sealed class ThreadPoolTimerService : ITimerService
         return subscription;
     }
 
+    public IDisposable StartAdaptive(Func<TimeSpan> nextInterval, Action tick)
+    {
+        ArgumentNullException.ThrowIfNull(nextInterval);
+        ArgumentNullException.ThrowIfNull(tick);
+
+        var subscription = new TimerSubscription();
+        Timer? timer = null;
+        timer = new Timer(_ =>
+        {
+            try
+            {
+                tick();
+            }
+            catch (Exception ex)
+            {
+                StartupLog.WriteException("ThreadPoolTimerService.AdaptiveTick", ex);
+            }
+            finally
+            {
+                // One-shot re-arm with the freshly-read interval; a disposed timer ignores Change.
+                try { timer?.Change(nextInterval(), Timeout.InfiniteTimeSpan); }
+                catch (ObjectDisposedException) { }
+            }
+        }, null, nextInterval(), Timeout.InfiniteTimeSpan);
+
+        subscription.Bind(timer);
+        StartupLog.Write("ThreadPoolTimerService: Started adaptive timer");
+        return subscription;
+    }
+
     private sealed class TimerSubscription : IDisposable
     {
         private Timer? _timer;
