@@ -137,6 +137,80 @@ internal static partial class NativeMethods
             ? TimeSpan.FromTicks(kernelTime + userTime)
             : null;
 
+    // ── Per-process context-switch counts (wakeup pressure) ──────────
+    // Well-known x64 SYSTEM_PROCESS_INFORMATION layout: process entry header 256 bytes
+    // (NextEntryOffset +0, NumberOfThreads +4, UniqueProcessId +80), followed by
+    // NumberOfThreads x 80-byte SYSTEM_THREAD_INFORMATION entries with ContextSwitches +64.
+    // The Lab `wakeup` probe self-checks these offsets against the system Context Switches/sec
+    // counter on every run.
+
+    private const int SystemProcessInformationClass = 5;
+    private const int ProcessEntryHeaderBytes = 256;
+    private const int ThreadEntryBytes = 80;
+    private const int ThreadContextSwitchesOffset = 64;
+
+    [LibraryImport("ntdll.dll")]
+    internal static partial int NtQuerySystemInformation(
+        int systemInformationClass, IntPtr systemInformation, int systemInformationLength, out int returnLength);
+
+    /// <summary>
+    /// One snapshot of every process's cumulative context-switch count (threads summed).
+    /// Null when the query fails so callers treat the sweep as "no fresh evidence".
+    /// </summary>
+    internal static IReadOnlyDictionary<int, long>? GetProcessContextSwitchCounts()
+    {
+        var size = 1 << 20;
+        var buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            while (NtQuerySystemInformation(SystemProcessInformationClass, buffer, size, out var needed) != 0)
+            {
+                if (needed <= size)
+                    return null;   // a non-length error
+
+                size = needed + (64 * 1024);
+                Marshal.FreeHGlobal(buffer);
+                buffer = Marshal.AllocHGlobal(size);
+            }
+
+            var counts = new Dictionary<int, long>();
+            var offset = 0;
+            while (true)
+            {
+                var entry = buffer + offset;
+                var nextOffset = Marshal.ReadInt32(entry, 0);
+                var threadCount = Marshal.ReadInt32(entry, 4);
+                var pid = (int)Marshal.ReadIntPtr(entry, 80);
+
+                if (pid > 4)
+                {
+                    long switches = 0;
+                    for (var t = 0; t < threadCount; t++)
+                    {
+                        var thread = entry + ProcessEntryHeaderBytes + t * ThreadEntryBytes;
+                        switches += (uint)Marshal.ReadInt32(thread, ThreadContextSwitchesOffset);
+                    }
+
+                    counts[pid] = switches;
+                }
+
+                if (nextOffset == 0)
+                    break;
+                offset += nextOffset;
+            }
+
+            return counts;
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     // ── Foreground window → process id ────────────────────────────────
 
     internal static uint GetForegroundProcessId()

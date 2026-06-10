@@ -46,6 +46,11 @@ public interface INativeBridge : IDisposable
     // Time since the last user input, system-wide (GetLastInputInfo). Zero on failure so the
     // safe interpretation is always "user present".
     TimeSpan GetUserIdleTime();
+
+    // C-state guardian: cumulative context-switch counts per pid, from one system snapshot
+    // (NtQuerySystemInformation). Null when the query fails — callers keep their previous
+    // classification rather than acting on a guess.
+    IReadOnlyDictionary<int, long>? GetProcessContextSwitchCounts();
 }
 
 public struct NativeBatteryInfo

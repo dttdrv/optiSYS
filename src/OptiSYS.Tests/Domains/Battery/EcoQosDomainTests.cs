@@ -20,6 +20,7 @@ public class EcoQosDomainTests
 
     private DateTime _now = T0;
     private readonly Dictionary<int, double> _cpuSeconds = [];
+    private readonly Dictionary<int, long> _switchCounts = [];
     private readonly HashSet<int> _audible = [];
 
     private static NativeProcessInfo Proc(int pid, string name) =>
@@ -31,14 +32,21 @@ public class EcoQosDomainTests
         native.Setup(n => n.GetForegroundProcessId()).Returns(foreground);
         native.Setup(n => n.GetProcessList()).Returns(processes);
         native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
+        native.Setup(n => n.SetTimerResolution(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
         native.Setup(n => n.GetProcessCpuTime(It.IsAny<int>()))
             .Returns<int>(pid => _cpuSeconds.TryGetValue(pid, out var s) ? TimeSpan.FromSeconds(s) : null);
         native.Setup(n => n.GetAudibleProcessIds()).Returns(() => _audible.ToList());
+        native.Setup(n => n.GetProcessContextSwitchCounts())
+            .Returns(() => new Dictionary<int, long>(_switchCounts));
 
-        // Every known process starts with a readable zero CPU time, so the first sweep records a
-        // baseline sample; tests that need an unreadable process remove its entry explicitly.
+        // Every known process starts with a readable zero CPU time and a zero switch counter, so
+        // the first sweep records baseline samples; tests that need an unreadable process remove
+        // its entries explicitly.
         foreach (var p in processes)
+        {
             _cpuSeconds.TryAdd(p.ProcessId, 0);
+            _switchCounts.TryAdd(p.ProcessId, 0);
+        }
 
         return native;
     }
@@ -328,6 +336,90 @@ public class EcoQosDomainTests
         native.Verify(n => n.SetEcoQos(false, 1002), Times.Once);   // widened-only -> released
         native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);    // drainer stays throttled
         native.Verify(n => n.SetEcoQos(false, 1001), Times.Never);
+    }
+
+    // ── C-state guardian: wakeup-storm quieting ──────────────────────
+
+    [Fact]
+    public void Reconcile_WakeupStormer_IsQuieted_EvenWithNearZeroCpu()
+    {
+        // The C-state insight: a process waking 400x/s at ~0% CPU murders package sleep
+        // residency while looking innocent in every CPU-ranked list. It gets BOTH hints —
+        // EcoQoS and timer coalescing (IGNORE_TIMER_RESOLUTION), the C-state-specific lever.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "chatty"));
+        var domain = Domain(native);
+
+        domain.Reconcile();
+        _switchCounts[1001] += 4_000;            // 400/s over the next 10s, CPU stays zero
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
+        native.Verify(n => n.SetTimerResolution(true, 1001), Times.Once);
+    }
+
+    [Fact]
+    public void Reconcile_CpuDrainer_DoesNotGetTheTimerHint()
+    {
+        // EcoQoS handles execution-speed burners; the coalescing hint is reserved for wakeup
+        // storms (it changes timer behavior, so it is applied only on wakeup evidence).
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "burner"));
+        var domain = Domain(native);
+
+        domain.Reconcile();
+        Burn(1001, 0.5);                         // 5% CPU, no wakeup storm
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
+        native.Verify(n => n.SetTimerResolution(It.IsAny<bool>(), 1001), Times.Never);
+    }
+
+    [Fact]
+    public void Reconcile_CalmedStormer_GetsBothHintsReleased()
+    {
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "chatty"));
+        var domain = Domain(native);
+
+        domain.Reconcile();
+        _switchCounts[1001] += 4_000;
+        Sweep(domain);                           // quieted (both hints)
+        Sweep(domain);                           // counter flat from here: the storm is over
+        Sweep(domain);
+        Sweep(domain);
+        Sweep(domain);
+        Sweep(domain);                           // window decayed below the exit rate
+
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
+        native.Verify(n => n.SetTimerResolution(false, 1001), Times.Once);
+    }
+
+    [Fact]
+    public void Reconcile_AudibleStormer_IsExempt()
+    {
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "player"));
+        var domain = Domain(native);
+        _audible.Add(1001);
+
+        domain.Reconcile();
+        _switchCounts[1001] += 4_000;
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+        native.Verify(n => n.SetTimerResolution(It.IsAny<bool>(), 1001), Times.Never);
+    }
+
+    [Fact]
+    public void Revert_ClearsTheTimerHintsToo()
+    {
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "chatty"));
+        var domain = Domain(native);
+        domain.Apply(domain.CaptureBaseline());
+        _switchCounts[1001] += 4_000;
+        Sweep(domain);                           // quieted (both hints)
+
+        domain.Revert(new DomainSnapshot { DomainId = "ecoqos" });
+
+        native.Verify(n => n.SetTimerResolution(false, 1001), Times.Once);
+        Assert.False(domain.IsActive);
     }
 
     // ── Readback-aware reconcile ──────────────────────────────────────

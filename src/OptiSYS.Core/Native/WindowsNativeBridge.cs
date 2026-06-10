@@ -194,6 +194,9 @@ public sealed class WindowsNativeBridge : INativeBridge
 
     public TimeSpan GetUserIdleTime() => NativeMethods.GetUserIdleTime();
 
+    public IReadOnlyDictionary<int, long>? GetProcessContextSwitchCounts() =>
+        NativeMethods.GetProcessContextSwitchCounts();
+
     public bool GetMemoryInfo(out Interfaces.NativeMemoryInfo info)
     {
         info = default;

@@ -32,8 +32,13 @@ public sealed class EcoQosDomain : IOptimizationDomain
     private readonly INativeBridge _native;
     private readonly Func<DateTime> _utcNow;
     private readonly BackgroundDrainTracker _drainTracker = new();
+    // The C-state guardian: classifies wakeup storm-makers (context-switch rate), which get the
+    // timer-coalescing hint on top of EcoQoS — package sleep residency is the battery, and a
+    // low-CPU process waking hundreds of times a second drains it while looking innocent.
+    private readonly WakeupPressureTracker _wakeupTracker = new();
     private bool _applied;
     private readonly HashSet<uint> _throttledPids = [];
+    private readonly HashSet<uint> _timerQuietedPids = [];
     private readonly object _gate = new();
 
     public string Id => "ecoqos";
@@ -114,15 +119,40 @@ public sealed class EcoQosDomain : IOptimizationDomain
                 samples.Add(new ProcessCpuSample((int)pid, cpuTime));
         }
 
-        _drainTracker.Observe(samples, _utcNow());
+        var now = _utcNow();
+        _drainTracker.Observe(samples, now);
 
+        // Wakeup pressure: one system snapshot per sweep feeds the storm classifier. A failed
+        // snapshot (null) freezes the previous classification instead of acting on a guess.
+        var switchCounts = _native.GetProcessContextSwitchCounts();
+        if (switchCounts is not null)
+        {
+            var wakeupSamples = new List<ProcessWakeupSample>();
+            foreach (var pid in candidates)
+            {
+                if (switchCounts.TryGetValue((int)pid, out var count))
+                    wakeupSamples.Add(new ProcessWakeupSample((int)pid, count));
+            }
+
+            _wakeupTracker.Observe(wakeupSamples, now);
+        }
+
+        var stormers = _wakeupTracker.CurrentStormers;
         var audible = _native.GetAudibleProcessIds();
         var desired = widenToAllCandidates
             ? new HashSet<uint>(candidates.Where(pid => !audible.Contains((int)pid)))
             : new HashSet<uint>(
                 _drainTracker.CurrentDrainers
+                    .Concat(stormers)
                     .Where(pid => candidates.Contains((uint)pid) && !audible.Contains(pid))
                     .Select(pid => (uint)pid));
+
+        // Stormers additionally get the timer-coalescing hint: EcoQoS slows their execution, but
+        // coalescing their timer expirations is what restores package C-state residency. The hint
+        // follows stormer status exactly — released the sweep the storm calms, even if the
+        // process stays throttled as a CPU drainer.
+        var desiredTimerQuiet = new HashSet<uint>(
+            desired.Where(pid => stormers.Contains((int)pid)));
 
         int throttled = 0, released = 0, failed = 0, alreadyThrottled = 0, verified = 0, active;
         lock (_gate)
@@ -170,6 +200,23 @@ public sealed class EcoQosDomain : IOptimizationDomain
                 }
             }
 
+            // Timer-coalescing hints track stormer status: release the calmed, quiet the new.
+            foreach (var pid in _timerQuietedPids.Where(p => !desiredTimerQuiet.Contains(p)).ToList())
+            {
+                try { _native.SetTimerResolution(false, (int)pid); } catch { }
+                _timerQuietedPids.Remove(pid);
+            }
+
+            foreach (var pid in desiredTimerQuiet.Where(p => !_timerQuietedPids.Contains(p)))
+            {
+                try
+                {
+                    if (_native.SetTimerResolution(true, (int)pid))
+                        _timerQuietedPids.Add(pid);
+                }
+                catch { }
+            }
+
             active = _throttledPids.Count;
         }
 
@@ -213,7 +260,13 @@ public sealed class EcoQosDomain : IOptimizationDomain
             try { SetEcoQos((int)pid, enable: false); } catch { }
         }
 
+        foreach (var pid in _timerQuietedPids)
+        {
+            try { _native.SetTimerResolution(false, (int)pid); } catch { }
+        }
+
         _throttledPids.Clear();
+        _timerQuietedPids.Clear();
     }
 
     public DomainStatus GetStatus() => new()
