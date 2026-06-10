@@ -102,4 +102,46 @@ public class AdaptiveEcoQosControllerTests
         native.Verify(n => n.GetProcessList(), Times.Never);
         controller.Dispose();
     }
+
+    // ── Cadence outcomes: what each tick reports drives the adaptive back-off ──
+
+    [Fact]
+    public void MaintainOnce_SteadyStateReconcile_ReportsNoOp()
+    {
+        // Activate already throttled the one background process; a sweep over the identical
+        // process list changes nothing -> NoOp, the only outcome that backs the cadence off.
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, _) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.NoOp, controller.MaintainOnce());
+        controller.Dispose();
+    }
+
+    [Fact]
+    public void MaintainOnce_NewBackgroundProcess_ReportsDidWork()
+    {
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, native) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        // A newly-spawned background process appears -> the sweep throttles it -> real work.
+        native.Setup(n => n.GetProcessList())
+            .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "newbg") });
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, controller.MaintainOnce());
+        controller.Dispose();
+    }
+
+    [Fact]
+    public void MaintainOnce_WhenIneligible_ReportsSkipped()
+    {
+        // On AC the tick bails before the sweep — cheap check, so the cadence must stay fast.
+        var settings = new Settings { EcoQosEnabled = true };
+        var (controller, domain, _) = Build(PowerSource.Ac, settings);
+        Activate(domain);
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.Skipped, controller.MaintainOnce());
+        controller.Dispose();
+    }
 }

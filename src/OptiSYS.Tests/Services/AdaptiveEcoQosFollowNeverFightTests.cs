@@ -68,11 +68,14 @@ public class AdaptiveEcoQosFollowNeverFightTests
         Activate(domain);                 // throttles 1001
         native.Invocations.Clear();
 
-        controller.MaintainOnce();
+        var outcome = controller.MaintainOnce();
 
         // Reversible stand-down: throttling already applied is released (back to OS-managed).
+        // Releasing is real work, so the cadence outcome must be DidWork (stays fast while the
+        // user is in a high-performance mode with throttling still to unwind).
         native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
         Assert.False(domain.IsActive);
+        Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, outcome);
         controller.Dispose();
     }
 
