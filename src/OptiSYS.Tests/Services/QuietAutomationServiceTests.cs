@@ -155,6 +155,110 @@ public sealed class QuietAutomationServiceTests
     }
 
     [Fact]
+    public async Task TimerTick_SustainedCritical_FutileFullReclaimDoesNotRepeatEveryTick()
+    {
+        // Thrash guard: when a full critical reclaim completes but frees ~nothing (<1% of physical),
+        // what remains is unreclaimable working sets — repeating the Aggressive pass every tick
+        // reclaims nothing and costs re-faults. The escalation disarms for the rest of the episode;
+        // sustained pressure stays with the cooldown-spaced reactive path. (Effective passes DO
+        // repeat — pinned by TimerTick_WhenMemoryCritical_EscalatesToAggressive_BypassingCooldown.)
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 60,
+            MemoryCriticalThresholdPercent = 85,
+            MemoryCooldownSeconds = 300,
+        };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        memory.Setup(m => m.GetCurrentMemoryInfo()).Returns(Mem(90, commitRatio: 0.5));
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Aggressive, 0, 60, false, 0, true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 0 });   // ran, freed nothing
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        timer.Tick(); await service.LastEvaluationForTests;   // 90% -> fires the one full reclaim
+        timer.Tick(); await service.LastEvaluationForTests;   // still 90% -> disarmed, must not fire
+        timer.Tick(); await service.LastEvaluationForTests;
+
+        optimizer.Verify(o => o.OptimizeAll(
+            It.IsAny<OptimizationLevel>(), It.IsAny<int>(), It.IsAny<int>(),
+            It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<bool>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task TimerTick_CriticalEscalation_RearmsOnceUsageFallsBelowCriticalMinusGap()
+    {
+        // crit 85, gap 10 -> the episode ends at <=75. 90 (futile fire #1) -> 90 (disarmed) ->
+        // 70 (re-arms; reactive path is cooldown-blocked) -> 90 (fire #2 for the new burst).
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 60,
+            MemoryCriticalThresholdPercent = 85,
+            HysteresisGap = 10,
+            MemoryCooldownSeconds = 300,
+        };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        memory.SetupSequence(m => m.GetCurrentMemoryInfo())
+            .Returns(Mem(90, commitRatio: 0.5))
+            .Returns(Mem(90, commitRatio: 0.5))
+            .Returns(Mem(70, commitRatio: 0.5))
+            .Returns(Mem(90, commitRatio: 0.5));
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Aggressive, 0, 60, false, 0, true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 0 });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        timer.Tick(); await service.LastEvaluationForTests;   // 90% -> fire #1 (futile -> disarm)
+        timer.Tick(); await service.LastEvaluationForTests;   // 90% -> disarmed
+        timer.Tick(); await service.LastEvaluationForTests;   // 70% <= 75 -> re-arm
+        timer.Tick(); await service.LastEvaluationForTests;   // 90% -> fire #2
+
+        optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task TimerTick_CriticalEscalation_BoundaryHoverDoesNotRearm()
+    {
+        // Oscillating across the critical line must not re-fire per crossing: 90 (futile fire) ->
+        // 80 (below crit 85 but above the 75 re-arm line -> stays disarmed) -> 90 (no fire).
+        var settings = new Settings
+        {
+            MemoryThresholdPercent = 60,
+            MemoryCriticalThresholdPercent = 85,
+            HysteresisGap = 10,
+            MemoryCooldownSeconds = 300,
+        };
+        var timer = new FakeTimerService();
+        var memory = new Mock<IMemoryInfoService>();
+        var optimizer = new Mock<IMemoryOptimizer>();
+
+        memory.SetupSequence(m => m.GetCurrentMemoryInfo())
+            .Returns(Mem(90, commitRatio: 0.5))
+            .Returns(Mem(80, commitRatio: 0.5))
+            .Returns(Mem(90, commitRatio: 0.5));
+        optimizer.Setup(o => o.OptimizeAll(OptimizationLevel.Aggressive, 0, 60, false, 0, true))
+            .Returns(new OptimizationResult { Success = true, FreedBytes = 0 });
+
+        var service = CreateService(settings, timer, memory, optimizer);
+        await service.StartAsync();
+
+        timer.Tick(); await service.LastEvaluationForTests;   // 90% -> fire (futile -> disarm)
+        timer.Tick(); await service.LastEvaluationForTests;   // 80% -> hover, no re-arm
+        timer.Tick(); await service.LastEvaluationForTests;   // 90% -> still disarmed
+
+        optimizer.Verify(o => o.OptimizeAll(
+            OptimizationLevel.Aggressive, 0, 60, false, 0, true), Times.Once);
+    }
+
+    [Fact]
     public async Task TimerTick_PredictivelyTrimsBelowThreshold_OnRisingTrendUnderCommitPressure()
     {
         var settings = new Settings { MemoryThresholdPercent = 80, MemoryCriticalThresholdPercent = 95, MemoryCooldownSeconds = 15 };

@@ -37,6 +37,10 @@ public sealed class QuietAutomationService : IQuietAutomationService
     private IDisposable? _memoryWatcher;
     private DateTimeOffset? _lastCleanupAt;
     private DateTimeOffset? _lastHintAt;
+    // Critical-escalation arming: the immediate Aggressive reclaim repeats per tick only while it
+    // makes real headway; a futile pass disarms it for the rest of the pressure episode (re-armed
+    // once usage falls below critical - HysteresisGap). See EvaluateMemoryPressureAsync.
+    private bool _criticalReclaimArmed = true;
     private int _started;
     private bool _disposed;
 
@@ -251,11 +255,26 @@ public sealed class QuietAutomationService : IQuietAutomationService
             // OOM prevention: at/above the critical mark, reclaim hard immediately at the full
             // (Aggressive) level and bypass the cooldown — a fast allocation burst (e.g. many large
             // processes) must not blow through the free-RAM buffer between spaced-out cleanups.
+            // Hysteresis on repeats: the escalation stays armed only while passes make real headway
+            // (a burst keeps yielding freed pages). A completed-but-futile pass means the rest is
+            // unreclaimable working sets — repeating it every tick reclaims nothing and costs
+            // re-faults — so it disarms for the rest of the episode and sustained pressure falls to
+            // the cooldown-spaced reactive path below.
             if (info.UsagePercent >= _settings.MemoryCriticalThresholdPercent)
             {
-                Publish($"Critical memory pressure ({info.UsagePercent:0}%); full reclaim.");
-                await RunCleanupCoreAsync(triggeredByThreshold: true, forceLevel: OptimizationLevel.Aggressive).ConfigureAwait(false);
-                return;
+                if (_criticalReclaimArmed)
+                {
+                    Publish($"Critical memory pressure ({info.UsagePercent:0}%); full reclaim.");
+                    var outcome = await RunCleanupCoreAsync(triggeredByThreshold: true, forceLevel: OptimizationLevel.Aggressive).ConfigureAwait(false);
+                    var ranButFreedNothing = outcome is { Success: true } &&
+                        outcome.FreedBytes < EffectiveCriticalFreedFloor(info.TotalPhysicalBytes);
+                    _criticalReclaimArmed = !ranButFreedNothing;
+                    return;
+                }
+            }
+            else if (info.UsagePercent <= Math.Max(0, _settings.MemoryCriticalThresholdPercent - _settings.HysteresisGap))
+            {
+                _criticalReclaimArmed = true;   // pressure episode over; re-arm for the next burst
             }
 
             if (_lastCleanupAt is not null &&
@@ -298,17 +317,19 @@ public sealed class QuietAutomationService : IQuietAutomationService
         }
     }
 
-    private async Task RunCleanupCoreAsync(bool triggeredByThreshold, OptimizationLevel? forceLevel = null)
+    // Returns the optimizer's result so the critical-escalation arming can judge effectiveness;
+    // null when the cleanup didn't run at all (paused, or another cleanup holds the gate).
+    private async Task<OptimizationResult?> RunCleanupCoreAsync(bool triggeredByThreshold, OptimizationLevel? forceLevel = null)
     {
         if (_settings.AutomationPaused && triggeredByThreshold)
         {
-            return;
+            return null;
         }
 
         if (!await _cleanupGate.WaitAsync(0).ConfigureAwait(false))
         {
             Publish("Safe cleanup is already running.");
-            return;
+            return null;
         }
 
         try
@@ -334,7 +355,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
             if (!result.Success)
             {
                 Publish($"Safe cleanup skipped: {result.Message}");
-                return;
+                return result;
             }
 
             if (result.FreedBytes > 0)
@@ -347,6 +368,7 @@ public sealed class QuietAutomationService : IQuietAutomationService
                 : "a lighter working set";
             var triggerLabel = triggeredByThreshold ? "Automatic safe cleanup" : "Safe cleanup";
             Publish($"{triggerLabel} finished; recovered {freedDisplay}.");
+            return result;
         }
         finally
         {
@@ -355,6 +377,12 @@ public sealed class QuietAutomationService : IQuietAutomationService
             RaiseStateChanged();
         }
     }
+
+    // "Effective" floor for a critical reclaim: at least 1% of physical RAM. A working burst
+    // reclaim frees on the order of gigabytes (standby purge); a futile one frees a few tens of
+    // megabytes of noise. Min 1 byte keeps the comparison meaningful on degenerate totals.
+    private static long EffectiveCriticalFreedFloor(long totalPhysicalBytes) =>
+        Math.Max(1, totalPhysicalBytes / 100);
 
     private void RevertActiveBatteryDomains()
     {
