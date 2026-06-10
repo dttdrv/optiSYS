@@ -118,16 +118,26 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 
         processInfos.Sort((a, b) => b.workingSet.CompareTo(a.workingSet));
 
-        // Heat gate: trimming a process that is actively executing is counterproductive — it
-        // re-faults its working set straight back, costing CPU, I/O, and battery for nothing.
-        // Two CPU samples around a short dwell identify the hot candidates so the trim only
-        // touches genuinely idle memory. No bridge (legacy path) -> no gate.
+        // Heat demotion: a hot candidate's actively-touched pages fault straight back, so its
+        // trim only partially sticks (the cold fraction) while costing re-fault churn. Cold
+        // candidates therefore trim FIRST; hot ones run last and only while the reclaim target
+        // is still unmet — under real pressure the burner IS reclaimed (this may be the only
+        // lever that reaches a protected burner, e.g. a leftover node process), while a met
+        // target leaves it in peace. No target (the manual full pass) trims everything.
+        // No bridge (legacy path) -> no demotion.
         var hotPids = _native is null
             ? []
             : IdentifyHotPids(
                 processInfos.Select(p => p.pid).ToList(),
                 _native.GetProcessCpuTime,
                 Thread.Sleep);
+        if (hotPids.Count > 0)
+        {
+            var demoted = new List<(int pid, long workingSet)>(processInfos.Count);
+            demoted.AddRange(processInfos.Where(p => !hotPids.Contains(p.pid)));
+            demoted.AddRange(processInfos.Where(p => hotPids.Contains(p.pid)));
+            processInfos = demoted;
+        }
 
         int trimmed = 0, failed = 0;
         long freedBytes = 0;
@@ -135,10 +145,13 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 
         foreach (var (pid, _) in processInfos)
         {
-            if (hotPids.Contains(pid))
+            // Before each demoted (hot) trim, re-check the target: once the cold trims have met
+            // it, every remaining hot trim would be pure churn.
+            if (targetAvailableBytes > 0 && hotPids.Contains(pid)
+                && (long)GetAvailablePhysicalBytesQuick() >= targetAvailableBytes)
             {
-                skipped++;
-                continue;
+                earlyExit = true;
+                break;
             }
 
             try

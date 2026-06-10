@@ -199,32 +199,63 @@ public class MemoryOptimizerTests
         Assert.True(dwelled > TimeSpan.Zero);   // the dwell really separates the two samples
     }
 
-    [Fact]
-    public void TrimProcessWorkingSets_SkipsHotProcesses_AndTrimsColdOnes()
+    // Bridge for the heat-demotion tests: pid 42 is cold through the dwell, pid 44 burns 20% of
+    // a core AND has the bigger working set (so size-only ordering would trim it first).
+    private static Mock<INativeBridge> ColdAndHotBridge(List<int> trimOrder)
     {
-        // Trimming a process that is actively executing is counterproductive — it re-faults its
-        // working set straight back. The heat gate skips it; the idle one is trimmed as before.
-        var memoryInfo = new Mock<IMemoryInfoService>();
         var native = new Mock<INativeBridge>();
         native.Setup(n => n.GetForegroundProcessId()).Returns(7);
         native.Setup(n => n.GetProcessList()).Returns([
             new NativeProcessInfo { ProcessId = 42, ProcessName = "cold", WorkingSetBytes = 64L * 1024 * 1024 },
-            new NativeProcessInfo { ProcessId = 44, ProcessName = "hot", WorkingSetBytes = 64L * 1024 * 1024 },
+            new NativeProcessInfo { ProcessId = 44, ProcessName = "hot", WorkingSetBytes = 128L * 1024 * 1024 },
         ]);
         native.SetupSequence(n => n.GetProcessCpuTime(42))
-            .Returns(TimeSpan.Zero).Returns(TimeSpan.Zero);                      // idle through the dwell
+            .Returns(TimeSpan.Zero).Returns(TimeSpan.Zero);
         native.SetupSequence(n => n.GetProcessCpuTime(44))
-            .Returns(TimeSpan.Zero).Returns(TimeSpan.FromMilliseconds(40));     // 20% of a core
-        native.Setup(n => n.TrimProcessWorkingSet(42)).Returns(50L * 1024 * 1024);
+            .Returns(TimeSpan.Zero).Returns(TimeSpan.FromMilliseconds(40));
+        native.Setup(n => n.TrimProcessWorkingSet(It.IsAny<int>()))
+            .Returns(8L * 1024 * 1024)
+            .Callback<int>(trimOrder.Add);
+        return native;
+    }
 
-        using var optimizer = new MemoryOptimizer(memoryInfo.Object, native.Object)
+    [Fact]
+    public void TrimProcessWorkingSets_NoTarget_TrimsEverything_ButColdBeforeHot()
+    {
+        // A hot process's trim only partially sticks (its active pages fault straight back), so
+        // cold candidates go first — but with no reclaim target (the manual full pass) the hot
+        // one is still trimmed: it may be the only lever that reaches a protected burner.
+        var trimOrder = new List<int>();
+        var native = ColdAndHotBridge(trimOrder);
+
+        using var optimizer = new MemoryOptimizer(new Mock<IMemoryInfoService>().Object, native.Object)
         {
             ExcludedProcesses = [],
         };
 
         var result = optimizer.TrimProcessWorkingSets();
 
-        Assert.Equal(1, result.trimmed);
+        Assert.Equal(2, result.trimmed);
+        Assert.Equal(new[] { 42, 44 }, trimOrder);   // cold first despite the hot one being bigger
+    }
+
+    [Fact]
+    public void TrimProcessWorkingSets_SparesHotProcesses_WhenColdTrimsAlreadyMeetTheTarget()
+    {
+        // With the reclaim target met by the time the demoted (hot) section starts, every
+        // remaining hot trim would be pure re-fault churn — the pass exits instead.
+        var trimOrder = new List<int>();
+        var native = ColdAndHotBridge(trimOrder);
+        var ops = new FakeSystemOps(initialAvailable: 600L * 1024 * 1024, reclaimPerCommand: 0);
+
+        using var optimizer = new MemoryOptimizer(new Mock<IMemoryInfoService>().Object, native.Object, ops)
+        {
+            ExcludedProcesses = [],
+        };
+
+        var result = optimizer.TrimProcessWorkingSets(targetAvailableBytes: 500L * 1024 * 1024);
+
+        Assert.True(result.earlyExit);
         native.Verify(n => n.TrimProcessWorkingSet(42), Times.Once);
         native.Verify(n => n.TrimProcessWorkingSet(44), Times.Never);
     }
