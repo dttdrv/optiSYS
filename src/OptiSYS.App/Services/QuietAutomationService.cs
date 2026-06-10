@@ -400,9 +400,10 @@ public sealed class QuietAutomationService : IQuietAutomationService
 
     private void ApplySafeDomainSettings()
     {
-        // None of the system-mutating battery domains are force-enabled. EcoQoS + Timer Resolution
-        // throttle ALL non-foreground processes; CPU parking writes the user-facing "Minimum
-        // Processor State" power setting — so all are opt-in only (respect the user's saved setting,
+        // None of the system-mutating battery domains are force-enabled. EcoQoS is drain-aware
+        // (default-on, but the user's saved opt-out is always respected); Timer Resolution
+        // throttles ALL non-foreground processes and CPU parking writes the user-facing "Minimum
+        // Processor State" power setting — so those stay opt-in (respect the user's saved setting,
         // which persists across restarts). This method only force-DISABLES the domains optiSYS never
         // auto-applies; it must never force any of them on.
         _settings.BackgroundServicesEnabled = false;

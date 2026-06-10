@@ -158,6 +158,37 @@ public class SettingsPersistenceTests
         Assert.Equal(Settings.CurrentSchemaVersion, loaded.SchemaVersion);
     }
 
+    [Fact]
+    public void Migrate_PreV3Config_AdoptsDefaultOnDrainAwareEcoQos()
+    {
+        var path = NewSettingsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        // Pre-v3 configs persisted EcoQosEnabled=false as the OLD default (blanket throttling
+        // was opt-in) and there is no UI toggle to change it — so the drain-aware default-on
+        // must be adopted on upgrade rather than leaving the feature permanently dead.
+        File.WriteAllText(path, "{ \"SchemaVersion\": 2, \"EcoQosEnabled\": false }");
+
+        var loaded = Settings.Load(path);
+
+        Assert.True(loaded.EcoQosEnabled);
+        Assert.Equal(Settings.CurrentSchemaVersion, loaded.SchemaVersion);
+    }
+
+    [Fact]
+    public void Migrate_CurrentVersionOptOut_IsRespected()
+    {
+        var path = NewSettingsPath();
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        // An opt-out saved at the CURRENT schema version is a deliberate user choice — never
+        // overridden by the migration.
+        File.WriteAllText(path,
+            $"{{ \"SchemaVersion\": {Settings.CurrentSchemaVersion}, \"EcoQosEnabled\": false }}");
+
+        var loaded = Settings.Load(path);
+
+        Assert.False(loaded.EcoQosEnabled);
+    }
+
     // ── 4. Validate-on-save ──────────────────────────────────────────
     [Fact]
     public void SaveTo_ClampsOutOfRangeRuntimeValues()

@@ -14,6 +14,7 @@ public sealed class QuietAutomationServiceTests
     {
         var settings = new Settings
         {
+            EcoQosEnabled = false,                  // explicit opt-out
             BackgroundServicesEnabled = true,
             UsbSuspendEnabled = true,
             NetworkPowerEnabled = true,
@@ -26,7 +27,7 @@ public sealed class QuietAutomationServiceTests
 
         await service.StartAsync();
 
-        Assert.False(settings.EcoQosEnabled);       // opt-in now — never force-enabled
+        Assert.False(settings.EcoQosEnabled);       // startup respects an explicit opt-out — never force-enables
         Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
         Assert.False(settings.UsbSuspendEnabled);
@@ -506,7 +507,7 @@ public sealed class QuietAutomationServiceTests
     [Fact]
     public async Task ApplyBatteryPreset_ActivatesOnlyEngineCategoryAfterSafeSettings()
     {
-        var settings = new Settings();
+        var settings = new Settings { EcoQosEnabled = false };   // explicit opt-out
         var timer = new FakeTimerService();
         var engine = new Mock<IOptimizationEngine>();
         engine.Setup(e => e.GetAllStatuses()).Returns([]);
@@ -518,7 +519,7 @@ public sealed class QuietAutomationServiceTests
         service.ApplyBatteryPreset();
 
         engine.Verify(e => e.ActivateCategory("Battery"), Times.Once);
-        Assert.False(settings.EcoQosEnabled);       // opt-in — never force-enabled
+        Assert.False(settings.EcoQosEnabled);       // an explicit opt-out is never force-enabled
         Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
         Assert.True(settings.CpuParkingEnabled);    // left at its default (auto-on-battery); ApplySafeDomainSettings neither forces nor disables it

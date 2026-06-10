@@ -16,7 +16,7 @@ public class SettingsTests
         Assert.True(settings.AutoOptimizeOnBattery);
         Assert.False(settings.AutomationPaused);
         Assert.True(settings.AutoOptimizeMemoryEnabled);
-        Assert.False(settings.EcoQosEnabled);   // opt-in now (throttles all non-foreground processes)
+        Assert.True(settings.EcoQosEnabled);    // default-on: drain-aware targeting throttles only measured burners (audible exempt)
         Assert.False(settings.TimerResolutionEnabled);
         Assert.False(settings.BackgroundServicesEnabled);
         Assert.False(settings.UsbSuspendEnabled);

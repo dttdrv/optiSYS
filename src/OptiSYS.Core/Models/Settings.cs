@@ -109,7 +109,7 @@ public sealed class Settings
     /// Persisted settings schema version. Bumped when a migration is added; a file with a lower
     /// (or missing → 0) version is upgraded on Load via <see cref="Migrate"/>.
     /// </summary>
-    internal const int CurrentSchemaVersion = 2;
+    internal const int CurrentSchemaVersion = 3;
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
     // ── Battery optimization settings ────────────────────────────────
@@ -119,9 +119,11 @@ public sealed class Settings
     public int DebouncePowerChangeSeconds { get; set; } = 2;
 
     // Battery domain toggles
-    // EcoQoS and TimerResolution throttle ALL non-foreground processes, so they are
-    // opt-in only (default OFF) per the overhaul design §3 — never enable silently.
-    public bool EcoQosEnabled { get; set; } = false;
+    // EcoQoS is default-ON since it became drain-aware: it throttles only background processes
+    // with MEASURED sustained CPU burn (audible + protected apps exempt), an EcoQoS-shaped
+    // reversible hint with evidence behind every throttle. TimerResolution still affects ALL
+    // non-foreground processes, so it stays opt-in (default OFF) — never enable silently.
+    public bool EcoQosEnabled { get; set; } = true;
     public bool TimerResolutionEnabled { get; set; } = false;
     public bool BackgroundServicesEnabled { get; set; } = false;
     public bool UsbSuspendEnabled { get; set; } = false;
@@ -353,6 +355,16 @@ public sealed class Settings
             MemoryThresholdPercent = 50;
             MemoryCriticalThresholdPercent = 75;
         }
+
+        // v2 -> v3: EcoQoS became drain-aware (throttles only measured burners, audible exempt)
+        // and default-ON. Pre-v3 configs persisted false as the OLD default — and with no UI
+        // toggle, leaving it would keep the feature permanently dead on upgrades. An opt-out
+        // saved at v3+ is a deliberate choice and is respected.
+        if (SchemaVersion < 3)
+        {
+            EcoQosEnabled = true;
+        }
+
         SchemaVersion = CurrentSchemaVersion;
     }
 
