@@ -374,12 +374,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE7E8;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="Automatic optimization" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Keeps your PC fast and efficient in the background — frees memory under pressure and reduces Wi-Fi latency. Fully automatic and reversible; nothing to configure." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
+                                <ToggleSwitch x:Name="AutomaticOptimizationToggle" Grid.Column="2" IsOn="True" Toggled="OnAutomaticOptimizationToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" AutomationProperties.Name="Automatic optimization" />
                             </Grid>
                         </Border>
 
@@ -393,12 +393,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE7F4;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE7F4;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="Start optiSYS with Windows" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Automatically launch in the background when logging into Windows." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="StartWithWindowsToggle" Grid.Column="2" IsOn="True" Toggled="OnStartWithWindowsToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
+                                <ToggleSwitch x:Name="StartWithWindowsToggle" Grid.Column="2" IsOn="True" Toggled="OnStartWithWindowsToggled" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" AutomationProperties.Name="Start optiSYS with Windows" />
                             </Grid>
                         </Border>
 
@@ -410,12 +410,12 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <FontIcon Glyph="&#xE70F;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <FontIcon AutomationProperties.AccessibilityView="Raw" Glyph="&#xE70F;" FontSize="20" Foreground="{ThemeResource SystemAccentColorBrush}" VerticalAlignment="Center" Margin="0,0,8,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                     <TextBlock Text="Minimize to System Tray" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Text="Closing the app window keeps it running in the taskbar tray." Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" />
+                                <ToggleSwitch x:Name="MinimizeToTrayToggle" Grid.Column="2" IsOn="True" Toggled="OnSettingsChanged" VerticalAlignment="Center" MinWidth="0" HorizontalAlignment="Right" AutomationProperties.Name="Minimize to system tray" />
                             </Grid>
                         </Border>
 
