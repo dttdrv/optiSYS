@@ -192,6 +192,8 @@ public sealed class WindowsNativeBridge : INativeBridge
 
     public IReadOnlyCollection<int> GetAudibleProcessIds() => NativeMethods.GetAudibleProcessIds();
 
+    public TimeSpan GetUserIdleTime() => NativeMethods.GetUserIdleTime();
+
     public bool GetMemoryInfo(out Interfaces.NativeMemoryInfo info)
     {
         info = default;

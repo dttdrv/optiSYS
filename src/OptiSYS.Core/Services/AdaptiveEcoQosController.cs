@@ -90,6 +90,10 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
     private static readonly TimeSpan MaintainInterval = TimeSpan.FromSeconds(6);
     // 10 ticks x 6s = sweeps decay to once a minute in steady state; cheap ticks stay at 6s.
     private const int MaxSweepGapTicks = 10;
+    // Idle deep-saver: after this much time without any user input (on battery), the sweep
+    // widens from measured-drainers-only to all candidates. Short on purpose — the hint is
+    // reversible within one tick of the user's return, so erring early costs nothing.
+    private static readonly TimeSpan IdleDeepThreshold = TimeSpan.FromMinutes(3);
 
     private readonly EcoQosDomain _domain;
     private readonly INativeBridge _native;
@@ -99,6 +103,7 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
     private readonly object _gate = new();
     private System.Threading.Timer? _timer;
     private int _lastForegroundPid;
+    private bool _idleDeep;
     private bool _disposed;
 
     public AdaptiveEcoQosController(
@@ -187,6 +192,16 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
             return EcoQosCadencePolicy.Outcome.DidWork;
         }
 
+        // Idle deep-saver: with the user away past the threshold there is nothing to keep
+        // snappy, so the sweep widens to all candidates (audible/protected stay exempt — music
+        // keeps playing). GetUserIdleTime returns zero on failure, so the safe reading is
+        // always "user present". The mode flip in EITHER direction forces a sweep through any
+        // stretched gap: savings start on the idle tick, and the first input back releases the
+        // widened throttles within one tick.
+        var idleDeep = _native.GetUserIdleTime() >= IdleDeepThreshold;
+        var idleModeChanged = idleDeep != _idleDeep;
+        _idleDeep = idleDeep;
+
         // Focus changes are user-facing (a just-focused app must be released promptly), so they
         // force the sweep through any stretched gap; otherwise the gap decides whether this tick
         // pays for a full process enumeration.
@@ -194,12 +209,12 @@ public sealed class AdaptiveEcoQosController : IAdaptiveEcoQosController
         var foregroundChanged = foregroundPid != _lastForegroundPid;
         _lastForegroundPid = foregroundPid;
 
-        if (!_cadence.ShouldSweep(foregroundChanged))
+        if (!_cadence.ShouldSweep(foregroundChanged || idleModeChanged))
             return EcoQosCadencePolicy.Outcome.SweepDeferred;
 
         try
         {
-            var result = _domain.Reconcile();
+            var result = _domain.Reconcile(widenToAllCandidates: idleDeep);
             // "Work" includes adopting processes the OS already had throttled (ItemsSkipped also
             // counts releases) — slightly conservative: it errs toward sweeping more often.
             var didWork = result.ItemsOptimized > 0 || result.ItemsSkipped > 0;

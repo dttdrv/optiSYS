@@ -42,6 +42,10 @@ public interface INativeBridge : IDisposable
     // Process ids with an ACTIVE audio session on the default render endpoint. Best-effort:
     // empty on failure (no device / COM error) — callers fall back to the static exclusions.
     IReadOnlyCollection<int> GetAudibleProcessIds();
+
+    // Time since the last user input, system-wide (GetLastInputInfo). Zero on failure so the
+    // safe interpretation is always "user present".
+    TimeSpan GetUserIdleTime();
 }
 
 public struct NativeBatteryInfo

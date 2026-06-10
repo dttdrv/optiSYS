@@ -47,10 +47,10 @@ public class EcoQosDomainTests
         new(settings ?? new Settings(), native.Object, () => _now);
 
     /// <summary>Advance the clock and reconcile — one adaptive sweep.</summary>
-    private void Sweep(EcoQosDomain domain, double secondsLater = 10)
+    private void Sweep(EcoQosDomain domain, double secondsLater = 10, bool widened = false)
     {
         _now = _now.AddSeconds(secondsLater);
-        domain.Reconcile();
+        domain.Reconcile(widenToAllCandidates: widened);
     }
 
     /// <summary>Make a pid look like a sustained burner: 5% of one core per elapsed second.</summary>
@@ -256,6 +256,60 @@ public class EcoQosDomainTests
         Sweep(domain);
 
         native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+    }
+
+    // ── Idle deep-saver: widened sweeps ──────────────────────────────
+
+    [Fact]
+    public void Reconcile_Widened_ThrottlesQuietCandidatesToo()
+    {
+        // With the user away the evidence gate relaxes: every candidate gets the hint without
+        // waiting for burn history — battery savings start on the first idle sweep.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "quiet"));
+        var domain = Domain(native);
+
+        domain.Reconcile(widenToAllCandidates: true);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
+        native.Verify(n => n.SetEcoQos(true, 1000), Times.Never);
+    }
+
+    [Fact]
+    public void Reconcile_Widened_StillExemptsShellProtectedAndAudible()
+    {
+        // The static exemptions are about safety, not evidence — they hold in every mode.
+        // Audible especially: music keeps playing while the user is away.
+        var native = Bridge(1000,
+            Proc(1000, "fg"), Proc(1001, "explorer"), Proc(1002, "chrome"),
+            Proc(1003, "player"), Proc(1004, "bg"));
+        _audible.Add(1003);
+        var domain = Domain(native);
+
+        domain.Reconcile(widenToAllCandidates: true);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+        native.Verify(n => n.SetEcoQos(true, 1002), Times.Never);
+        native.Verify(n => n.SetEcoQos(true, 1003), Times.Never);
+        native.Verify(n => n.SetEcoQos(true, 1004), Times.Once);
+    }
+
+    [Fact]
+    public void Reconcile_BackToTargeted_ReleasesWidenedThrottles_ButKeepsRealDrainers()
+    {
+        // First input after idle: the next targeted sweep's desired-set diff releases everything
+        // that was throttled only by the widened mode, while measured drainers stay throttled.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "drainer"), Proc(1002, "quiet"));
+        var domain = Domain(native);
+
+        domain.Reconcile();                      // baseline samples
+        Burn(1001, 0.5);
+        Sweep(domain, widened: true);            // idle: throttles BOTH (drainer + quiet)
+        Sweep(domain);                           // user back: targeted again
+
+        native.Verify(n => n.SetEcoQos(true, 1002), Times.Once);
+        native.Verify(n => n.SetEcoQos(false, 1002), Times.Once);   // widened-only -> released
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);    // drainer stays throttled
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Never);
     }
 
     // ── Readback-aware reconcile ──────────────────────────────────────

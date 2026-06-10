@@ -81,8 +81,14 @@ public sealed class EcoQosDomain : IOptimizationDomain
     /// audio session — are in efficiency mode; everything else is released. Safe to call
     /// repeatedly — the adaptive controller invokes it on its sweep cadence while on battery, so
     /// focus changes, new drainers, and cooled drainers are tracked continuously.
+    ///
+    /// <para><paramref name="widenToAllCandidates"/> is the idle deep-saver: with the user away
+    /// there is nothing to keep snappy, so the evidence gate relaxes and EVERY candidate gets the
+    /// hint. The static exemptions (shell, protected, audible) are about safety, not evidence,
+    /// and hold in every mode. The next targeted sweep's desired-set diff releases the
+    /// widened-only throttles automatically.</para>
     /// </summary>
-    public ApplyResult Reconcile()
+    public ApplyResult Reconcile(bool widenToAllCandidates = false)
     {
         var sw = Stopwatch.StartNew();
 
@@ -111,10 +117,12 @@ public sealed class EcoQosDomain : IOptimizationDomain
         _drainTracker.Observe(samples, _utcNow());
 
         var audible = _native.GetAudibleProcessIds();
-        var desired = new HashSet<uint>(
-            _drainTracker.CurrentDrainers
-                .Where(pid => candidates.Contains((uint)pid) && !audible.Contains(pid))
-                .Select(pid => (uint)pid));
+        var desired = widenToAllCandidates
+            ? new HashSet<uint>(candidates.Where(pid => !audible.Contains((int)pid)))
+            : new HashSet<uint>(
+                _drainTracker.CurrentDrainers
+                    .Where(pid => candidates.Contains((uint)pid) && !audible.Contains(pid))
+                    .Select(pid => (uint)pid));
 
         int throttled = 0, released = 0, failed = 0, alreadyThrottled = 0, verified = 0, active;
         lock (_gate)

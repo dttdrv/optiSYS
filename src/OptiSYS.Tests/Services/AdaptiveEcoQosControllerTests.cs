@@ -205,6 +205,46 @@ public class AdaptiveEcoQosControllerTests
     }
 
     [Fact]
+    public void MaintainOnce_UserIdle_WidensTheSweep_ForcingItThroughAStretchedGap()
+    {
+        // Idle deep-saver: once the user has been away past the threshold, the mode flip forces
+        // a sweep through any stretched gap and that sweep throttles quiet candidates too.
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, native) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        controller.MaintainOnce();              // targeted steady sweep (no-op) -> gap stretches
+        native.Setup(n => n.GetUserIdleTime()).Returns(TimeSpan.FromMinutes(10));
+        _now = _now.AddSeconds(10);
+
+        var outcome = controller.MaintainOnce();
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, outcome);
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);    // quiet, throttled while away
+        controller.Dispose();
+    }
+
+    [Fact]
+    public void MaintainOnce_FirstInputAfterIdle_ReleasesWidenedThrottles_OnThatTick()
+    {
+        var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
+        var (controller, domain, native) = Build(PowerSource.Battery, settings);
+        Activate(domain);
+
+        native.Setup(n => n.GetUserIdleTime()).Returns(TimeSpan.FromMinutes(10));
+        _now = _now.AddSeconds(10);
+        controller.MaintainOnce();              // widened: throttles the quiet 1001
+
+        native.Setup(n => n.GetUserIdleTime()).Returns(TimeSpan.Zero);   // user is back
+        _now = _now.AddSeconds(10);
+        var outcome = controller.MaintainOnce();
+
+        Assert.Equal(EcoQosCadencePolicy.Outcome.DidWork, outcome);
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);   // released within one tick
+        controller.Dispose();
+    }
+
+    [Fact]
     public void MaintainOnce_ForegroundChange_ForcesAnImmediateSweep()
     {
         // Focus moved to the throttled drainer while the sweep gap was stretched: the change
