@@ -261,6 +261,47 @@ public class MemoryOptimizerTests
     }
 
     [Fact]
+    public void TrimProcessWorkingSets_ChronicRefaulter_IsSparedOnceTheTargetIsMet()
+    {
+        // pid 44's trims never stick (its working set is back every pass) -> after two bounced
+        // trims it is a chronic re-faulter, demoted like a hot process and spared when the
+        // reclaim target is already met. pid 42's trims DO stick, so it never becomes chronic.
+        var memoryInfo = new Mock<IMemoryInfoService>();
+        var native = new Mock<INativeBridge>();
+        native.Setup(n => n.GetForegroundProcessId()).Returns(7);
+        native.SetupSequence(n => n.GetProcessList())
+            .Returns([
+                new NativeProcessInfo { ProcessId = 42, ProcessName = "shrinks", WorkingSetBytes = 64L * 1024 * 1024 },
+                new NativeProcessInfo { ProcessId = 44, ProcessName = "bounces", WorkingSetBytes = 128L * 1024 * 1024 },
+            ])
+            .Returns([
+                new NativeProcessInfo { ProcessId = 42, ProcessName = "shrinks", WorkingSetBytes = 40L * 1024 * 1024 },   // stuck (63%)
+                new NativeProcessInfo { ProcessId = 44, ProcessName = "bounces", WorkingSetBytes = 128L * 1024 * 1024 },  // bounce #1
+            ])
+            .Returns([
+                new NativeProcessInfo { ProcessId = 42, ProcessName = "shrinks", WorkingSetBytes = 40L * 1024 * 1024 },
+                new NativeProcessInfo { ProcessId = 44, ProcessName = "bounces", WorkingSetBytes = 128L * 1024 * 1024 },  // bounce #2 -> chronic
+            ]);
+        native.Setup(n => n.GetProcessCpuTime(It.IsAny<int>())).Returns(TimeSpan.Zero);   // everyone cold
+        native.Setup(n => n.TrimProcessWorkingSet(It.IsAny<int>())).Returns(8L * 1024 * 1024);
+        var ops = new FakeSystemOps(initialAvailable: 600L * 1024 * 1024, reclaimPerCommand: 0);
+
+        using var optimizer = new MemoryOptimizer(memoryInfo.Object, native.Object, ops)
+        {
+            ExcludedProcesses = [],
+        };
+
+        const long target = 500L * 1024 * 1024;
+        optimizer.TrimProcessWorkingSets(target);
+        optimizer.TrimProcessWorkingSets(target);
+        var thirdPass = optimizer.TrimProcessWorkingSets(target);
+
+        native.Verify(n => n.TrimProcessWorkingSet(42), Times.Exactly(3));   // sticking trims keep running
+        native.Verify(n => n.TrimProcessWorkingSet(44), Times.Exactly(2));   // chronic -> spared on pass 3
+        Assert.True(thirdPass.earlyExit);
+    }
+
+    [Fact]
     public void HintBackgroundMemoryPriority_CapturesPriorValue_AndRestoreRestoresIt()
     {
         // OneDrive is on the curated background allowlist; we capture its prior memory priority

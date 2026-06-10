@@ -23,6 +23,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
     // escalation/early-exit deterministic. See IMemorySystemOps.
     private readonly IMemorySystemOps _systemOps;
     private readonly StepEffectivenessTracker _tracker = new();
+    private readonly TrimStickinessTracker _stickiness = new();
     // PIDs we lowered to LOW + their captured prior priority, so the hint can be fully reverted.
     private readonly Dictionary<int, uint> _loweredPriorities = new();
     // Guards _loweredPriorities: the threadpool watcher writes to it while a revert/dispose on
@@ -118,36 +119,48 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
 
         processInfos.Sort((a, b) => b.workingSet.CompareTo(a.workingSet));
 
-        // Heat demotion: a hot candidate's actively-touched pages fault straight back, so its
-        // trim only partially sticks (the cold fraction) while costing re-fault churn. Cold
-        // candidates therefore trim FIRST; hot ones run last and only while the reclaim target
-        // is still unmet — under real pressure the burner IS reclaimed (this may be the only
-        // lever that reaches a protected burner, e.g. a leftover node process), while a met
-        // target leaves it in peace. No target (the manual full pass) trims everything.
-        // No bridge (legacy path) -> no demotion.
-        var hotPids = _native is null
-            ? []
+        // Stickiness learning: judge last pass's trims (a working set back near its pre-trim
+        // size was pure re-fault churn) and forget exited pids.
+        foreach (var (pid, workingSet) in processInfos)
+            _stickiness.Observe(pid, workingSet);
+        _stickiness.RetainOnly(processInfos.Select(p => p.pid).ToList());
+
+        // Demotion: trims that won't stick go LAST. Two kinds of evidence — a process that is
+        // hot right now (its actively-touched pages fault straight back), and a chronic
+        // re-faulter (its last two trims bounced). Cold, sticky candidates trim first; demoted
+        // ones run only while the reclaim target is still unmet — under real pressure they ARE
+        // reclaimed (this may be the only lever that reaches a protected burner, e.g. a leftover
+        // node process), while a met target leaves them in peace. No target (the manual full
+        // pass) trims everything. No bridge (legacy path) -> no heat sampling.
+        var demotedPids = _native is null
+            ? new HashSet<int>()
             : IdentifyHotPids(
                 processInfos.Select(p => p.pid).ToList(),
                 _native.GetProcessCpuTime,
                 Thread.Sleep);
-        if (hotPids.Count > 0)
+        foreach (var (pid, _) in processInfos)
         {
-            var demoted = new List<(int pid, long workingSet)>(processInfos.Count);
-            demoted.AddRange(processInfos.Where(p => !hotPids.Contains(p.pid)));
-            demoted.AddRange(processInfos.Where(p => hotPids.Contains(p.pid)));
-            processInfos = demoted;
+            if (_stickiness.IsChronicRefaulter(pid))
+                demotedPids.Add(pid);
+        }
+
+        if (demotedPids.Count > 0)
+        {
+            var reordered = new List<(int pid, long workingSet)>(processInfos.Count);
+            reordered.AddRange(processInfos.Where(p => !demotedPids.Contains(p.pid)));
+            reordered.AddRange(processInfos.Where(p => demotedPids.Contains(p.pid)));
+            processInfos = reordered;
         }
 
         int trimmed = 0, failed = 0;
         long freedBytes = 0;
         bool earlyExit = false;
 
-        foreach (var (pid, _) in processInfos)
+        foreach (var (pid, workingSet) in processInfos)
         {
-            // Before each demoted (hot) trim, re-check the target: once the cold trims have met
-            // it, every remaining hot trim would be pure churn.
-            if (targetAvailableBytes > 0 && hotPids.Contains(pid)
+            // Before each demoted trim, re-check the target: once the sticky trims have met it,
+            // every remaining demoted trim would be pure churn.
+            if (targetAvailableBytes > 0 && demotedPids.Contains(pid)
                 && (long)GetAvailablePhysicalBytesQuick() >= targetAvailableBytes)
             {
                 earlyExit = true;
@@ -161,6 +174,7 @@ public sealed class MemoryOptimizer : IMemoryOptimizer
                 {
                     trimmed++;
                     freedBytes += freed;
+                    _stickiness.RecordTrim(pid, workingSet);
                 }
                 else
                 {
