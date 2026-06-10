@@ -7,147 +7,218 @@ using Xunit;
 namespace OptiSYS.Tests.Domains.Battery;
 
 /// <summary>
-/// Covers the adaptive (reconcile-based) EcoQoS behavior: continuous foreground-following
-/// throttling of background processes, and dynamic revert (no persisted PID snapshot — the
-/// live tracked set is authoritative, mirroring MemoryOptimizerDomain's inherent reversibility).
-/// All process enumeration is routed through INativeBridge so the reconcile is hermetic.
+/// Covers the DRAIN-AWARE (targeted) EcoQoS reconcile: only background processes with measured,
+/// sustained CPU burn (the BackgroundDrainTracker's enter/exit hysteresis over real samples) are
+/// throttled — never the foreground, shell, protected, audible, or quiet ones — plus dynamic
+/// revert (no persisted PID snapshot — the live tracked set is authoritative). All process
+/// enumeration, CPU sampling, and audio-session reads route through INativeBridge so the
+/// reconcile is hermetic; the clock is injected so burn percentages are deterministic.
 /// </summary>
 public class EcoQosDomainTests
 {
+    private static readonly DateTime T0 = new(2026, 6, 10, 12, 0, 0, DateTimeKind.Utc);
+
+    private DateTime _now = T0;
+    private readonly Dictionary<int, double> _cpuSeconds = [];
+    private readonly HashSet<int> _audible = [];
+
     private static NativeProcessInfo Proc(int pid, string name) =>
         new() { ProcessId = pid, ProcessName = name };
 
-    private static Mock<INativeBridge> Bridge(int foreground, params NativeProcessInfo[] processes)
+    private Mock<INativeBridge> Bridge(int foreground, params NativeProcessInfo[] processes)
     {
         var native = new Mock<INativeBridge>();
         native.Setup(n => n.GetForegroundProcessId()).Returns(foreground);
         native.Setup(n => n.GetProcessList()).Returns(processes);
         native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
+        native.Setup(n => n.GetProcessCpuTime(It.IsAny<int>()))
+            .Returns<int>(pid => _cpuSeconds.TryGetValue(pid, out var s) ? TimeSpan.FromSeconds(s) : null);
+        native.Setup(n => n.GetAudibleProcessIds()).Returns(() => _audible.ToList());
+
+        // Every known process starts with a readable zero CPU time, so the first sweep records a
+        // baseline sample; tests that need an unreadable process remove its entry explicitly.
+        foreach (var p in processes)
+            _cpuSeconds.TryAdd(p.ProcessId, 0);
+
         return native;
     }
+
+    private EcoQosDomain Domain(Mock<INativeBridge> native, Settings? settings = null) =>
+        new(settings ?? new Settings(), native.Object, () => _now);
+
+    /// <summary>Advance the clock and reconcile — one adaptive sweep.</summary>
+    private void Sweep(EcoQosDomain domain, double secondsLater = 10)
+    {
+        _now = _now.AddSeconds(secondsLater);
+        domain.Reconcile();
+    }
+
+    /// <summary>Make a pid look like a sustained burner: 5% of one core per elapsed second.</summary>
+    private void Burn(int pid, double seconds) =>
+        _cpuSeconds[pid] = _cpuSeconds.GetValueOrDefault(pid) + seconds;
 
     [Fact]
     public void Ctor_NullBridge_Throws()
     {
-        // The bridge is required: omitting it must fail loudly at construction rather than silently
-        // falling through to real Win32 (which defeats mockability and hits the live system in tests).
         Assert.Throws<ArgumentNullException>(() => new EcoQosDomain(new Settings(), null!));
     }
 
     [Fact]
-    public void Reconcile_ThrottlesBackgroundProcesses_AndSkipsForeground()
+    public void Reconcile_FirstSweep_ObservesButThrottlesNothing()
     {
-        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "bgapp2"));
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        // One sample is no delta: nothing can be classified as a drainer yet, so the first sweep
+        // must not touch anything (throttling without evidence is the old blanket behavior).
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
+        var domain = Domain(native);
 
         domain.Reconcile();
 
-        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
-        native.Verify(n => n.SetEcoQos(true, 1002), Times.Once);
-        native.Verify(n => n.SetEcoQos(true, 1000), Times.Never);
-        Assert.True(domain.IsActive);
+        native.Verify(n => n.SetEcoQos(true, It.IsAny<int>()), Times.Never);
     }
 
     [Fact]
-    public void Reconcile_SkipsShellAndProtectedProcesses()
+    public void Reconcile_SustainedBurner_GetsThrottled_QuietBackgroundDoesNot()
+    {
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "burner"), Proc(1002, "quiet"));
+        var domain = Domain(native);
+
+        domain.Reconcile();              // first samples
+        Burn(1001, 0.5);                 // 0.5s CPU over the next 10s = 5% of a core
+        Sweep(domain);                   // classifies + throttles
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
+        native.Verify(n => n.SetEcoQos(true, 1002), Times.Never);
+        native.Verify(n => n.SetEcoQos(true, 1000), Times.Never);
+    }
+
+    [Fact]
+    public void Reconcile_AudibleBurner_IsNeverThrottled()
+    {
+        // An explicit EcoQoS overrides the OS's audio-gets-full-QoS heuristic, so a process with
+        // an active audio session is exempt no matter how much it burns.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "player"));
+        var domain = Domain(native);
+        _audible.Add(1001);
+
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+    }
+
+    [Fact]
+    public void Reconcile_ThrottledDrainer_IsReleasedWhenItStartsPlaying()
+    {
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "becomes-player"));
+        var domain = Domain(native);
+
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        Sweep(domain);                   // throttled as a drainer
+        _audible.Add(1001);              // starts playing audio
+        Burn(1001, 0.5);
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
+    }
+
+    [Fact]
+    public void Reconcile_ShellAndProtectedBurners_AreNeverThrottled()
     {
         // "explorer" is a shell process; "chrome" is in the default ProtectedApplications list.
         var native = Bridge(1000,
             Proc(1000, "fg"), Proc(1001, "explorer"), Proc(1002, "chrome"), Proc(1003, "bgapp"));
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
         domain.Reconcile();
+        Burn(1001, 0.5);
+        Burn(1002, 0.5);
+        Burn(1003, 0.5);
+        Sweep(domain);
 
         native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
         native.Verify(n => n.SetEcoQos(true, 1002), Times.Never);
         native.Verify(n => n.SetEcoQos(true, 1003), Times.Once);
-        native.Verify(n => n.SetEcoQos(true, 1000), Times.Never);
     }
 
     [Fact]
-    public void Reconcile_ReleasesProcessThatBecameForeground()
+    public void Reconcile_ReleasesDrainerThatBecameForeground()
     {
-        var native = new Mock<INativeBridge>();
-        native.SetupSequence(n => n.GetForegroundProcessId()).Returns(1000).Returns(1001);
-        native.Setup(n => n.GetProcessList()).Returns(new[] { Proc(1000, "a"), Proc(1001, "b") });
-        native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var native = Bridge(1000, Proc(1000, "a"), Proc(1001, "b"));
+        native.SetupSequence(n => n.GetForegroundProcessId())
+            .Returns(1000).Returns(1000).Returns(1001);
+        var domain = Domain(native);
 
-        domain.Reconcile();   // foreground = 1000 -> throttle 1001
-        domain.Reconcile();   // foreground = 1001 -> release 1001, throttle the now-background 1000
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        Sweep(domain);                   // 1001 throttled as a drainer
+        Sweep(domain);                   // 1001 took focus -> released
 
         native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
         native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
-        native.Verify(n => n.SetEcoQos(true, 1000), Times.Once);
     }
 
     [Fact]
-    public void Reconcile_CatchesNewlySpawnedBackgroundProcess()
+    public void Reconcile_CooledDrainer_IsReleasedOnceItsWindowDecays()
     {
-        var native = new Mock<INativeBridge>();
-        native.Setup(n => n.GetForegroundProcessId()).Returns(1000);
-        native.SetupSequence(n => n.GetProcessList())
-            .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp") })
-            .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "spawned") });
-        native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "burst"));
+        var domain = Domain(native);
 
         domain.Reconcile();
-        domain.Reconcile();
+        Burn(1001, 0.5);
+        Sweep(domain);                   // throttled (5%)
+        Sweep(domain);                   // idle from here: window average decays...
+        Sweep(domain);
+        Sweep(domain);
+        Sweep(domain);
+        Sweep(domain);                   // ...burst slid out -> released
 
-        native.Verify(n => n.SetEcoQos(true, 1002), Times.Once);  // newly spawned, caught
-        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);  // already throttled, not re-applied
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
+        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
     }
 
     [Fact]
-    public void Reconcile_ReleasesAndDropsExitedProcess()
+    public void Reconcile_ReleasesAndDropsExitedDrainer()
     {
-        var native = new Mock<INativeBridge>();
-        native.Setup(n => n.GetForegroundProcessId()).Returns(1000);
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "leaving"));
         native.SetupSequence(n => n.GetProcessList())
             .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "leaving") })
+            .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "leaving") })
             .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp") });   // 1002 exited
-        native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
         domain.Reconcile();
-        domain.Reconcile();
+        Burn(1002, 0.5);
+        Sweep(domain);                   // 1002 throttled
+        Sweep(domain);                   // 1002 gone -> released and dropped
         domain.Revert(new DomainSnapshot { DomainId = "ecoqos" });
 
         // 1002 released once when it left; Revert must NOT touch it again (dropped from tracked set).
         native.Verify(n => n.SetEcoQos(false, 1002), Times.Once);
-        native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
     }
 
     [Fact]
-    public void Revert_UnThrottlesLiveSet_IncludingProcessesAddedAfterApply()
+    public void Revert_UnThrottlesLiveSet_IncludingDrainersAddedAfterApply()
     {
-        // The "dynamic like memory" contract: revert reflects the live tracked set, not a snapshot
-        // captured at apply time — so a process throttled by a later reconcile is still un-throttled.
-        var native = new Mock<INativeBridge>();
-        native.Setup(n => n.GetForegroundProcessId()).Returns(1000);
-        native.SetupSequence(n => n.GetProcessList())
-            .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp") })
-            .Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp"), Proc(1002, "spawned") });
-        native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
+        var domain = Domain(native);
 
         var baseline = domain.CaptureBaseline();
-        domain.Apply(baseline);   // throttles 1001
-        domain.Reconcile();       // dynamically throttles 1002
+        domain.Apply(baseline);          // first samples; nothing classified yet
+        Burn(1001, 0.5);
+        Sweep(domain);                   // dynamically throttles the drainer
         domain.Revert(baseline);
 
         native.Verify(n => n.SetEcoQos(false, 1001), Times.Once);
-        native.Verify(n => n.SetEcoQos(false, 1002), Times.Once);
         Assert.False(domain.IsActive);
     }
 
     [Fact]
     public void Revert_OnFreshInstance_IsNoOp()
     {
-        // No persisted PID list to replay: after a crash, a fresh instance reverts to a clean no-op.
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
         domain.Revert(new DomainSnapshot { DomainId = "ecoqos" });
 
@@ -156,79 +227,84 @@ public class EcoQosDomainTests
     }
 
     [Fact]
-    public void Apply_ThrottlesBackground_AndReportsActive()
+    public void Apply_ReportsActive_BeforeTheFirstDrainerIsEvenFound()
     {
+        // IsActive means "engaged" (applied and not reverted), NOT "currently throttling > 0
+        // pids" — the first sweeps legitimately throttle nothing while evidence accumulates, and
+        // the adaptive controller's IsActive gate must keep maintaining through that phase.
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
         var result = domain.Apply(domain.CaptureBaseline());
 
-        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
         Assert.True(result.Success);
         Assert.True(domain.IsActive);
+        native.Verify(n => n.SetEcoQos(true, It.IsAny<int>()), Times.Never);
     }
 
-    // ── Readback-aware reconcile (item #25) ──────────────────────────
+    [Fact]
+    public void Reconcile_UnreadableCpu_IsNeverThrottled()
+    {
+        // GetProcessCpuTime returning null means "can't measure" — without evidence the process
+        // must not be throttled, no matter how long it sits in the background.
+        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "opaque"));
+        var domain = Domain(native);
+        _cpuSeconds.Remove(1001);   // the bridge mock returns null for it: CPU time unreadable
+
+        domain.Reconcile();
+        Sweep(domain);
+        Sweep(domain);
+
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);
+    }
+
+    // ── Readback-aware reconcile ──────────────────────────────────────
 
     [Fact]
-    public void Reconcile_SkipsProcessAlreadyVerifiedThrottled_AndStillCountsItVerified()
+    public void Reconcile_SkipsDrainerAlreadyVerifiedThrottled_AndStillCountsItVerified()
     {
-        // 1001 is already in EcoQoS (e.g. the OS classified it, or a prior session did): the bridge
-        // reports it throttled, so we must NOT re-apply it, but it still counts toward verified.
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "already"));
         native.Setup(n => n.IsEcoQosThrottled(1001)).Returns(true);
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        _now = _now.AddSeconds(10);
         var result = domain.Reconcile();
 
         native.Verify(n => n.SetEcoQos(true, 1001), Times.Never);   // skip-if-already-throttled
-        Assert.Contains("1 background processes verified", result.Message);
-        Assert.True(domain.IsActive);
+        Assert.Contains("1 background drainers verified", result.Message);
     }
 
     [Fact]
-    public void Reconcile_AppliesToNotThrottledProcess_AndReportsVerifiedCount()
+    public void Reconcile_AppliesToNotThrottledDrainer_AndReportsVerifiedCount()
     {
-        // 1001 reads back as not throttled before apply, throttled after apply -> verified.
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
         native.SetupSequence(n => n.IsEcoQosThrottled(1001))
             .Returns(false)   // pre-apply: not yet throttled
             .Returns(true);   // post-apply readback: confirmed
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        _now = _now.AddSeconds(10);
         var result = domain.Reconcile();
 
-        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);    // applied (was not throttled)
-        Assert.Contains("1 background processes verified", result.Message);
-    }
-
-    [Fact]
-    public void Reconcile_SilentNoOp_AppliedButReadbackNotThrottled_NotCountedVerified()
-    {
-        // The write "succeeds" but readback shows the OS/driver ignored it: applied, NOT verified.
-        var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
-        native.Setup(n => n.IsEcoQosThrottled(1001)).Returns(false);   // never throttled, even post-apply
-        var domain = new EcoQosDomain(new Settings(), native.Object);
-
-        var result = domain.Reconcile();
-
-        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);       // attempted
-        Assert.Contains("0 background processes verified", result.Message);
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);
+        Assert.Contains("1 background drainers verified", result.Message);
     }
 
     [Fact]
     public void Reconcile_NullReadback_FallsBackToAttempting_AndDoesNotThrow()
     {
-        // Readback unavailable (access denied / exited) -> bridge returns null. Must fall back to
-        // today's attempt-and-track behavior and never throw. (Bridge() leaves IsEcoQosThrottled
-        // unmocked, so it returns null by default.)
         var native = Bridge(1000, Proc(1000, "fg"), Proc(1001, "bgapp"));
-        var domain = new EcoQosDomain(new Settings(), native.Object);
+        var domain = Domain(native);
 
-        var ex = Record.Exception(() => domain.Reconcile());
+        domain.Reconcile();
+        Burn(1001, 0.5);
+        var ex = Record.Exception(() => Sweep(domain));
 
         Assert.Null(ex);
-        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);       // attempted despite unknown state
-        Assert.True(domain.IsActive);
+        native.Verify(n => n.SetEcoQos(true, 1001), Times.Once);    // attempted despite unknown state
     }
 }

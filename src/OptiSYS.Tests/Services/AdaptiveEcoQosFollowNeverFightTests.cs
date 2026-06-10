@@ -17,10 +17,15 @@ namespace OptiSYS.Tests.Services;
 /// </summary>
 public class AdaptiveEcoQosFollowNeverFightTests
 {
+    private static readonly DateTime T0 = new(2026, 6, 10, 12, 0, 0, DateTimeKind.Utc);
+
+    private DateTime _now = T0;
+    private readonly Dictionary<int, double> _cpuSeconds = [];
+
     private static NativeProcessInfo Proc(int pid, string name) =>
         new() { ProcessId = pid, ProcessName = name };
 
-    private static (AdaptiveEcoQosController controller, EcoQosDomain domain, Mock<INativeBridge> native)
+    private (AdaptiveEcoQosController controller, EcoQosDomain domain, Mock<INativeBridge> native)
         Build(EffectivePowerMode mode, Settings settings)
     {
         var native = new Mock<INativeBridge>();
@@ -28,16 +33,29 @@ public class AdaptiveEcoQosFollowNeverFightTests
         native.Setup(n => n.GetForegroundProcessId()).Returns(1000);
         native.Setup(n => n.GetProcessList()).Returns(new[] { Proc(1000, "fg"), Proc(1001, "bgapp") });
         native.Setup(n => n.SetEcoQos(It.IsAny<bool>(), It.IsAny<int>())).Returns(true);
+        native.Setup(n => n.GetProcessCpuTime(It.IsAny<int>()))
+            .Returns<int>(pid => _cpuSeconds.TryGetValue(pid, out var s) ? TimeSpan.FromSeconds(s) : null);
+        native.Setup(n => n.GetAudibleProcessIds()).Returns([]);
+        _cpuSeconds.TryAdd(1000, 0);
+        _cpuSeconds.TryAdd(1001, 0);
 
         var provider = new Mock<IEffectivePowerModeProvider>();
         provider.Setup(p => p.Current).Returns(mode);
 
-        var domain = new EcoQosDomain(settings, native.Object);
+        var domain = new EcoQosDomain(settings, native.Object, () => _now);
         var controller = new AdaptiveEcoQosController(domain, native.Object, settings, provider.Object);
         return (controller, domain, native);
     }
 
     private static void Activate(EcoQosDomain domain) => domain.Apply(domain.CaptureBaseline());
+
+    /// <summary>Make 1001 a throttled drainer via direct reconciles (bypassing the stand-down).</summary>
+    private void WarmDrainer(EcoQosDomain domain)
+    {
+        _cpuSeconds[1001] += 0.5;          // 5% of a core over the next 10s
+        _now = _now.AddSeconds(10);
+        domain.Reconcile();
+    }
 
     [Theory]
     [InlineData(EffectivePowerMode.HighPerformance)]
@@ -65,7 +83,8 @@ public class AdaptiveEcoQosFollowNeverFightTests
     {
         var settings = new Settings { EcoQosEnabled = true, AutomationPaused = false };
         var (controller, domain, native) = Build(mode, settings);
-        Activate(domain);                 // throttles 1001
+        Activate(domain);
+        WarmDrainer(domain);              // 1001 classified and throttled
         native.Invocations.Clear();
 
         var outcome = controller.MaintainOnce();

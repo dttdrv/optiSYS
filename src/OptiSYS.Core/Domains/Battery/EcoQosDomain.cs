@@ -1,13 +1,18 @@
 using System.Diagnostics;
 using OptiSYS.Core.Interfaces;
 using OptiSYS.Core.Models;
+using OptiSYS.Core.Services;
 
 namespace OptiSYS.Core.Domains.Battery;
 
 /// <summary>
-/// Marks background processes with EcoQoS (efficiency mode).
-/// On modern CPUs with E-cores, this schedules background work on efficiency cores
-/// at lower frequency. Foreground app is never touched.
+/// Marks background DRAINERS with EcoQoS (efficiency mode): throttling is targeted by evidence —
+/// only processes with measured, sustained CPU burn (see <see cref="BackgroundDrainTracker"/>;
+/// thresholds grounded by the OptiSYS.Lab `drain` probe) are throttled, never the whole
+/// background set. The foreground app, shell, protected/excluded apps, and processes with an
+/// ACTIVE audio session are exempt regardless of burn (an explicit EcoQoS overrides the OS's
+/// audio-gets-full-QoS heuristic). On modern CPUs with E-cores this schedules the caught
+/// background work on efficiency cores at lower frequency.
 /// </summary>
 public sealed class EcoQosDomain : IOptimizationDomain
 {
@@ -25,7 +30,9 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
     private readonly Settings _settings;
     private readonly INativeBridge _native;
-    private bool _isActive;
+    private readonly Func<DateTime> _utcNow;
+    private readonly BackgroundDrainTracker _drainTracker = new();
+    private bool _applied;
     private readonly HashSet<uint> _throttledPids = [];
     private readonly object _gate = new();
 
@@ -33,14 +40,21 @@ public sealed class EcoQosDomain : IOptimizationDomain
     public string DisplayName => "Process Power Throttling";
     public string Category => "Battery";
     public bool IsSupported => Environment.OSVersion.Version >= new Version(10, 0, 16299);
-    public bool IsActive => _isActive;
+
+    /// <summary>
+    /// "Engaged" (applied and not reverted) — NOT "currently throttling &gt; 0 pids". The first
+    /// sweeps legitimately throttle nothing while burn evidence accumulates, and the adaptive
+    /// controller's IsActive gate must keep maintaining through that phase.
+    /// </summary>
+    public bool IsActive => _applied;
 
     public bool IsEnabled(Settings settings) => settings.EcoQosEnabled;
 
-    public EcoQosDomain(Settings settings, INativeBridge native)
+    public EcoQosDomain(Settings settings, INativeBridge native, Func<DateTime>? utcNow = null)
     {
         _settings = settings;
         _native = native ?? throw new ArgumentNullException(nameof(native));
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
     public DomainSnapshot CaptureBaseline()
@@ -52,18 +66,21 @@ public sealed class EcoQosDomain : IOptimizationDomain
 
     public ApplyResult Apply(DomainSnapshot baseline)
     {
-        // First application: reconcile from an empty tracked set. The baseline carries no PID
-        // list — revert is dynamic (the live tracked set is authoritative), mirroring how
+        // First application: arm the domain and take the first burn samples. The baseline carries
+        // no PID list — revert is dynamic (the live tracked set is authoritative), mirroring how
         // MemoryOptimizerDomain leans on the OS to undo its effect rather than a snapshot.
         baseline.Set("captured", true);
+        _applied = true;
         return Reconcile();
     }
 
     /// <summary>
-    /// Idempotent reconcile toward the desired state: every non-foreground, non-excluded,
-    /// non-shell, non-self background process is in efficiency mode; the foreground process is
-    /// always released. Safe to call repeatedly — the adaptive controller invokes it on a cadence
-    /// while on battery so focus changes and newly-spawned processes are tracked continuously.
+    /// Idempotent reconcile toward the desired state: every CANDIDATE background process
+    /// (non-foreground, non-excluded, non-shell, non-self) gets its CPU time sampled, and the
+    /// ones the drain tracker classifies as sustained burners — minus anything with an active
+    /// audio session — are in efficiency mode; everything else is released. Safe to call
+    /// repeatedly — the adaptive controller invokes it on its sweep cadence while on battery, so
+    /// focus changes, new drainers, and cooled drainers are tracked continuously.
     /// </summary>
     public ApplyResult Reconcile()
     {
@@ -76,15 +93,28 @@ public sealed class EcoQosDomain : IOptimizationDomain
             _settings.EcoQosExcludedProcesses.Concat(_settings.ProtectedApplications),
             StringComparer.OrdinalIgnoreCase);
 
-        var desired = new HashSet<uint>();
+        // Candidates pass the static rules; the drain tracker then decides who is actually
+        // burning. Unreadable CPU time (null) means no evidence — never throttle on a guess.
+        var candidates = new HashSet<uint>();
+        var samples = new List<ProcessCpuSample>();
         foreach (var (pid, name) in EnumerateProcesses())
         {
             if (pid == selfPid || pid == foregroundPid || pid <= 4)
                 continue;
             if (IsShellProcess(name) || exclusions.Contains(name))
                 continue;
-            desired.Add(pid);
+            candidates.Add(pid);
+            if (_native.GetProcessCpuTime((int)pid) is { } cpuTime)
+                samples.Add(new ProcessCpuSample((int)pid, cpuTime));
         }
+
+        _drainTracker.Observe(samples, _utcNow());
+
+        var audible = _native.GetAudibleProcessIds();
+        var desired = new HashSet<uint>(
+            _drainTracker.CurrentDrainers
+                .Where(pid => candidates.Contains((uint)pid) && !audible.Contains(pid))
+                .Select(pid => (uint)pid));
 
         int throttled = 0, released = 0, failed = 0, alreadyThrottled = 0, verified = 0, active;
         lock (_gate)
@@ -133,12 +163,11 @@ public sealed class EcoQosDomain : IOptimizationDomain
             }
 
             active = _throttledPids.Count;
-            _isActive = active > 0;
         }
 
         sw.Stop();
         return ApplyResult.Ok(Id,
-            $"{verified} background processes verified in efficiency mode",
+            $"{verified} background drainers verified in efficiency mode",
             optimized: throttled, failed: failed, skipped: released + alreadyThrottled, duration: sw.Elapsed);
     }
 
@@ -147,6 +176,7 @@ public sealed class EcoQosDomain : IOptimizationDomain
         // Dynamic revert: un-throttle the live tracked set (which includes anything a later
         // reconcile added). No persisted PID list — after a crash a fresh instance has nothing
         // to replay, and any leftover hint is invisible and self-clears when the process exits.
+        // Burn histories are kept: on re-apply, known burners re-classify without a cold start.
         lock (_gate)
         {
             foreach (var pid in _throttledPids)
@@ -155,7 +185,7 @@ public sealed class EcoQosDomain : IOptimizationDomain
             }
 
             _throttledPids.Clear();
-            _isActive = false;
+            _applied = false;
         }
     }
 
@@ -165,9 +195,9 @@ public sealed class EcoQosDomain : IOptimizationDomain
         DisplayName = DisplayName,
         Category = Category,
         IsSupported = IsSupported,
-        IsActive = _isActive,
-        Summary = _isActive ? $"{_throttledPids.Count} processes throttled" : "Inactive",
-        Details = _isActive
+        IsActive = _applied,
+        Summary = _applied ? $"{_throttledPids.Count} background drainers throttled" : "Inactive",
+        Details = _applied
             ? [$"Excluded: {string.Join(", ", _settings.EcoQosExcludedProcesses.Concat(_settings.ProtectedApplications).Distinct(StringComparer.OrdinalIgnoreCase).Take(5))}..."]
             : []
     };
